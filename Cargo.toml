@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = ["crates/sonara-core"]
+# `cargo test` at the repo root builds only the audio core, which needs no GUI libraries.
+# The Tauri shell (src-tauri) is added to `members` once it exists, and is built with `cargo tauri`.
+default-members = ["crates/sonara-core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.85"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
+
+# Keep debug builds usable: DSP and decoding are far too slow at opt-level 0.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.test]
+opt-level = 2
