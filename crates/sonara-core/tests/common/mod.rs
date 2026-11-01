@@ -65,3 +65,22 @@ pub fn chirp_hz_at_window(start_frame: usize, len: usize, rate: u32) -> f32 {
     let centre = (start_frame as f32 + len as f32 / 2.0) / rate as f32;
     400.0 + 1000.0 * centre
 }
+
+/// Largest FFT magnitude between `lo` and `hi` Hz in the first `n` samples of `x`, as a fraction of
+/// what a full-scale sine would give. Tells whether energy is present around a frequency.
+pub fn band_peak(x: &[f32], rate: u32, lo: f32, hi: f32, n: usize) -> f32 {
+    let n = n.min(x.len());
+    let mut buf: Vec<Complex<f32>> = (0..n)
+        .map(|i| {
+            let w = 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / n as f32).cos();
+            Complex::new(x[i] * w, 0.0)
+        })
+        .collect();
+    FftPlanner::new().plan_fft_forward(n).process(&mut buf);
+    let hz_per_bin = rate as f32 / n as f32;
+    let wsum = n as f32 / 2.0;
+    (0..n / 2)
+        .filter(|&k| (k as f32 * hz_per_bin) >= lo && (k as f32 * hz_per_bin) <= hi)
+        .map(|k| 2.0 * buf[k].norm() / wsum)
+        .fold(0.0, f32::max)
+}

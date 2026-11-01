@@ -7,5 +7,6 @@ pub mod decode;
 pub mod dsp;
 pub mod engine;
 pub mod error;
+pub mod queue;
 
 pub use error::{Error, Result};

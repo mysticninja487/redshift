@@ -2,5 +2,9 @@
 //! ties them to a queue.
 
 pub mod mixer;
+pub mod output;
+pub mod player;
+pub mod source;
 
 pub use mixer::{Command, Event, FrameSource, Mixer, MixerPorts, Shared, Track};
+pub use player::{OfflineConfig, Player, PlayerConfig, PlayerEvent, PlayerState, QueueView, Status};
