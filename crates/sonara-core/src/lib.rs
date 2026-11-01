@@ -7,6 +7,9 @@ pub mod decode;
 pub mod dsp;
 pub mod engine;
 pub mod error;
+pub mod library;
+pub mod lyrics;
+pub mod meta;
 pub mod queue;
 
 pub use error::{Error, Result};

@@ -30,4 +30,29 @@ $F -f lavfi -i "aevalsrc='0.5*sin(2*PI*440*t)':s=48000:d=2" -c:a libopus -b:a 48
 # MP3 has encoder delay/padding, which exercises the packet trim logic.
 $F -f lavfi -i "$(chirp 44100)" -c:a libmp3lame -b:a 192k "$OUT/chirp_44k_stereo.mp3"
 
+# --- tagged files for the metadata/library tests ---
+# A small cover image, embedded in the FLAC and the MP3.
+$F -f lavfi -i "color=c=0x3366cc:s=64x64:d=1" -frames:v 1 "$OUT/_cover.png"
+LYRICS=$'[00:01.00]First line\n[00:02.50]Second line'
+S="aevalsrc='0.3*sin(2*PI*660*t)':s=44100:d=1"
+
+$F -f lavfi -i "$S" -i "$OUT/_cover.png" -map 0:a -map 1:v -c:a flac -c:v copy -disposition:v attached_pic \
+  -metadata title="Tagged Song" -metadata artist="The Testers" -metadata album="Fixture Album" \
+  -metadata album_artist="Various Testers" -metadata genre="Test" -metadata date="2021-05-06" \
+  -metadata track="3/12" -metadata disc="2/2" \
+  -metadata REPLAYGAIN_TRACK_GAIN="-6.50 dB" -metadata REPLAYGAIN_TRACK_PEAK="0.9" \
+  -metadata REPLAYGAIN_ALBUM_GAIN="-5.25 dB" -metadata LYRICS="$LYRICS" "$OUT/tagged.flac"
+
+$F -f lavfi -i "aevalsrc='0.3*sin(2*PI*660*t)':s=48000:d=1" -c:a libopus -b:a 64k \
+  -metadata title="Opus Song" -metadata artist="Opus Artist" -metadata album="Opus Album" \
+  -metadata date="1999" -metadata track="7" "$OUT/tagged.opus"
+
+$F -f lavfi -i "$S" -i "$OUT/_cover.png" -map 0:a -map 1:v -c:a libmp3lame -b:a 128k -c:v copy -id3v2_version 3 \
+  -metadata title="MP3 Song" -metadata artist="MP3 Artist" -metadata album="MP3 Album" \
+  -metadata date="2010" -metadata track="1/10" "$OUT/tagged.mp3"
+
+# Untagged file: everything must fall back gracefully.
+$F -f lavfi -i "$S" -c:a flac -map_metadata -1 "$OUT/Untagged Name.flac"
+rm -f "$OUT/_cover.png"
+
 ls -l "$OUT"

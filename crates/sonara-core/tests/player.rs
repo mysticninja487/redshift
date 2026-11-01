@@ -187,7 +187,7 @@ fn crossfade_overlaps_tracks_and_blends_both() {
 
 #[test]
 fn seeking_jumps_to_the_requested_position() {
-    let mut r = rig(2.0);
+    let r = rig(2.0);
     r.player.set_queue(paths(&["chirp_44k_stereo.flac"]), 0, true);
     r.wait_position("playback to start", |p| p > 0.2);
     r.player.seek(2.0);
@@ -209,7 +209,7 @@ fn seeking_jumps_to_the_requested_position() {
 
 #[test]
 fn pause_silences_and_holds_the_position_then_resume_continues() {
-    let mut r = rig(2.0);
+    let r = rig(2.0);
     r.player.set_queue(paths(&["chirp_44k_stereo.flac"]), 0, true);
     r.wait_position("playback", |p| p > 0.3);
     r.player.pause();
@@ -322,7 +322,7 @@ fn reopening_the_device_resumes_playback_where_it_was() {
 
 #[test]
 fn visualiser_sees_the_music_and_goes_quiet_after() {
-    let mut r = rig(2.0);
+    let r = rig(2.0);
     r.player.set_queue(paths(&["chirp_44k_stereo.flac"]), 0, true);
     r.wait_position("playback", |p| p > 0.5);
     let mut loudest = 0.0f32;
@@ -345,7 +345,7 @@ fn visualiser_sees_the_music_and_goes_quiet_after() {
 
 #[test]
 fn volume_and_eq_reach_the_output() {
-    let mut r = rig(2.0);
+    let r = rig(2.0);
     r.player.set_volume(0.5); // amplitude 0.25
     r.player.set_queue(paths(&["chirp_44k_stereo.flac"]), 0, true);
     r.wait_position("playback", |p| p > 0.5);
