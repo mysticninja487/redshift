@@ -4,6 +4,8 @@
 //! lyrics logic can be built and tested without a GUI.
 
 pub mod decode;
+pub mod dsp;
+pub mod engine;
 pub mod error;
 
 pub use error::{Error, Result};
