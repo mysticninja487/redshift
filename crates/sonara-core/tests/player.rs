@@ -356,3 +356,109 @@ fn volume_and_eq_reach_the_output() {
     assert_close(r.player.volume(), 0.5, 1e-4, "volume readback");
     r.player.stop();
 }
+
+// ---- ReplayGain ----
+// tagged.flac is a 0.3-amplitude 660 Hz sine, one second long, tagged with track gain -6.5 dB
+// (peak 0.9) and album gain -5.25 dB. chirp_44k_stereo.flac has no ReplayGain tags.
+
+use sonara_core::engine::ReplayGainMode;
+
+fn db(x: f32) -> f32 {
+    10f32.powf(x / 20.0)
+}
+
+/// RMS of the steady middle of whatever was played (skipping fades at both ends).
+fn mid_rms(left: &[f32]) -> f32 {
+    let (a, b) = audible(left);
+    rms(&left[a + 4800..b - 4800])
+}
+
+/// Plays `file` to the end with the given ReplayGain settings made before it starts.
+fn play_rms(file: &str, mode: ReplayGainMode, preamp_db: f32) -> f32 {
+    let mut r = rig(4.0);
+    r.player.set_replaygain(mode, preamp_db);
+    r.player.set_queue(paths(&[file]), 0, true);
+    r.wait_ended();
+    mid_rms(&r.left())
+}
+
+#[test]
+fn replaygain_scales_the_output_by_the_tagged_gain() {
+    let off = play_rms("tagged.flac", ReplayGainMode::Off, 0.0);
+    assert_close(off, 0.3 / 2f32.sqrt(), 0.01, "untouched level (RMS of a 0.3 sine)");
+
+    let track = play_rms("tagged.flac", ReplayGainMode::Track, 0.0);
+    assert_close(track / off, db(-6.5), 0.01, "track gain -6.5 dB");
+
+    let album = play_rms("tagged.flac", ReplayGainMode::Album, 0.0);
+    assert_close(album / off, db(-5.25), 0.01, "album gain -5.25 dB");
+
+    let boosted = play_rms("tagged.flac", ReplayGainMode::Track, 6.0);
+    assert_close(boosted / off, db(-0.5), 0.01, "-6.5 dB plus a +6 dB pre-amp");
+}
+
+#[test]
+fn replaygain_never_boosts_a_track_past_its_own_peak() {
+    let off = play_rms("tagged.flac", ReplayGainMode::Off, 0.0);
+    // +10 dB pre-amp would be +3.5 dB overall, but the 0.9 peak tag caps the gain at 1/0.9.
+    let capped = play_rms("tagged.flac", ReplayGainMode::Track, 10.0);
+    assert_close(capped / off, 1.0 / 0.9, 0.01, "limited by the peak tag");
+}
+
+#[test]
+fn untagged_files_are_unchanged_by_replaygain() {
+    let off = play_rms("chirp_44k_stereo.flac", ReplayGainMode::Off, 0.0);
+    let on = play_rms("chirp_44k_stereo.flac", ReplayGainMode::Track, 6.0);
+    assert_close(on / off, 1.0, 0.005, "no tags, no change");
+}
+
+#[test]
+fn changing_replaygain_applies_to_the_playing_track_and_the_preloaded_one() {
+    // Two copies back to back, played at half speed so there's time to change the setting
+    // part-way through the first. The second was already preloaded at the old setting.
+    let mut r = rig(0.5);
+    r.player.set_queue(paths(&["tagged.flac", "tagged.flac"]), 0, true);
+    r.wait_position("0.35 s in", |p| p > 0.35);
+    r.player.set_replaygain(ReplayGainMode::Track, 0.0);
+    r.wait_ended();
+
+    let left = r.left();
+    let (a, b) = audible(&left);
+    let before = rms(&left[a + 4800..a + 9600]); // 0.1 s - 0.2 s into the first track
+    let first_end = rms(&left[a + 33_600..a + 43_200]); // 0.7 s - 0.9 s into the first
+    let second = rms(&left[b - 14_400..b - 4_800]); // near the end of the second
+    assert_close(before, 0.3 / 2f32.sqrt(), 0.01, "starts untouched");
+    assert_close(first_end / before, db(-6.5), 0.02, "the playing track was reloaded at the new gain");
+    assert_close(second / before, db(-6.5), 0.02, "so was the preloaded next track");
+}
+
+#[test]
+fn replaygain_change_while_paused_stays_paused_and_keeps_position() {
+    let r = rig(1.0);
+    r.player.set_queue(paths(&["tagged.flac"]), 0, true);
+    r.wait_position("0.3 s in", |p| p > 0.3);
+    r.player.pause();
+    std::thread::sleep(Duration::from_millis(150));
+    let before = r.player.position_secs();
+    r.player.set_replaygain(ReplayGainMode::Album, 0.0);
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(r.player.status(), Status::Paused);
+    assert_close(r.player.position_secs() as f32, before as f32, 0.05, "position held");
+    let s = r.player.state();
+    assert_eq!(s.replaygain, ReplayGainMode::Album);
+    r.player.stop();
+}
+
+#[test]
+fn replaygain_settings_are_clamped_and_readable() {
+    let r = rig(1.0);
+    assert_eq!(r.player.replaygain(), (ReplayGainMode::Off, 0.0));
+    r.player.set_replaygain(ReplayGainMode::Track, 99.0);
+    assert_eq!(r.player.replaygain(), (ReplayGainMode::Track, 12.0));
+    r.player.set_replaygain(ReplayGainMode::Track, f32::NAN);
+    assert_eq!(r.player.replaygain(), (ReplayGainMode::Track, 0.0), "NaN pre-amp is ignored");
+    r.player.set_replaygain(ReplayGainMode::Album, -99.0);
+    assert_eq!(r.player.replaygain(), (ReplayGainMode::Album, -12.0));
+    let s = r.player.state();
+    assert_eq!((s.replaygain, s.replaygain_preamp_db), (ReplayGainMode::Album, -12.0));
+}

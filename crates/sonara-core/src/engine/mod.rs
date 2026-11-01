@@ -7,4 +7,4 @@ pub mod player;
 pub mod source;
 
 pub use mixer::{Command, Event, FrameSource, Mixer, MixerPorts, Shared, Track};
-pub use player::{OfflineConfig, Player, PlayerConfig, PlayerEvent, PlayerState, QueueView, Status};
+pub use player::{resolve_gain, OfflineConfig, Player, PlayerConfig, PlayerEvent, PlayerState, QueueView, ReplayGainMode, Status};

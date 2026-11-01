@@ -10,6 +10,7 @@ pub mod error;
 pub mod library;
 pub mod lyrics;
 pub mod meta;
+pub mod playlists;
 pub mod queue;
 
 pub use error::{Error, Result};
