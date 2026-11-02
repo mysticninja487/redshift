@@ -7,8 +7,10 @@
 //!
 //! Lock order, wherever more than one is held: library, then playlists, then settings.
 
+use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossbeam_channel::Receiver;
@@ -26,6 +28,10 @@ use crate::lyrics::{self, Lyrics};
 use crate::meta::{self, Cover, TrackMeta};
 use crate::playlists::{Playlist, PlaylistId, PlaylistStore, PlaylistSummary};
 use crate::queue::RepeatMode;
+use crate::waveform::{self, Overview};
+
+/// How many waveform overviews are kept for replays.
+const WAVEFORM_CACHE_SIZE: usize = 48;
 
 pub const SETTINGS_FILE: &str = "settings.json";
 pub const LIBRARY_FILE: &str = "library.json";
@@ -163,7 +169,11 @@ pub struct App {
     library: Mutex<Library>,
     playlists: Mutex<PlaylistStore>,
     scanning: AtomicBool,
+    /// Recent waveform overviews, keyed by file, size, modified time and bucket count.
+    waveforms: Mutex<VecDeque<(WaveformKey, Arc<Overview>)>>,
 }
+
+type WaveformKey = (PathBuf, u64, u64, usize);
 
 impl App {
     /// Opens everything under `data_dir` (created if needed) and applies the saved settings to the
@@ -207,6 +217,7 @@ impl App {
             settings: Mutex::new(settings),
             data_dir,
             scanning: AtomicBool::new(false),
+            waveforms: Mutex::new(VecDeque::new()),
         };
         Ok((app, events))
     }
@@ -415,6 +426,27 @@ impl App {
     }
 
     // ---- per-track extras ----
+
+    /// The loudness outline of a track for a waveform seek bar. Decodes the whole file the first
+    /// time (run this off the UI thread) and remembers the result for replays.
+    pub fn waveform(&self, path: &Path, buckets: usize) -> Result<Arc<Overview>> {
+        if !meta::is_audio_file(path) {
+            return Err(Error::Unsupported(format!("{} is not an audio file", path.display())));
+        }
+        let m = fs::metadata(path)?;
+        let mtime = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
+        let key: WaveformKey = (path.to_path_buf(), m.len(), mtime, buckets.clamp(8, 4096));
+        if let Some((_, o)) = self.waveforms.lock().iter().find(|(k, _)| *k == key) {
+            return Ok(o.clone());
+        }
+        let o = Arc::new(waveform::overview(path, buckets)?);
+        let mut cache = self.waveforms.lock();
+        cache.push_back((key, o.clone()));
+        while cache.len() > WAVEFORM_CACHE_SIZE {
+            cache.pop_front();
+        }
+        Ok(o)
+    }
 
     /// Lyrics for an audio file. Anything that isn't an audio file gets `None`: these are called
     /// with paths from the UI, and shouldn't be a way to read arbitrary files.
@@ -639,6 +671,23 @@ mod tests {
         app.set_eq_preamp_db(-3.0);
         assert!((app.eq_curve(50)[49][1] - (c[49][1] - 3.0)).abs() < 0.05, "preamp shifts the whole curve");
         assert_eq!(app.eq_curve(0).len(), 2, "point count is kept sensible");
+    }
+
+    #[test]
+    fn waveform_is_cached_per_file_and_refuses_non_audio() {
+        let d = tempfile::tempdir().unwrap();
+        let app = open(d.path());
+        let p = fixture("tagged.flac");
+        let a = app.waveform(&p, 64).unwrap();
+        let b = app.waveform(&p, 64).unwrap();
+        assert!(Arc::ptr_eq(&a, &b), "second call reuses the first result");
+        assert_eq!(app.waveform(&p, 32).unwrap().peaks.len(), 32, "other sizes are separate entries");
+        fs::write(d.path().join("x.txt"), "text").unwrap();
+        assert!(app.waveform(&d.path().join("x.txt"), 64).is_err());
+        for i in 0..(WAVEFORM_CACHE_SIZE + 5) {
+            app.waveform(&p, 100 + i).unwrap();
+        }
+        assert!(app.waveforms.lock().len() <= WAVEFORM_CACHE_SIZE, "cache is bounded");
     }
 
     #[test]

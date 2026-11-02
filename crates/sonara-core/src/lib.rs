@@ -14,5 +14,6 @@ pub mod meta;
 pub mod playlists;
 pub mod queue;
 pub mod util;
+pub mod waveform;
 
 pub use error::{Error, Result};

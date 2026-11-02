@@ -8,7 +8,7 @@
 //! - event `scan-progress`: a [`ScanProgress`] while a library scan runs
 //! - commands `player_state` and `viz_frame` are polled by the UI (position, meters, visualisers)
 //! - cover art is an image URL: `cover://localhost/<encodeURIComponent(audio file path)>`
-//!   (on Windows: `http://cover.localhost/<...>`)
+//!   (on Windows: `http://cover.localhost/<...>`); load it with `crossOrigin="anonymous"` to read pixels
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -265,6 +265,14 @@ fn recently_added(state: State<AppState>, limit: usize) -> Vec<TrackMeta> {
 fn track_meta(state: State<AppState>, path: PathBuf) -> CmdResult<TrackMeta> {
     state.0.track_meta(&path).map_err(err)
 }
+/// The track's loudness outline, for waveform seek bars. Decodes the file on a worker thread the
+/// first time; later calls for the same file are instant.
+#[tauri::command]
+async fn waveform(state: State<'_, AppState>, path: PathBuf, buckets: usize) -> CmdResult<sonara_core::waveform::Overview> {
+    let core = state.0.clone();
+    let overview = tauri::async_runtime::spawn_blocking(move || core.waveform(&path, buckets)).await.map_err(err)?.map_err(err)?;
+    Ok((*overview).clone())
+}
 #[tauri::command]
 fn lyrics(state: State<AppState>, path: PathBuf) -> Option<Lyrics> {
     state.0.lyrics(&path)
@@ -329,6 +337,9 @@ fn serve_cover(app: &tauri::AppHandle, uri_path: &str) -> tauri::http::Response<
         Some(c) => tauri::http::Response::builder()
             .header("Content-Type", c.mime)
             .header("Cache-Control", "max-age=3600")
+            // The UI reads cover pixels (to theme itself from the artwork), which a canvas only
+            // allows for images served with CORS enabled.
+            .header("Access-Control-Allow-Origin", "*")
             .body(Cow::Owned(c.data)),
         None => tauri::http::Response::builder().status(404).body(Cow::Borrowed(&[][..])),
     }
@@ -369,7 +380,7 @@ fn main() {
             eq_info, set_eq_enabled, set_eq_preamp_db, set_eq_band_db, set_eq_gains_db, apply_eq_preset, eq_curve,
             viz_frame, configure_viz, ui_state, set_ui_state,
             library_folders, add_library_folder, remove_library_folder, scan_library, is_scanning,
-            library_tracks, search_library, library_albums, library_artists, recently_added, track_meta, lyrics,
+            library_tracks, search_library, library_albums, library_artists, recently_added, track_meta, lyrics, waveform,
             playlists, playlist, create_playlist, rename_playlist, delete_playlist, move_playlist,
             add_to_playlist, remove_from_playlist, move_in_playlist, import_m3u, export_m3u, play_playlist,
         ])
