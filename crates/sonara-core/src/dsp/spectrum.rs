@@ -11,7 +11,7 @@ use std::time::Instant;
 use parking_lot::Mutex;
 use rustfft::num_complex::Complex;
 use rustfft::{Fft, FftPlanner};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Frames kept in the tap. Must cover the FFT size plus the oscilloscope window.
 const TAP_FRAMES: usize = 16_384;
@@ -85,7 +85,8 @@ impl Default for VizTap {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SpectrumConfig {
     pub bars: usize,
     pub min_hz: f32,
