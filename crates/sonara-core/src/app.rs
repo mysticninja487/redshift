@@ -302,6 +302,20 @@ impl App {
         self.player.eq().set_gains_db(&gains.map(|g| finite_or(g, 0.0)));
         self.eq_changed();
     }
+    /// The EQ's response as `[frequency_hz, gain_db]` points, log-spaced from 20 Hz to 20 kHz, for
+    /// drawing the curve. Uses the same filter maths as the audio thread.
+    pub fn eq_curve(&self, points: usize) -> Vec<[f32; 2]> {
+        let n = points.clamp(2, 1024);
+        let eq = self.player.eq();
+        let (gains, preamp) = (eq.gains_db(), eq.preamp_db());
+        let rate = self.player.state().sample_rate as f32;
+        (0..n)
+            .map(|i| {
+                let f = 20.0 * 1000f32.powf(i as f32 / (n - 1) as f32);
+                [f, crate::dsp::eq::response_db(&gains, preamp, f, rate)]
+            })
+            .collect()
+    }
     /// Returns false if there's no preset with that name.
     pub fn apply_eq_preset(&self, name: &str) -> bool {
         let ok = self.player.eq().apply_preset(name);
@@ -402,11 +416,14 @@ impl App {
 
     // ---- per-track extras ----
 
+    /// Lyrics for an audio file. Anything that isn't an audio file gets `None`: these are called
+    /// with paths from the UI, and shouldn't be a way to read arbitrary files.
     pub fn lyrics(&self, path: &Path) -> Option<Lyrics> {
-        lyrics::find_lyrics(path)
+        meta::is_audio_file(path).then(|| lyrics::find_lyrics(path)).flatten()
     }
+    /// Cover art for an audio file (same restriction as [`lyrics`](Self::lyrics)).
     pub fn cover(&self, path: &Path) -> Option<Cover> {
-        meta::read_cover(path)
+        meta::is_audio_file(path).then(|| meta::read_cover(path)).flatten()
     }
 
     // ---- playlists (each change is saved straight away) ----
@@ -605,6 +622,33 @@ mod tests {
         let before = app.settings();
         assert!(!app.apply_eq_preset("no such preset"));
         assert_eq!(app.settings(), before, "unknown preset changes nothing");
+    }
+
+    #[test]
+    fn eq_curve_follows_the_bands_and_preamp() {
+        let d = tempfile::tempdir().unwrap();
+        let app = open(d.path());
+        let flat = app.eq_curve(50);
+        assert_eq!(flat.len(), 50);
+        assert!((flat[0][0] - 20.0).abs() < 1e-3 && (flat[49][0] - 20_000.0).abs() < 1.0, "20 Hz to 20 kHz");
+        assert!(flat.iter().all(|p| p[1].abs() < 0.01), "flat EQ is a flat line");
+        app.set_eq_band_db(0, 9.0);
+        let c = app.eq_curve(50);
+        assert!(c[0][1] > 3.0, "boosting the lowest band lifts the bottom: {}", c[0][1]);
+        assert!(c[49][1].abs() < 0.5, "and leaves the top alone: {}", c[49][1]);
+        app.set_eq_preamp_db(-3.0);
+        assert!((app.eq_curve(50)[49][1] - (c[49][1] - 3.0)).abs() < 0.05, "preamp shifts the whole curve");
+        assert_eq!(app.eq_curve(0).len(), 2, "point count is kept sensible");
+    }
+
+    #[test]
+    fn lyrics_and_cover_refuse_non_audio_paths() {
+        let d = tempfile::tempdir().unwrap();
+        let app = open(d.path());
+        fs::write(d.path().join("secret.txt"), "[00:01.00]hello").unwrap();
+        fs::write(d.path().join("cover.jpg"), [0xFF, 0xD8, 0xFF]).unwrap();
+        assert!(app.lyrics(&d.path().join("secret.txt")).is_none());
+        assert!(app.cover(&d.path().join("secret.txt")).is_none(), "even with a cover.jpg beside it");
     }
 
     #[test]

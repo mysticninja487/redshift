@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 use crate::library::write_json_atomic;
 use crate::lyrics;
+use crate::util::percent_decode;
 
 const DB_VERSION: u32 = 1;
 
@@ -290,25 +291,6 @@ fn has_root(p: &Path) -> bool {
 
 fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
     s.get(..prefix.len()).filter(|h| h.eq_ignore_ascii_case(prefix)).map(|_| &s[prefix.len()..])
-}
-
-fn percent_decode(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut out = Vec::with_capacity(b.len());
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            // Work on bytes, not str slices, so a multi-byte character after '%' can't panic.
-            if let (Some(hi), Some(lo)) = ((b[i + 1] as char).to_digit(16), (b[i + 2] as char).to_digit(16)) {
-                out.push((hi * 16 + lo) as u8);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(b[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Collapses `.` and `..` lexically (without touching the file system), so `music/../a.flac`

@@ -1,8 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["crates/sonara-core"]
+members = ["crates/sonara-core", "src-tauri"]
 # `cargo test` at the repo root builds only the audio core, which needs no GUI libraries.
-# The Tauri shell (src-tauri) is added to `members` once it exists, and is built with `cargo tauri`.
+# The Tauri shell (src-tauri) is a member but not a default one: it needs the platform's webview
+# libraries, so build it with `cargo build -p sonara` or `cargo tauri build`.
 default-members = ["crates/sonara-core"]
 
 [workspace.package]
