@@ -30,9 +30,6 @@ ui/                   Front end: plain ES modules, no bundler (see "The interfac
 scripts/              Generates the audio fixtures the tests use
 ```
 
-## Getting a Windows build without installing anything
-
-Push the repo to GitHub, open the Actions tab, pick "Windows build" and press Run workflow. When it finishes, the installer and a portable `.exe` are attached to the run (push a tag such as `v0.1.0` to also publish them on the Releases page). The workflow runs the audio-core tests first.
 
 ## Building on Windows
 
