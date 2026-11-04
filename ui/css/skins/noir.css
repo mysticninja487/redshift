@@ -1,0 +1,34 @@
+/* Noir Studio: a record sleeve in the dark. Hairlines, a serif title, red circle, the whole
+   song drawn as fine vertical lines around a fixed playhead. */
+:root[data-skin="noir"] { --chrome-h: 60px; --gap: calc(22px * var(--density)); }
+[data-skin="noir"] .chrome { border-bottom: var(--bw) solid var(--line); margin: 0 calc(var(--pad) + 6px); padding: 0; }
+[data-skin="noir"] .brand { font-family: var(--font-display); font-style: italic; font-weight: 500; font-size: 1.5rem; letter-spacing: 0; }
+[data-skin="noir"] .brand-mark { background: none; border: var(--bw) solid var(--accent); box-shadow: none; width: 16px; height: 16px; }
+[data-skin="noir"] .nav-btn { font-family: var(--font-body); text-transform: uppercase; letter-spacing: .2em; font-size: .72rem; border-radius: 0; padding: 10px 14px; }
+[data-skin="noir"] .nav-btn svg { display: none; }
+[data-skin="noir"] .nav-btn[aria-current="true"] { background: none; box-shadow: inset 0 -1px 0 var(--accent); }
+[data-skin="noir"] .d-ring { display: block; left: 50%; top: 47%; width: min(66vh, 58vw); aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; border: var(--bw) solid var(--accent); opacity: .85; }
+[data-skin="noir"] .d-ring2 { width: min(88vh, 80vw); opacity: .18; }
+[data-skin="noir"] .d-ticks { display: block; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(25% - 1px), color-mix(in srgb, var(--fg) 7%, transparent) calc(25% - 1px) 25%); }
+[data-skin="noir"] .d-side { display: block; right: 14px; top: 84px; }
+
+[data-skin="noir"] .slot[data-slot="stage"] { justify-content: stretch; }
+[data-skin="noir"] .hero { margin: 0 -4px; }
+[data-skin="noir"] .slot[data-slot="bottom"] { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 36px; align-items: center; padding: 16px 28px; background: color-mix(in srgb, var(--bg2) 92%, transparent); border: var(--bw) solid var(--line); backdrop-filter: blur(calc(var(--glass) * 16px)); }
+[data-skin="noir"] .slot[data-slot="bottom"] .panel { flex: none; }
+[data-skin="noir"] .slot[data-slot="bottom"] .info { gap: 0; }
+[data-skin="noir"] .i-title { font-weight: 500; font-size: clamp(1.7rem, 2.6vw, 2.5rem); font-style: italic; letter-spacing: 0; }
+[data-skin="noir"] .i-artist { font-family: var(--font-body); text-transform: uppercase; letter-spacing: .22em; font-size: .82rem; color: var(--accent-text); }
+[data-skin="noir"] .i-album { font-family: var(--font-body); letter-spacing: .1em; text-transform: uppercase; font-size: .76rem; }
+[data-skin="noir"] .i-pos { display: none; }
+[data-skin="noir"] .i-tech li { border: 0; padding: 0 8px 0 0; letter-spacing: .14em; }
+[data-skin="noir"] .i-tech li + li::before { content: "·"; margin-right: 8px; color: var(--fg3); }
+[data-skin="noir"] .transport { gap: 28px; }
+[data-skin="noir"] .t-play { width: 46px; height: 46px; background: transparent; border: var(--bw) solid var(--accent); color: var(--accent-text); box-shadow: none; }
+[data-skin="noir"] .t-play:hover { background: var(--accent); color: var(--on-accent); }
+[data-skin="noir"] .t-volume { display: none; }
+[data-skin="noir"] .s-track { height: 34px; }
+[data-skin="noir"] .panel[data-panel="queue"], [data-skin="noir"] .panel[data-panel="lyrics"], [data-skin="noir"] .panel[data-panel="eq"], [data-skin="noir"] .panel[data-panel="viz"], [data-skin="noir"] .panel[data-panel="meters"] { border-radius: 0; box-shadow: none; background: color-mix(in srgb, var(--bg) 80%, transparent); }
+[data-skin="noir"] .btn { border-radius: 0; text-transform: uppercase; letter-spacing: .14em; font-size: .72rem; }
+[data-skin="noir"] .btn.icon-btn { border-radius: 50%; }
+[data-skin="noir"] .ly-line { font-style: italic; font-weight: 500; }

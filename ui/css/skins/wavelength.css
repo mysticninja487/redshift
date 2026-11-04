@@ -1,0 +1,31 @@
+/* Wavelength: giant grotesk type multiplied over a blurred waveform, on a background that
+   sweeps light -> dark -> the cover's colour. */
+:root[data-skin="wavelength"] { --chrome-h: 56px; --gap: calc(14px * var(--density)); }
+[data-skin="wavelength"] .bg { background: linear-gradient(104deg, var(--g1) 0%, var(--g2) 30%, var(--g3) 66%, color-mix(in srgb, var(--art1) 50%, var(--g4)) 100%); }
+:root[data-skin="wavelength"][data-view="library"] .bg, :root[data-skin="wavelength"][data-view="settings"] .bg { background: var(--bg); }
+[data-skin="wavelength"] .chrome { color: #fff; --fg: #fff; --fg2: #ddd; }
+[data-skin="wavelength"] .brand { background: rgba(8, 10, 14, .55); backdrop-filter: blur(10px); padding: 6px 16px 6px 10px; border-radius: 99px; color: #fff; }
+[data-skin="wavelength"] .nav { background: rgba(8, 10, 14, .55); backdrop-filter: blur(10px); border-radius: 99px; padding: 3px; }
+[data-skin="wavelength"] .i-year { color: #fff; }
+[data-skin="wavelength"] .brand { font-weight: 800; letter-spacing: -.03em; }
+[data-skin="wavelength"] .brand-mark { background: #fff; box-shadow: none; }
+[data-skin="wavelength"] .nav-btn, [data-skin="wavelength"] .icon-btn { color: #fff; }
+[data-skin="wavelength"] .nav-btn[aria-current="true"] { background: #fff; color: #0a0b0e; }
+[data-skin="wavelength"] .chrome .select { background-color: rgba(8, 10, 14, .55); color: #fff; border-color: transparent; backdrop-filter: blur(10px); }
+[data-skin="wavelength"] .chrome .icon-btn { background: rgba(8, 10, 14, .55); border-radius: 50%; }
+:root[data-skin="wavelength"][data-view="now"] .slot[data-slot="stage"] { position: relative; }
+[data-skin="wavelength"] .slot[data-slot="stage"] { justify-content: flex-end; }
+[data-skin="wavelength"] .slot[data-slot="stage"] > .panel[data-panel="hero"] { position: absolute; inset: -20px -30px -30px; z-index: 0; }
+[data-skin="wavelength"] .slot[data-slot="stage"] > .panel[data-panel="info"] { position: relative; color: #fff; pointer-events: none; }
+[data-skin="wavelength"] .i-title, [data-skin="wavelength"] .i-artist { mix-blend-mode: difference; }
+[data-skin="wavelength"] .i-title { font-weight: 800; font-size: clamp(3.4rem, 10.4vw, 11rem); line-height: .86; letter-spacing: -.055em; -webkit-line-clamp: 2; color: #fff; text-transform: none; }
+[data-skin="wavelength"] .i-artist { font-size: clamp(1rem, 1.8vw, 1.7rem); font-weight: 600; letter-spacing: -.02em; margin-top: 6px; color: #fff; }
+[data-skin="wavelength"] .i-album, [data-skin="wavelength"] .i-pos { color: #fff; background: rgba(8, 10, 14, .55); backdrop-filter: blur(8px); justify-self: start; padding: 1px 9px; border-radius: 99px; font-size: .74rem; }
+[data-skin="wavelength"] .i-tech li { border-color: transparent; background: rgba(8, 10, 14, .55); backdrop-filter: blur(8px); color: #fff; }
+[data-skin="wavelength"] .slot[data-slot="bottom"] { background: rgba(8, 10, 14, .55); backdrop-filter: blur(14px); border-radius: 99px; padding: 8px 20px; color: #fff; --fg: #fff; --fg2: #fff; --fg3: #ddd; --line: rgba(255, 255, 255, .5); position: relative; }
+[data-skin="wavelength"] .slot[data-slot="bottom"] .icon-btn { color: #fff; }
+[data-skin="wavelength"] .t-play { background: #fff; color: #000; box-shadow: none; width: 50px; height: 50px; }
+[data-skin="wavelength"] .sl-fill { background: #fff; } [data-skin="wavelength"] .sl-thumb { background: #fff; }
+[data-skin="wavelength"] .hero-canvas { filter: saturate(1.1); }
+[data-skin="wavelength"] .panel[data-panel="queue"], [data-skin="wavelength"] .panel[data-panel="lyrics"] { background: color-mix(in srgb, var(--bg) 55%, transparent); backdrop-filter: blur(20px); border: 0; color: var(--fg); border-radius: 0; box-shadow: none; }
+[data-skin="wavelength"] .d-side { display: block; right: 14px; top: 80px; mix-blend-mode: difference; color: #fff; }

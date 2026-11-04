@@ -1,11 +1,26 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-skin="turntable" data-scheme="dark">
 <head>
   <meta charset="utf-8">
   <title>Sonara</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <link rel="stylesheet" href="fonts/fonts.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/panels.css">
+  <link rel="stylesheet" href="css/views.css">
+  <link rel="stylesheet" href="css/skins/turntable.css">
+  <link rel="stylesheet" href="css/skins/noir.css">
+  <link rel="stylesheet" href="css/skins/wavelength.css">
+  <link rel="stylesheet" href="css/skins/hud.css">
+  <link rel="stylesheet" href="css/skins/paper.css">
+  <link rel="stylesheet" href="css/skins/soft.css">
+  <link rel="stylesheet" href="css/skins/pixel.css">
 </head>
 <body>
-  <p>Sonara: the interface has not been designed yet. The audio engine, library, playlists and lyrics are working behind this window.</p>
+  <div id="app"></div>
+  <div id="toasts" aria-live="polite"></div>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>

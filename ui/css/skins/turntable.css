@@ -1,0 +1,46 @@
+/* Turntable: charcoal with a warm paper panel cut on the diagonal. The right column sits on the
+   paper, so it re-points its text and line colours at the skin's `ink`. */
+:root[data-skin="turntable"] { --chrome-h: 58px; --gap: calc(20px * var(--density)); }
+[data-skin="turntable"] .bg { background: radial-gradient(120% 90% at 30% 40%, var(--bg2), var(--bg) 70%); }
+[data-skin="turntable"] .d-split { display: block; inset: 0; background: var(--paper);
+  clip-path: polygon(calc(100% - var(--size-right) - 150px) 0, 100% 0, 100% 100%, calc(100% - var(--size-right) - 270px) 100%);
+  box-shadow: -30px 0 60px rgba(0, 0, 0, .3); }
+[data-skin="turntable"][data-flip="on"] .d-split { transform: scaleX(-1); }
+[data-skin="turntable"] .d-title { display: block; left: 26px; bottom: 74px; font-size: clamp(110px, 17vw, 290px); font-weight: 700; text-transform: uppercase; letter-spacing: -.04em; color: var(--fg); opacity: .055; max-width: 80%; overflow: hidden; }
+[data-skin="turntable"] .d-corner { display: none; }
+
+[data-skin="turntable"] .chrome { color: var(--fg); }
+[data-skin="turntable"] .brand-name { text-transform: uppercase; letter-spacing: .22em; font-size: .85rem; }
+[data-skin="turntable"] .nav-btn[aria-current="true"] { background: transparent; box-shadow: inset 0 -2px 0 var(--accent); border-radius: 0; }
+:root[data-skin="turntable"][data-view="now"] .chrome-tools { color: var(--ink); }
+:root[data-skin="turntable"][data-view="now"] .chrome-tools .icon-btn { color: color-mix(in srgb, var(--ink) 75%, transparent); }
+:root[data-skin="turntable"][data-view="now"] .chrome-tools .select { background-color: color-mix(in srgb, var(--ink) 8%, transparent); border-color: color-mix(in srgb, var(--ink) 25%, transparent); color: var(--ink); }
+:root[data-skin="turntable"]:not([data-view="now"]) .d-split { display: none; }
+
+/* the right column lives on the paper */
+[data-skin="turntable"] .slot[data-slot="right"] {
+  --fg: var(--ink); --fg2: color-mix(in srgb, var(--ink) 72%, transparent); --fg3: color-mix(in srgb, var(--ink) 48%, transparent);
+  --line: color-mix(in srgb, var(--ink) 20%, transparent); --bg2: transparent; --bg3: color-mix(in srgb, var(--ink) 8%, transparent); --accent-text: var(--accent);
+  color: var(--ink);
+}
+[data-skin="turntable"] .slot[data-slot="right"] .panel { background: none; border: 0; box-shadow: none; backdrop-filter: none; border-radius: 0; }
+[data-skin="turntable"] .slot[data-slot="right"] .i-title { font-size: clamp(1.7rem, 2.6vw, 2.5rem); text-transform: none; }
+[data-skin="turntable"] .slot[data-slot="right"] .i-pos { color: var(--accent); font-weight: 600; }
+[data-skin="turntable"] .slot[data-slot="right"] .ly-scroll { padding-left: 0; }
+[data-skin="turntable"] .slot[data-slot="right"] .ly-line { font-weight: 500; font-size: calc(1.2rem * var(--ly-size)); }
+[data-skin="turntable"] .slot[data-slot="right"] .i-tech li { border-radius: 0; }
+[data-skin="turntable"] .slot[data-slot="right"] .info { padding: 0 0 0 4px; }
+
+[data-skin="turntable"] .panel[data-panel="queue"], [data-skin="turntable"] .panel[data-panel="eq"] { background: color-mix(in srgb, var(--bg2) 55%, transparent); }
+[data-skin="turntable"] .q-row { border-radius: 2px; border-bottom: var(--bw) solid color-mix(in srgb, var(--fg) 6%, transparent); }
+[data-skin="turntable"] .q-title { color: var(--fg); }
+[data-skin="turntable"] .tt-frame { width: min(90cqw, 94cqh); }
+[data-skin="turntable"] .tt-platter { box-shadow: 0 0 0 1.2% color-mix(in srgb, var(--fg) 10%, transparent), 0 30px 60px rgba(0, 0, 0, .55); }
+[data-skin="turntable"] .t-play { border-radius: 50%; }
+[data-skin="turntable"] .slot[data-slot="bottom"] { padding-top: 4px; }
+
+/* the bottom row: progress on the charcoal, controls on the paper */
+[data-skin="turntable"] .slot[data-slot="bottom"] > .panel[data-panel="seek"] { flex: 0 1 calc(100vw - var(--size-right) - 360px); }
+[data-skin="turntable"] .slot[data-slot="bottom"] > .panel[data-panel="transport"] { margin-left: auto; --fg: var(--ink); --fg2: color-mix(in srgb, var(--ink) 72%, transparent); --fg3: color-mix(in srgb, var(--ink) 48%, transparent); --line: color-mix(in srgb, var(--ink) 20%, transparent); color: var(--ink); }
+[data-skin="turntable"] .slot[data-slot="bottom"] > .panel[data-panel="transport"] .sl-track { background: color-mix(in srgb, var(--ink) 20%, transparent); }
+[data-skin="turntable"] .slot[data-slot="bottom"] > .panel[data-panel="transport"] .sl-thumb { background: var(--ink); }

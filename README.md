@@ -2,7 +2,7 @@
 
 A local music player for Windows, built with Tauri 2 and a Rust audio engine.
 
-**Status: the engine is built and tested; the interface is not designed yet.** The window currently shows a placeholder page. Everything below the UI works and is covered by tests, but it has only been run in a Linux sandbox with a simulated sound card, never on real Windows audio hardware. Expect the first real run to turn up bugs in the device layer.
+**Status: the engine and the interface are both built.** The engine is covered by tests but has only been run in a Linux sandbox with a simulated sound card, never on real Windows audio hardware, so expect the first real run to turn up bugs in the device layer. The interface has been run and clicked through in Chromium against a mock backend (`ui/dev/mock.js`), but not yet inside the real Tauri window on Windows.
 
 ## What it does
 
@@ -26,7 +26,7 @@ crates/sonara-core/   All the logic. No GUI dependencies; `cargo test` runs here
   queue.rs  library.rs  playlists.rs  lyrics.rs  meta.rs
   app.rs              Owns the player, library, playlists and settings
 src-tauri/            Thin Tauri shell: one command per `App` method, plus events
-ui/                   Front end (placeholder for now)
+ui/                   Front end: plain ES modules, no bundler (see "The interface")
 scripts/              Generates the audio fixtures the tests use
 ```
 
@@ -80,9 +80,38 @@ Cover art is an image URL: `cover://localhost/` followed by `encodeURIComponent(
 
 Folder and file pickers come from the dialog plugin: `window.__TAURI__.dialog.open({ directory: true })`.
 
+## The interface
+
+Seven skins, switchable from the header or with `[` and `]`. A skin is a whole composition (grid, type, decoration, default hero and visualiser), not just a colour set. Each one remembers its own settings.
+
+| Skin | Look |
+| --- | --- |
+| Turntable | Charcoal with a paper panel cut on the diagonal; a spinning record with a tonearm that tracks the song |
+| Noir Studio | Serif title, hairline columns, the whole song drawn as vertical lines around a red playhead |
+| Wavelength | Giant grotesk title multiplied over a blurred waveform on a light-to-dark sweep |
+| Mist HUD | Grey haze, targeting marks, cut-corner chips, ruler seek bar, glitch on the beat |
+| Paper | Halftone cover over a red sun, ruled axes, big light numerals |
+| Soft Console | Pressed-plastic surfaces, real knobs, a glowing orb |
+| Pixel Mono | Pill buttons, dotted outlines, pixel type, dot-matrix visualiser |
+
+Everything is customisable in Settings: light/dark, accent from the skin, a preset, a custom colour or the current album art; fonts, text size, spacing, corner radius, line weight, shadows, frosted glass, film grain; where each panel sits (or hide it) and the column sizes; twelve visualisers, each with its own options, for the centrepiece and for a separate panel; progress-bar style; lyrics size, alignment and fade; remappable keyboard shortcuts; export and import of a skin's settings.
+
+Visualisers: bars, hairlines, oscilloscope, ring, wavelength blur, orb, particles, spectrogram, vectorscope, dot matrix, ridges, level meters.
+
+Source layout: `ui/js/skins.js` (skin definitions), `theme.js` (colours and album-art palette), `prefs.js` (per-skin settings), `panels/` (the panels), `viz/` (visualisers), `views/` (Library, Settings), `css/skins/<id>.css` (one file per skin). All backend calls go through `ui/js/api.js`.
+
+### Previewing without Windows
+
+```
+cd ui && python3 -m http.server 8000
+```
+
+Open <http://localhost:8000>. With no Tauri around, the app loads `ui/dev/mock.js`: invented albums with generated covers, a player that keeps time, synthetic spectrum frames, lyrics and playlists. Nothing is audible. Add `?empty` for an empty library or `?paused` to start paused.
+
 ## Not done yet
 
-- The interface itself (layout, theming and customisation, visualiser drawing, lyrics view).
+- Running the UI inside the real Tauri window (it works in a browser against the mock; Windows-specific behaviour such as the `cover.localhost` image host is untested).
+- Drag-and-drop of files onto the window.
 - Windows media keys and the system media overlay.
 - Restoring the queue and position after a restart.
 - Opus files with more than two channels (they're reported as unsupported).

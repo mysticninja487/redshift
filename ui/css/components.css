@@ -1,0 +1,76 @@
+/* Reusable controls. They use only the shared variables, so every skin restyles them for free;
+   skins add to these rules rather than replacing them. */
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: var(--bw) solid var(--line); background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg); padding: 8px 14px; border-radius: var(--r-btn); font-weight: 500; font-size: .86rem; line-height: 1.1; transition: background-color .15s, border-color .15s, color .15s, transform .12s, box-shadow .2s; white-space: nowrap; }
+.btn:hover { background: color-mix(in srgb, var(--fg) 12%, transparent); border-color: color-mix(in srgb, var(--fg) 30%, transparent); }
+.btn:active { transform: translateY(1px) scale(.98); }
+.btn:disabled { opacity: .4; pointer-events: none; }
+.btn.primary { background: var(--accent); border-color: transparent; color: var(--on-accent); box-shadow: 0 0 calc(24px * var(--glow)) rgba(var(--accent-rgb), .35); }
+.btn.primary:hover { background: color-mix(in srgb, var(--accent) 88%, #fff); }
+.btn.danger { color: #ff8a80; border-color: color-mix(in srgb, #ff6b5e 45%, transparent); }
+.btn.primary.danger { background: #d6322b; color: #fff; border-color: transparent; }
+.icon-btn { padding: 0; width: 38px; height: 38px; border-color: transparent; background: transparent; color: var(--fg2); flex: none; }
+.icon-btn:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); border-color: transparent; }
+.icon-btn[aria-pressed="true"] { color: var(--accent-text); }
+.icon-btn svg, .btn svg { flex: none; }
+svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- slider ---------- */
+.slider { position: relative; touch-action: none; user-select: none; --thumb: 14px; --track: 4px; cursor: pointer; }
+.sl-h { height: 22px; min-width: 70px; }
+.sl-v { width: 22px; min-height: 70px; }
+.sl-track { position: absolute; background: color-mix(in srgb, var(--fg) 18%, transparent); border-radius: 99px; overflow: hidden; }
+.sl-h .sl-track { left: 0; right: 0; top: calc(50% - var(--track) / 2); height: var(--track); }
+.sl-v .sl-track { top: 0; bottom: 0; left: calc(50% - var(--track) / 2); width: var(--track); }
+.sl-fill { position: absolute; background: var(--accent); border-radius: inherit; }
+.sl-h .sl-fill { top: 0; bottom: 0; left: 0; }
+.sl-v .sl-fill { left: 0; right: 0; bottom: 0; }
+.sl-thumb { position: absolute; width: var(--thumb); height: var(--thumb); border-radius: 50%; background: var(--fg); box-shadow: 0 1px 6px rgba(0, 0, 0, .4); transition: transform .12s, box-shadow .15s; pointer-events: none; }
+.sl-h .sl-thumb { top: calc(50% - var(--thumb) / 2); left: calc(var(--f) * (100% - var(--thumb))); }
+.sl-v .sl-thumb { left: calc(50% - var(--thumb) / 2); bottom: calc(var(--f) * (100% - var(--thumb))); }
+.slider:hover .sl-thumb, .slider.dragging .sl-thumb { transform: scale(1.18); box-shadow: 0 0 0 5px rgba(var(--accent-rgb), .22), 0 1px 6px rgba(0, 0, 0, .4); }
+.slider.muted { opacity: .45; }
+
+/* ---------- knob ---------- */
+.knob { --size: 64px; position: relative; width: var(--size); height: var(--size); touch-action: none; cursor: ns-resize; border-radius: 50%; flex: none; }
+.kn-ticks { position: absolute; inset: -9px; border-radius: 50%; opacity: .5; background: repeating-conic-gradient(from -135deg, var(--fg3) 0 1.4deg, transparent 1.4deg 27deg); mask: radial-gradient(circle, transparent calc(50% - 4px), #000 calc(50% - 3px), #000 calc(50% - 1px), transparent calc(50% - 0px)); -webkit-mask: radial-gradient(circle, transparent calc(50% - 5px), #000 calc(50% - 4px)); clip-path: polygon(50% 50%, 0 100%, 0 0, 100% 0, 100% 100%); }
+.kn-cap { position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle at 35% 28%, color-mix(in srgb, var(--bg3) 70%, #fff), var(--bg3) 70%); border: var(--bw) solid var(--line); box-shadow: 0 6px 14px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .25); transform: rotate(var(--angle, -135deg)); }
+.kn-ind { position: absolute; left: calc(50% - 2px); top: 7px; width: 4px; height: 14%; border-radius: 3px; background: var(--accent); box-shadow: 0 0 calc(8px * var(--glow)) var(--accent); }
+.knob.dragging .kn-cap { box-shadow: 0 6px 18px rgba(0, 0, 0, .4), 0 0 0 4px rgba(var(--accent-rgb), .22); }
+
+/* ---------- toggle, segmented, select ---------- */
+.toggle { width: 40px; height: 22px; padding: 0; border-radius: 99px; border: var(--bw) solid var(--line); background: color-mix(in srgb, var(--fg) 14%, transparent); position: relative; transition: background-color .2s; flex: none; }
+.tg-knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--fg); transition: transform .2s var(--ease); }
+.toggle[aria-checked="true"] { background: var(--accent); border-color: transparent; }
+.toggle[aria-checked="true"] .tg-knob { transform: translateX(18px); background: var(--on-accent); }
+.segmented { display: inline-flex; padding: 3px; gap: 2px; border: var(--bw) solid var(--line); border-radius: var(--r-btn); background: color-mix(in srgb, var(--fg) 5%, transparent); flex-wrap: wrap; }
+.seg { border: 0; background: transparent; color: var(--fg2); padding: 6px 12px; border-radius: calc(var(--r-btn) - 2px); font-size: .8rem; font-weight: 500; transition: background-color .15s, color .15s; }
+.seg:hover { color: var(--fg); }
+.seg[aria-checked="true"] { background: var(--fg); color: var(--bg); }
+.select, .text-input { background: color-mix(in srgb, var(--fg) 6%, var(--bg2)); border: var(--bw) solid var(--line); color: var(--fg); border-radius: var(--r-btn); padding: 7px 12px; font-size: .84rem; min-width: 0; }
+.select { appearance: none; -webkit-appearance: none; padding-right: 28px; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23999' stroke-width='1.5'/></svg>"); background-repeat: no-repeat; background-position: right 11px center; }
+.select option { background: var(--bg2); color: var(--fg); }
+.text-input { width: 100%; }
+.text-input:focus-visible, .select:focus-visible { outline-offset: 0; }
+.color { width: 38px; height: 28px; padding: 0; border: var(--bw) solid var(--line); border-radius: var(--r-ctl); background: none; cursor: pointer; }
+.color::-webkit-color-swatch-wrapper { padding: 2px; } .color::-webkit-color-swatch { border: 0; border-radius: calc(var(--r-ctl) - 2px); }
+
+/* ---------- menus, popovers, dialogs ---------- */
+.menu, .popover { position: fixed; z-index: 120; min-width: 190px; padding: 5px; background: var(--bg2); border: var(--bw) solid color-mix(in srgb, var(--fg) 22%, transparent); border-radius: var(--r-ctl); box-shadow: 0 18px 48px rgba(0, 0, 0, .45); display: grid; gap: 1px; font-size: .86rem; }
+.menu-item { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 18px; border: 0; background: none; color: var(--fg); padding: 8px 12px; border-radius: calc(var(--r-ctl) - 2px); text-align: left; }
+.menu-item:hover, .menu-item:focus-visible { background: var(--accent); color: var(--on-accent); outline: none; }
+.menu-item:disabled { opacity: .4; }
+.menu-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+.menu-sub { display: none; position: absolute; top: -6px; left: 100%; }
+.menu-item:hover > .menu-sub { display: grid; }
+.dialog-back { position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; background: rgba(0, 0, 0, .5); backdrop-filter: blur(4px); animation: fade .15s; }
+.dialog { width: min(420px, 90vw); padding: 22px; display: grid; gap: 14px; background: var(--bg2); border: var(--bw) solid var(--line); border-radius: var(--r-panel); box-shadow: 0 30px 80px rgba(0, 0, 0, .5); }
+.dialog-title { font-family: var(--font-display); font-size: 1.15rem; }
+.dialog-text { color: var(--fg2); font-size: .9rem; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+@keyframes fade { from { opacity: 0; } }
+
+/* ---------- virtual list ---------- */
+.vlist { position: relative; overflow-y: auto; overflow-x: hidden; min-height: 0; contain: strict; }
+.vl-spacer { width: 1px; }
+.vl-rows { position: absolute; left: 0; right: 0; top: 0; will-change: transform; }
