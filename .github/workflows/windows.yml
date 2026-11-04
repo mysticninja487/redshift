@@ -14,6 +14,9 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      # CMake 4 refuses libopus's old minimum-version line; this tells it to carry on.
+      CMAKE_POLICY_VERSION_MINIMUM: "3.5"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

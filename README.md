@@ -43,6 +43,8 @@ You need:
 3. WebView2, which is already part of Windows 11 and up-to-date Windows 10.
 4. The Tauri CLI: `cargo install tauri-cli --version "^2"`
 
+If the build stops in `audiopus_sys` with "Compatibility with CMake < 3.5 has been removed", you have CMake 4: set `CMAKE_POLICY_VERSION_MINIMUM=3.5` (PowerShell: `$env:CMAKE_POLICY_VERSION_MINIMUM="3.5"`) and build again.
+
 Then:
 
 ```
