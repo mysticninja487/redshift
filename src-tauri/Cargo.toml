@@ -1,6 +1,6 @@
 [package]
-name = "sonara"
-description = "Sonara music player"
+name = "redshift"
+description = "Redshift music player"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +10,7 @@ rust-version.workspace = true
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-sonara-core = { path = "../crates/sonara-core" }
+redshift-core = { path = "../crates/redshift-core" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }

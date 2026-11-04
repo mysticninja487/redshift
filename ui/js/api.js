@@ -11,7 +11,7 @@ const isWindows = /Windows/i.test(navigator.userAgent);
 /** URL of a track's cover art (served by the app; 404 if the track has none). */
 export function coverUrl(path) {
   if (!path) return null;
-  if (window.__SONARA_COVER__) return window.__SONARA_COVER__(path);
+  if (window.__REDSHIFT_COVER__) return window.__REDSHIFT_COVER__(path);
   const enc = encodeURIComponent(path);
   return isWindows ? `http://cover.localhost/${enc}` : `cover://localhost/${enc}`;
 }

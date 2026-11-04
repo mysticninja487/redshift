@@ -1,4 +1,4 @@
-//! Sonara's window: a thin layer that exposes `sonara_core::app::App` to the web UI.
+//! Redshift's window: a thin layer that exposes `redshift_core::app::App` to the web UI.
 //!
 //! Every command here is a one-line call into the core, which is where the behaviour (and the
 //! tests) live. Nothing in this file decides anything about playback, the library or settings.
@@ -17,17 +17,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use sonara_core::app::{App, EqSettings, Settings};
-use sonara_core::dsp::eq::{BAND_COUNT, BAND_FREQS, PRESETS};
-use sonara_core::dsp::spectrum::{SpectrumConfig, VizFrame};
-use sonara_core::engine::output::{list_output_devices, DeviceInfo};
-use sonara_core::engine::{PlayerConfig, PlayerState, QueueView, ReplayGainMode};
-use sonara_core::library::{Album, Artist, ScanReport};
-use sonara_core::lyrics::Lyrics;
-use sonara_core::meta::TrackMeta;
-use sonara_core::playlists::{Playlist, PlaylistId, PlaylistSummary};
-use sonara_core::queue::{EntryId, RepeatMode};
-use sonara_core::util::percent_decode;
+use redshift_core::app::{App, EqSettings, Settings};
+use redshift_core::dsp::eq::{BAND_COUNT, BAND_FREQS, PRESETS};
+use redshift_core::dsp::spectrum::{SpectrumConfig, VizFrame};
+use redshift_core::engine::output::{list_output_devices, DeviceInfo};
+use redshift_core::engine::{PlayerConfig, PlayerState, QueueView, ReplayGainMode};
+use redshift_core::library::{Album, Artist, ScanReport};
+use redshift_core::lyrics::Lyrics;
+use redshift_core::meta::TrackMeta;
+use redshift_core::playlists::{Playlist, PlaylistId, PlaylistSummary};
+use redshift_core::queue::{EntryId, RepeatMode};
+use redshift_core::util::percent_decode;
 use tauri::{Emitter, Manager, RunEvent, State};
 
 struct AppState(Arc<App>);
@@ -268,7 +268,7 @@ fn track_meta(state: State<AppState>, path: PathBuf) -> CmdResult<TrackMeta> {
 /// The track's loudness outline, for waveform seek bars. Decodes the file on a worker thread the
 /// first time; later calls for the same file are instant.
 #[tauri::command]
-async fn waveform(state: State<'_, AppState>, path: PathBuf, buckets: usize) -> CmdResult<sonara_core::waveform::Overview> {
+async fn waveform(state: State<'_, AppState>, path: PathBuf, buckets: usize) -> CmdResult<redshift_core::waveform::Overview> {
     let core = state.0.clone();
     let overview = tauri::async_runtime::spawn_blocking(move || core.waveform(&path, buckets)).await.map_err(err)?.map_err(err)?;
     Ok((*overview).clone())
@@ -385,7 +385,7 @@ fn main() {
             add_to_playlist, remove_from_playlist, move_in_playlist, import_m3u, export_m3u, play_playlist,
         ])
         .build(tauri::generate_context!())
-        .expect("failed to build the Sonara window");
+        .expect("failed to build the Redshift window");
 
     app.run(|handle, event| {
         if let RunEvent::Exit = event {

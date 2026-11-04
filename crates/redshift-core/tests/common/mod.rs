@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use rustfft::{num_complex::Complex, FftPlanner};
-use sonara_core::decode::{self, Decoder, StreamInfo};
+use redshift_core::decode::{self, Decoder, StreamInfo};
 
 pub fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)

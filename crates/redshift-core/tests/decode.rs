@@ -1,7 +1,7 @@
 mod common;
 
 use common::*;
-use sonara_core::decode;
+use redshift_core::decode;
 
 const WINDOW: usize = 4096;
 /// The chirp sweeps ~90 Hz across one window, so allow for that plus FFT bin width.

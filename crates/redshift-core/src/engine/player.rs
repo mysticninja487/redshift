@@ -254,7 +254,7 @@ impl Player {
             last_device_recovery: None,
         };
         let thread = thread::Builder::new()
-            .name("sonara-control".into())
+            .name("redshift-control".into())
             .spawn(move || core.run())
             .map_err(crate::error::Error::Io)?;
 

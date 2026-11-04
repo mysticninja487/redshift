@@ -57,7 +57,7 @@ const artists = () => {
 
 // ---------------------------------------------------------------- covers
 const coverCache = new Map();
-window.__SONARA_COVER__ = (path) => {
+window.__REDSHIFT_COVER__ = (path) => {
   const t = find(decodeURIComponent(path));
   if (!t) return 'data:,';
   const a = ALBUMS[t._album ?? 0];
@@ -192,7 +192,7 @@ async function scan() {
 }
 
 // ---------------------------------------------------------------- commands
-const ui = () => { try { return JSON.parse(localStorage.getItem('sonara-mock-ui') ?? 'null'); } catch { return null; } };
+const ui = () => { try { return JSON.parse(localStorage.getItem('redshift-mock-ui') ?? 'null'); } catch { return null; } };
 const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, viz: {}, ui: ui() });
 const addEntries = (paths, at = S.entries.length) => S.entries.splice(at, 0, ...paths.map((path) => ({ id: S.seq++, path })));
 const cmds = {
@@ -219,7 +219,7 @@ const cmds = {
   apply_eq_preset: ({ name }) => { const p = PRESETS.find((x) => x[0] === name); if (p) S.eq.gains_db = [...p[1]]; return S.eq; },
   eq_curve: ({ points }) => eqCurve(points),
   viz_frame: vizFrame, configure_viz: () => {},
-  ui_state: ui, set_ui_state: ({ value }) => { localStorage.setItem('sonara-mock-ui', JSON.stringify(value)); },
+  ui_state: ui, set_ui_state: ({ value }) => { localStorage.setItem('redshift-mock-ui', JSON.stringify(value)); },
   library_folders: () => folders, add_library_folder: ({ folder }) => { if (!folders.includes(folder)) folders.push(folder); }, remove_library_folder: ({ folder }) => { folders = folders.filter((f) => f !== folder); if (!folders.length) tracks = []; },
   scan_library: scan, is_scanning: () => scanning,
   library_tracks: () => tracks.map(pub), search_library: ({ query }) => tracks.filter((t) => `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(query.toLowerCase())).map(pub),

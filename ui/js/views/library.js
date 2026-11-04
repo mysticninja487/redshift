@@ -147,7 +147,7 @@ export function mountLibrary(root) {
       if (await act(api.addFolder(f)) !== undefined) { data.folders = await api.libraryFolders(); render(); rescanLibrary(); }
     };
     return h('div', { class: 'folders' },
-      h('p', { class: 'hint' }, 'Sonara reads tags and cover art from these folders and everything inside them. Your files are never changed.'),
+      h('p', { class: 'hint' }, 'Redshift reads tags and cover art from these folders and everything inside them. Your files are never changed.'),
       data.folders.map((f) => h('div', { class: 'folder-row' }, icon('folder', 18), h('span', { class: 'folder-path' }, f),
         iconButton('trash', `Remove ${f}`, async () => { if (await act(api.removeFolder(f)) !== undefined) { data.folders = await api.libraryFolders(); await load(); } }, { size: 16 }))),
       h('div', { class: 'detail-actions' }, button('Add folder', add, { iconName: 'plus', cls: 'primary' }), button('Rescan now', () => rescanLibrary(), { iconName: 'refresh' })));

@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 use common::*;
 use crossbeam_channel::Receiver;
 use parking_lot::Mutex;
-use sonara_core::engine::{OfflineConfig, Player, PlayerConfig, PlayerEvent, Status};
-use sonara_core::queue::RepeatMode;
+use redshift_core::engine::{OfflineConfig, Player, PlayerConfig, PlayerEvent, Status};
+use redshift_core::queue::RepeatMode;
 
 const RATE: u32 = 48_000;
 const WAIT: Duration = Duration::from_secs(30);
@@ -361,7 +361,7 @@ fn volume_and_eq_reach_the_output() {
 // tagged.flac is a 0.3-amplitude 660 Hz sine, one second long, tagged with track gain -6.5 dB
 // (peak 0.9) and album gain -5.25 dB. chirp_44k_stereo.flac has no ReplayGain tags.
 
-use sonara_core::engine::ReplayGainMode;
+use redshift_core::engine::ReplayGainMode;
 
 fn db(x: f32) -> f32 {
     10f32.powf(x / 20.0)

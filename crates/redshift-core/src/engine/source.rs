@@ -114,7 +114,7 @@ pub fn open_source(
 
     let thread_flags = flags.clone();
     thread::Builder::new()
-        .name("sonara-decode".into())
+        .name("redshift-decode".into())
         .spawn(move || {
             if let Err(e) = decode_loop(decoder, info, resampler, prod, &thread_flags) {
                 let _ = errors.send((error_tag, e.to_string()));

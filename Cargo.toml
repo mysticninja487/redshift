@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
-members = ["crates/sonara-core", "src-tauri"]
+members = ["crates/redshift-core", "src-tauri"]
 # `cargo test` at the repo root builds only the audio core, which needs no GUI libraries.
 # The Tauri shell (src-tauri) is a member but not a default one: it needs the platform's webview
-# libraries, so build it with `cargo build -p sonara` or `cargo tauri build`.
-default-members = ["crates/sonara-core"]
+# libraries, so build it with `cargo build -p redshift` or `cargo tauri build`.
+default-members = ["crates/redshift-core"]
 
 [workspace.package]
 version = "0.1.0"

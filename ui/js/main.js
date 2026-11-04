@@ -25,22 +25,22 @@ function buildChrome() {
   on('view', (v) => nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === v))));
   nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === state.view)));
   return h('header', { class: 'chrome' },
-    h('div', { class: 'brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }), h('span', { class: 'brand-name' }, 'Sonara')),
+    h('div', { class: 'brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }), h('span', { class: 'brand-name' }, 'Redshift')),
     nav, h('div', { class: 'chrome-tools' }, skinSel, scheme, full));
 }
 
 /** Background layers that skins show or hide with CSS: ghost type, sun, rings, side labels. */
 function buildDecor() {
   const title = h('span', { class: 'd-title' }), artist = h('span', { class: 'd-artist' });
-  const side = h('span', { class: 'd-side' }, 'SONARA · LOCAL PLAYER');
+  const side = h('span', { class: 'd-side' }, 'REDSHIFT · LOCAL PLAYER');
   const el = h('div', { class: 'decor', 'aria-hidden': 'true' },
     h('i', { class: 'd-split' }), h('i', { class: 'd-sun' }), h('i', { class: 'd-ring' }), h('i', { class: 'd-ring d-ring2' }), h('i', { class: 'd-record' }),
     h('i', { class: 'd-ticks' }), title, artist, side, h('i', { class: 'd-corner tl' }), h('i', { class: 'd-corner tr' }), h('i', { class: 'd-corner bl' }), h('i', { class: 'd-corner br' }));
   const render = () => {
     const t = state.track;
-    title.textContent = t?.title ?? 'Sonara';
+    title.textContent = t?.title ?? 'Redshift';
     artist.textContent = t?.artist ?? '';
-    document.title = t ? `${t.title}${t.artist ? ` · ${t.artist}` : ''}` : 'Sonara';
+    document.title = t ? `${t.title}${t.artist ? ` · ${t.artist}` : ''}` : 'Redshift';
   };
   on('track', render); render();
   return el;
@@ -82,7 +82,7 @@ async function boot() {
   addEventListener('pagehide', flushPrefs);
   addEventListener('beforeunload', flushPrefs);
   // Pointer-down on a bare panel area drops focus from buttons so Space always means play/pause.
-  window.__sonara = { cfg, state };
+  window.__redshift = { cfg, state };
 }
 
-boot().catch((e) => { console.error(e); document.body.append(h('pre', { class: 'fatal' }, `Sonara could not start.\n${e?.stack ?? e}`)); });
+boot().catch((e) => { console.error(e); document.body.append(h('pre', { class: 'fatal' }, `Redshift could not start.\n${e?.stack ?? e}`)); });

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Regenerates the small audio fixtures used by sonara-core's tests. Needs ffmpeg with libopus + libmp3lame.
+# Regenerates the small audio fixtures used by redshift-core's tests. Needs ffmpeg with libopus + libmp3lame.
 # Fixtures are committed, so contributors don't need ffmpeg just to run `cargo test`.
 #
 # The main signal is a linear chirp: f(t) = 400 + 1000*t Hz. Because frequency encodes time, a test can
 # tell exactly where in the file a decoder is by measuring the dominant frequency of what it returns.
 set -euo pipefail
-OUT="$(cd "$(dirname "$0")/.." && pwd)/crates/sonara-core/tests/fixtures"
+OUT="$(cd "$(dirname "$0")/.." && pwd)/crates/redshift-core/tests/fixtures"
 mkdir -p "$OUT"
 F="ffmpeg -hide_banner -loglevel error -y"
 phase='2*PI*(400*t+500*t*t)'

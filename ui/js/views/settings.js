@@ -239,11 +239,11 @@ export function mountSettings(root) {
       group('Share a look', h('p', { class: 'hint' }, 'Export your changes to the current skin as a small file, or load one someone sent you.'),
         h('div', { class: 'set-row' },
           button('Export this skin\'s settings', async () => {
-            const dest = await pickSave(`sonara-${getPrefs().skin}.json`, [{ name: 'Sonara theme', extensions: ['json'] }]).catch(() => null);
+            const dest = await pickSave(`redshift-${getPrefs().skin}.json`, [{ name: 'Redshift theme', extensions: ['json'] }]).catch(() => null);
             if (dest !== null) { navigator.clipboard?.writeText(JSON.stringify({ skin: getPrefs().skin, settings: exportSkinOverrides() }, null, 2)).catch(() => {}); toast('Settings copied to the clipboard'); }
           }),
           button('Import from clipboard', async () => {
-            try { const t = JSON.parse(await navigator.clipboard.readText()); if (!t || typeof t.settings !== 'object') throw new Error('not a Sonara theme'); if (t.skin) setSkin(t.skin); importSkinOverrides(t.settings); toast('Theme applied'); render(); } catch { toast('The clipboard doesn\'t contain a Sonara theme.', 'error'); }
+            try { const t = JSON.parse(await navigator.clipboard.readText()); if (!t || typeof t.settings !== 'object') throw new Error('not a Redshift theme'); if (t.skin) setSkin(t.skin); importSkinOverrides(t.settings); toast('Theme applied'); render(); } catch { toast('The clipboard doesn\'t contain a Redshift theme.', 'error'); }
           }))),
       group('Reset', row('Everything', button('Reset all appearance settings', async () => { if (await confirmDialog('Reset everything?', 'Every skin goes back to its defaults and shortcuts are restored. Your music, playlists and playback settings are untouched.', { ok: 'Reset all' })) { const { setPref } = await import('../prefs.js'); setPref('skins', {}); setPref('keys', {}); render(); } }, { cls: 'danger' }))));
   }

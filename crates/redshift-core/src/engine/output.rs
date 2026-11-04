@@ -80,7 +80,7 @@ pub fn start_output(
     let thread_stop = stop.clone();
 
     let thread = thread::Builder::new()
-        .name("sonara-audio".into())
+        .name("redshift-audio".into())
         .spawn(move || match kind {
             OutputKind::Device(id) => run_device(id, make_mixer, thread_stop, ready_tx, err_tx),
             OutputKind::Offline { sample_rate, sink, speed } => {

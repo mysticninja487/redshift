@@ -1,6 +1,6 @@
 [package]
-name = "sonara-core"
-description = "Audio engine, library, playlists and lyrics for the Sonara music player"
+name = "redshift-core"
+description = "Audio engine, library, playlists and lyrics for the Redshift music player"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

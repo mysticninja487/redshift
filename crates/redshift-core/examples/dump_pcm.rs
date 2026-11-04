@@ -1,4 +1,4 @@
-//! Developer tool: decode a file with sonara-core and write raw interleaved f32le PCM.
+//! Developer tool: decode a file with redshift-core and write raw interleaved f32le PCM.
 //!
 //!     cargo run --release --example dump_pcm -- song.opus out.f32 [seek_seconds]
 //!
@@ -11,7 +11,7 @@ fn main() {
         eprintln!("usage: dump_pcm <input> <output.f32> [seek_seconds]");
         std::process::exit(2);
     }
-    let mut dec = sonara_core::decode::open(std::path::Path::new(&args[1])).expect("open");
+    let mut dec = redshift_core::decode::open(std::path::Path::new(&args[1])).expect("open");
     if let Some(secs) = args.get(3) {
         dec.seek(secs.parse().expect("seek seconds")).expect("seek");
     }
