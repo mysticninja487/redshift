@@ -2,11 +2,14 @@
 // current skin's overrides (prefs.set), so each skin keeps its own colours, fonts and layout.
 
 import { api, pickFile, pickSave } from '../api.js';
+import { promptText } from '../ui/dialog.js';
+import { setEqDrawer } from '../ui/eqdrawer.js';
 import { on } from '../bus.js';
 import { act, refreshPlayer, refreshSettings, setView } from '../controller.js';
 import { ACTIONS, captureKeys, comboFor, comboFromEvent, prettyCombo, setCombo } from '../keys.js';
-import { cfg, exportSkinOverrides, getPrefs, importSkinOverrides, isOverridden, resetSkin, set, setSkin } from '../prefs.js';
-import { ACCENTS, FONTS, PANELS, SLOTS, skins } from '../skins.js';
+import { importFontFile, importedFonts, removeImportedFont } from '../fonts.js';
+import { cfg, exportSkinOverrides, featureOn, getPrefs, importSkinOverrides, isOverridden, resetSkin, set, setPref, setSkin } from '../prefs.js';
+import { ACCENTS, FONTS, PANELS, SLOTS, cleanFontName, skins } from '../skins.js';
 import { state } from '../state.js';
 import { tokens } from '../theme.js';
 import { clear, clone, h, toast } from '../util.js';
@@ -89,6 +92,7 @@ export function mountSettings(root) {
         row('Display font', fontSelect('type.display', skin.fonts.display), { hint: 'Titles and big numerals.', path: 'type.display', redo: again }),
         row('Body font', fontSelect('type.body', skin.fonts.body), { path: 'type.body', redo: again }),
         row('Mono font', fontSelect('type.mono', skin.fonts.mono), { hint: 'Times and technical details.', path: 'type.mono', redo: again }),
+        importedFontList(),
         row('Text size', slider({ min: 0.8, max: 1.4, step: 0.05, value: c.type.scale, label: 'Text size', reset: 1, onInput: (v) => set('type.scale', v), format: (v) => `${Math.round(v * 100)}%` }), { path: 'type.scale', redo: again }),
         row('Letter spacing', slider({ min: -0.04, max: 0.2, step: 0.005, value: c.type.tracking, label: 'Letter spacing', reset: 0, onInput: (v) => set('type.tracking', v), format: (v) => `${num(v, 3)} em` }), { path: 'type.tracking', redo: again })),
       group('Shape & surface',
@@ -102,9 +106,43 @@ export function mountSettings(root) {
         row('Reduce motion', segmented({ label: 'Reduce motion', options: [{ value: 'system', label: 'Follow system' }, { value: 'on', label: 'On' }, { value: 'off', label: 'Off' }], value: c.motion.reduce === true ? 'on' : c.motion.reduce === false ? 'off' : c.motion.reduce, onChange: (v) => set('motion.reduce', v) }), { path: 'motion.reduce', redo: again }),
         row('Spinning record', toggle({ label: 'Spinning record', value: c.motion.spin, onChange: (v) => set('motion.spin', v) }), { path: 'motion.spin', redo: again })));
   }
+  /**
+   * A font chooser: the built-in fonts, fonts the person imported, any font installed on the PC
+   * (typed by name), and a shortcut to import a font file. The choice is stored per skin.
+   */
   function fontSelect(path, def) {
     const cur = cfg().type[path.split('.')[1]] ?? def;
-    return select({ label: path, value: cur, options: FONTS.map((f) => ({ value: f.id, label: f.label })), onChange: (v) => set(path, v) });
+    const builtin = FONTS.map((f) => ({ value: f.id, label: f.label }));
+    const imported = importedFonts().map((f) => ({ value: `file:${f.file}`, label: `${f.family} (imported)` }));
+    const extra = [];
+    if (cur.startsWith('local:')) extra.push({ value: cur, label: `${cleanFontName(cur.slice(6))} (installed)` });
+    if (cur.startsWith('file:') && !imported.some((o) => o.value === cur)) extra.push({ value: cur, label: `${cur.slice(5)} (missing)` });
+    const options = [...builtin, ...imported, ...extra, { value: '__local', label: 'Installed font by name…' }, { value: '__import', label: 'Import a font file…' }];
+    const sel = select({ label: path, value: cur, options, onChange: async (v) => {
+      if (v === '__local') {
+        const name = cleanFontName((await promptText('Installed font', { ok: 'Use font', placeholder: 'Font name, e.g. Segoe UI or Consolas' })) ?? '');
+        if (name) set(path, `local:${name}`);
+        return render();
+      }
+      if (v === '__import') {
+        const f = await pickFile([{ name: 'Fonts', extensions: ['ttf', 'otf', 'woff', 'woff2'] }]).catch(() => null);
+        if (f) {
+          const entry = await act(importFontFile(f));
+          if (entry) { set(path, `file:${entry.file}`); toast(`Imported ${entry.family}`); }
+        }
+        return render();
+      }
+      set(path, v);
+    } });
+    sel.classList.add('font-select');
+    return sel;
+  }
+  function importedFontList() {
+    const list = importedFonts();
+    if (!list.length) return null;
+    return h('div', { class: 'font-list' }, list.map((f) => h('div', { class: 'font-item' },
+      h('span', { class: 'font-sample', style: { fontFamily: `"${cleanFontName(`Redshift import ${f.file}`)}", sans-serif` } }, f.family), h('small', null, f.file),
+      iconButton('trash', `Remove ${f.family}`, async () => { if (await confirmDialog('Remove font?', `${f.family} will be deleted from Redshift's font folder. Skins using it fall back to a default font.`, { ok: 'Remove' })) { await act(removeImportedFont(f.file)); render(); } }, { size: 16 }))));
   }
 
   // ---------- Layout ----------
@@ -155,6 +193,7 @@ export function mountSettings(root) {
     };
     const cur = c.hero.mode === 'viz' ? c.hero.viz : c.viz.main;
     return h('div', { class: 'set-page' },
+      group('Visualisers', row('Show visualisers', toggle({ label: 'Show visualisers', value: featureOn('viz'), onChange: (v) => setPref('features.viz', v) }), { hint: 'Switch off to hide every visualiser and the level meters in all skins. Also on the Now Playing top bar (Shift+V).' })),
       group('Centrepiece', row('Shows', segmented({ label: 'Centrepiece', options: HERO_MODES, value: c.hero.mode, onChange: (v) => { set('hero.mode', v); render(); } }), { path: 'hero.mode', redo: again }),
         c.hero.mode === 'turntable' && h('div', null,
           row('Tonearm', toggle({ label: 'Tonearm', value: c.hero.tonearm, onChange: (v) => set('hero.tonearm', v) }), { path: 'hero.tonearm', redo: again }),
@@ -185,7 +224,27 @@ export function mountSettings(root) {
         row('ReplayGain', segmented({ label: 'ReplayGain', options: [{ value: 'off', label: 'Off' }, { value: 'track', label: 'Track' }, { value: 'album', label: 'Album' }], value: p.replaygain, onChange: (v) => act(api.setReplayGain(v, state.player.replaygain_preamp_db)).then(refreshPlayer) }), { hint: 'Evens out loudness using tags in the files. Never pushes a song past clipping.' }),
         row('Pre-amp', slider({ min: -12, max: 12, step: 0.5, value: p.replaygain_preamp_db, center: true, reset: 0, label: 'ReplayGain pre-amp', onChange: (v) => act(api.setReplayGain(state.player.replaygain, v)).then(refreshPlayer), format: (v) => `${v > 0 ? '+' : ''}${v} dB` }))),
       group('Output', row('Device', dev), h('p', { class: 'hint' }, p.sample_rate ? `Running at ${p.sample_rate / 1000} kHz. Songs at other rates are converted.` : '')),
-      group('Equaliser', h('p', { class: 'hint' }, 'The equaliser is a panel. Add it from Layout to adjust the ten bands and presets.'), button('Show the equaliser panel', () => { const s = clone(cfg().layout.slots); for (const k of SLOTS) s[k] = (s[k] ?? []).filter((x) => x !== 'eq'); (s.right ??= []).push('eq'); set('layout.slots', s); toast('Equaliser added to the right column'); })));
+      group('Equaliser', h('p', { class: 'hint' }, 'Ten bands, a pre-amp, built-in presets and your own saved presets. The Now Playing screen has an Equaliser button in the top bar, or press E.'),
+        button('Open the equaliser', () => setEqDrawer(true), { iconName: 'eq' }),
+        button('Add the equaliser as a panel', () => { const s = clone(cfg().layout.slots); for (const k of SLOTS) s[k] = (s[k] ?? []).filter((x) => x !== 'eq'); (s.right ??= []).push('eq'); set('layout.slots', s); toast('Equaliser added to the right column'); })),
+      group('Library',
+        row('Playing a track from a list', segmented({ label: 'Playing a track from a list', options: [{ value: 'single', label: 'Just that track' }, { value: 'list', label: 'Continue through the list' }], value: getPrefs().library.playMode ?? 'single', onChange: (v) => setPref('library.playMode', v) }),
+          { hint: 'What double-clicking a track or pressing its play button does. The right-click menu always offers both.' })),
+      group('Window', tray()));
+  }
+
+  /** Minimise-to-tray options. They're saved by the app and also tell it to show or hide the tray icon. */
+  function tray() {
+    const t = state.settings?.tray ?? { minimize_to_tray: false, close_to_tray: false };
+    const save = async (patch) => {
+      const next = { ...t, ...patch };
+      await act(api.setTray(next.minimize_to_tray, next.close_to_tray));
+      await refreshSettings();
+      render();
+    };
+    return h('div', null,
+      row('Minimise to tray', toggle({ label: 'Minimise to tray', value: t.minimize_to_tray, onChange: (v) => save({ minimize_to_tray: v }) }), { hint: 'Minimising hides Redshift in the system tray. Music keeps playing. Click the tray icon to bring it back.' }),
+      row('Close button hides to tray', toggle({ label: 'Close button hides to tray', value: t.close_to_tray, onChange: (v) => save({ close_to_tray: v }) }), { hint: 'The X button hides the window instead of quitting. Use Quit in the tray menu to exit.' }));
   }
 
   // ---------- Lyrics & info ----------
@@ -193,7 +252,7 @@ export function mountSettings(root) {
     const c = cfg();
     const sample = h('div', { class: 'lyrics ly-sample' }, h('div', { class: 'ly-scroll' }, ['A line that already passed', 'The line being sung right now', 'And the next one coming up', 'Then the one after that'].map((t, i) => h('div', { class: `ly-line${i === 0 ? ' past' : i === 1 ? ' active' : ''}`, dataset: { d: String(Math.abs(i - 1)) } }, t))));
     return h('div', { class: 'set-page' },
-      group('Lyrics', sample,
+      group('Lyrics', row('Show lyrics', toggle({ label: 'Show lyrics', value: featureOn('lyrics'), onChange: (v) => setPref('features.lyrics', v) }), { hint: 'Switch off to hide the lyrics panel in all skins. Also on the Now Playing top bar (L).' }), sample,
         row('Text size', slider({ min: 0.7, max: 1.8, step: 0.05, value: c.lyrics.size, label: 'Lyrics size', reset: 1, onInput: (v) => set('lyrics.size', v), format: (v) => `${Math.round(v * 100)}%` }), { path: 'lyrics.size', redo: again }),
         row('Alignment', segmented({ label: 'Lyrics alignment', options: [{ value: 'left', label: 'Left' }, { value: 'center', label: 'Centre' }, { value: 'right', label: 'Right' }], value: c.lyrics.align, onChange: (v) => set('lyrics.align', v) }), { path: 'lyrics.align', redo: again }),
         row('Fade other lines', slider({ min: 0, max: 0.9, step: 0.05, value: c.lyrics.dim, label: 'Fade other lines', onInput: (v) => set('lyrics.dim', v), format: (v) => `${Math.round(v * 100)}%` }), { path: 'lyrics.dim', redo: again }),

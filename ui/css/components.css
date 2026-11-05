@@ -74,3 +74,22 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .vlist { position: relative; overflow-y: auto; overflow-x: hidden; min-height: 0; contain: strict; }
 .vl-spacer { width: 1px; }
 .vl-rows { position: absolute; left: 0; right: 0; top: 0; will-change: transform; }
+
+/* Now Playing tools in the top bar, and the equaliser drawer */
+.now-tools { display: flex; gap: 2px; margin-right: 6px; padding-right: 8px; border-right: var(--bw) solid var(--line); }
+html:not([data-view="now"]) .now-tools { display: none; }
+.tool-btn.is-off { opacity: .5; }
+.tool-btn[aria-pressed="true"]:not(.is-off) { color: var(--accent-text); }
+.eq-drawer { position: fixed; top: 64px; right: 12px; bottom: 12px; width: min(560px, calc(100vw - 24px)); z-index: 20; display: flex; flex-direction: column;
+  background: color-mix(in srgb, var(--bg2) 96%, transparent); color: var(--fg); border: var(--bw) solid var(--line); border-radius: var(--r-panel);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, calc(.5 * var(--shadow-k))); backdrop-filter: blur(14px);
+  transform: translateX(calc(100% + 24px)); visibility: hidden; transition: transform .25s var(--ease), visibility 0s .25s; }
+.eq-drawer.open { transform: none; visibility: visible; transition: transform .25s var(--ease), visibility 0s; }
+.eq-drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 0 var(--pad); font-family: var(--font-display); font-size: 1.05rem; }
+.eq-host { flex: 1; min-height: 0; display: flex; flex-direction: column; background: none; border: 0; box-shadow: none; }
+.eq-host .eq-head .q-title { display: none; }
+.eq-host .eq-head .select { max-width: 170px; }
+.eq-host .eq-grid { min-height: 260px; }
+.eq-host .eq-curve { height: 90px; }
+@media (prefers-reduced-motion: reduce) { .eq-drawer, .eq-drawer.open { transition: none; } }
+.eq-host .eq-pre { flex: 0 0 64px; }

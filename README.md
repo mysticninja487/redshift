@@ -8,12 +8,15 @@ A local music player for Windows, built with Tauri 2 and a Rust audio engine.
 
 - **Formats:** FLAC (up to 24-bit / 192 kHz), Opus, MP3, Ogg Vorbis, WAV, AAC/M4A/ALAC. Gapless playback; sample rates are converted to whatever the output device runs at.
 - **Crossfade** between tracks (0-12 s, equal-power), or gapless when set to 0.
-- **10-band equalizer** with pre-amp and presets, plus the response curve for drawing it.
+- **10-band equalizer** with pre-amp, 24 built-in presets and your own saved presets, plus the response curve for drawing it.
 - **ReplayGain** (off / track / album, with pre-amp, never boosting a track past its own peak).
 - **Synced lyrics:** `.lrc` files next to the song or lyrics embedded in the tags, with line and word timing.
 - **Visualiser data:** spectrum bars with peak hold, oscilloscope traces, level meters and a bass level, as plain numbers for the UI to draw however it likes.
-- **Library:** folder scanning (incremental, parallel), albums, artists, search, cover art from tags or `cover.jpg`-style files.
-- **Playlists:** create, reorder, M3U/M3U8 import and export.
+- **Library:** folder scanning (incremental, parallel), albums, artists, folder browsing, search, cover art from tags or `cover.jpg`-style files.
+- **Favourites and history:** favourite tracks, play counts and last-played times (a play counts after half a track or 30 s), recently played, most played (tracks, albums, artists), recently added and not played lists.
+- **Playlists:** create, reorder, M3U/M3U8 import and export. Importing matches entries from other devices to your library by file name, folders and the `#EXTINF` title, keeps what it can't find (dimmed, skipped on play) and can relink them later.
+- **Tray:** minimise to the tray and/or hide on close, with play/pause/next/previous in the tray menu.
+- **Fonts:** any skin can use a built-in font, an installed font by name, or an imported .ttf/.otf/.woff/.woff2 file.
 - **Settings** (volume, EQ, crossfade, device and so on) are saved and restored, along with a free-form blob the UI can use for theme and layout choices.
 
 ## Layout
@@ -24,6 +27,7 @@ crates/redshift-core/   All the logic. No GUI dependencies; `cargo test` runs he
   dsp/                EQ, resampler, spectrum analyser
   engine/             Real-time mixer, decoder-fed sources, output, player thread
   queue.rs  library.rs  playlists.rs  lyrics.rs  meta.rs
+  resolve.rs  stats.rs  fonts.rs   Playlist matching, play history and favourites, imported fonts
   app.rs              Owns the player, library, playlists and settings
 src-tauri/            Thin Tauri shell: one command per `App` method, plus events
 ui/                   Front end: plain ES modules, no bundler (see "The interface")
@@ -70,11 +74,13 @@ Commands are called with `window.__TAURI__.core.invoke('name', { argName: value 
 | Queue | `queue_append`, `queue_play_next`, `queue_remove`, `queue_move`, `queue_clear`, `queue_view` |
 | State (poll) | `player_state` (position, volume, status...), `viz_frame` (at the display's frame rate) |
 | Sound | `set_volume`, `set_muted`, `set_shuffle`, `set_repeat`, `set_crossfade_secs`, `set_replaygain`, `output_devices`, `set_output_device` |
-| Equalizer | `eq_info`, `set_eq_enabled`, `set_eq_preamp_db`, `set_eq_band_db`, `set_eq_gains_db`, `apply_eq_preset`, `eq_curve` |
+| Equalizer | `eq_info`, `set_eq_enabled`, `set_eq_preamp_db`, `set_eq_band_db`, `set_eq_gains_db`, `apply_eq_preset`, `save_eq_preset`, `delete_eq_preset`, `eq_curve` |
 | Visualiser | `configure_viz` |
 | Library | `library_folders`, `add_library_folder`, `remove_library_folder`, `scan_library`, `is_scanning`, `library_tracks`, `search_library`, `library_albums`, `library_artists`, `recently_added`, `track_meta` |
 | Lyrics | `lyrics` |
-| Playlists | `playlists`, `playlist`, `create_playlist`, `rename_playlist`, `delete_playlist`, `move_playlist`, `add_to_playlist`, `remove_from_playlist`, `move_in_playlist`, `import_m3u`, `export_m3u`, `play_playlist` |
+| Playlists | `playlists`, `playlist`, `create_playlist`, `rename_playlist`, `delete_playlist`, `move_playlist`, `add_to_playlist`, `remove_from_playlist`, `move_in_playlist`, `import_m3u`, `relink_playlist`, `paths_exist`, `export_m3u`, `play_playlist` |
+| Favourites and history | `favourite_paths`, `favourites`, `set_favourite`, `play_stats`, `reset_play_stats` |
+| Fonts and window | `fonts`, `import_font`, `remove_font`, `set_tray` |
 | Settings | `get_settings`, `ui_state`, `set_ui_state` |
 
 Events: `player-event` (track changed, queue changed, ended, error, device changed) and `scan-progress`.

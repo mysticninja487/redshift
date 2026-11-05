@@ -411,6 +411,11 @@ impl Player {
         self.view.read().clone()
     }
 
+    /// The playing (or paused) track, without copying the whole queue.
+    pub fn current_track(&self) -> Option<CurrentTrack> {
+        self.view.read().current.clone()
+    }
+
     /// Fresh visualiser data. Call at the display's frame rate.
     pub fn viz(&self) -> VizFrame {
         self.analyzer.lock().snapshot()

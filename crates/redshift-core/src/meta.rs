@@ -59,6 +59,10 @@ pub struct TrackMeta {
     /// when rescanning.
     pub modified: u64,
     pub size: u64,
+    /// When the track first appeared in the library (seconds since the epoch), for "recently
+    /// added". Older libraries without it use the file's modification time.
+    #[serde(default)]
+    pub added: u64,
 }
 
 pub const UNKNOWN_ARTIST: &str = "Unknown Artist";
@@ -109,6 +113,7 @@ pub fn read_meta(path: &Path) -> Result<TrackMeta> {
         replaygain_track_peak,
         has_embedded_lyrics: tag.is_some_and(|t| embedded_lyrics_of(t).is_some()),
         modified: fs_meta.modified().ok().and_then(|m| m.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs()),
+        added: 0,
         size: fs_meta.len(),
     })
 }

@@ -12,6 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
 use crossbeam_channel::Receiver;
 use parking_lot::Mutex;
@@ -26,8 +27,10 @@ use crate::error::{Error, Result};
 use crate::library::{write_json_atomic, Album, Artist, Library, ScanProgress, ScanReport};
 use crate::lyrics::{self, Lyrics};
 use crate::meta::{self, Cover, TrackMeta};
-use crate::playlists::{Playlist, PlaylistId, PlaylistStore, PlaylistSummary};
+use crate::playlists::{ImportReport, Playlist, PlaylistId, PlaylistStore, PlaylistSummary, RelinkReport};
 use crate::queue::RepeatMode;
+use crate::resolve::Resolver;
+use crate::stats::{now_secs, PlayCounter, Stats};
 use crate::waveform::{self, Overview};
 
 /// How many waveform overviews are kept for replays.
@@ -36,8 +39,11 @@ const WAVEFORM_CACHE_SIZE: usize = 48;
 pub const SETTINGS_FILE: &str = "settings.json";
 pub const LIBRARY_FILE: &str = "library.json";
 pub const PLAYLISTS_FILE: &str = "playlists.json";
+pub const STATS_FILE: &str = "stats.json";
 
 /// The front end can keep this much of its own state (theme, layout...) in the settings file.
+const MAX_CUSTOM_PRESETS: usize = 50;
+const MAX_PRESET_NAME_CHARS: usize = 40;
 const MAX_UI_STATE_BYTES: usize = 1 << 20;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -60,6 +66,24 @@ impl EqSettings {
     }
 }
 
+/// An equaliser setting the person saved under their own name.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CustomPreset {
+    pub name: String,
+    pub preamp_db: f32,
+    pub gains_db: [f32; BAND_COUNT],
+}
+
+/// What the window does instead of closing or sitting on the task bar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TraySettings {
+    /// Minimising hides the window in the tray and the music keeps playing.
+    pub minimize_to_tray: bool,
+    /// The close button hides to the tray too; "Quit" in the tray menu really exits.
+    pub close_to_tray: bool,
+}
+
 /// What's remembered between runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -76,6 +100,8 @@ pub struct Settings {
     /// Output device id; `None` is the system default.
     pub device: Option<String>,
     pub viz: SpectrumConfig,
+    pub custom_eq_presets: Vec<CustomPreset>,
+    pub tray: TraySettings,
     /// Owned by the front end (theme, layout, customisation); stored as is.
     pub ui: Value,
 }
@@ -93,6 +119,8 @@ impl Default for Settings {
             eq: EqSettings::default(),
             device: None,
             viz: SpectrumConfig::default(),
+            custom_eq_presets: Vec::new(),
+            tray: TraySettings::default(),
             ui: Value::Null,
         }
     }
@@ -118,6 +146,13 @@ impl Settings {
         self.eq.preamp_db = finite_or(self.eq.preamp_db, 0.0);
         for g in &mut self.eq.gains_db {
             *g = finite_or(*g, 0.0);
+        }
+        self.custom_eq_presets.truncate(MAX_CUSTOM_PRESETS);
+        for p in &mut self.custom_eq_presets {
+            p.preamp_db = finite_or(p.preamp_db, 0.0);
+            for g in &mut p.gains_db {
+                *g = finite_or(*g, 0.0);
+            }
         }
         let v = self.viz;
         let dv = SpectrumConfig::default();
@@ -159,6 +194,14 @@ impl Drop for ScanGuard<'_> {
     }
 }
 
+/// How often and how recently a track was played.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PlayStat {
+    pub path: PathBuf,
+    pub plays: u32,
+    pub last_played: u64,
+}
+
 pub struct App {
     /// Transport, queue, seeking, visualiser and so on are used straight from the player; the
     /// methods below are for the things that also need saving.
@@ -168,6 +211,10 @@ pub struct App {
     settings_dirty: AtomicBool,
     library: Mutex<Library>,
     playlists: Mutex<PlaylistStore>,
+    stats: Mutex<Stats>,
+    stats_dirty: AtomicBool,
+    /// Decides when a play counts, and when [`poll_playback`](App::poll_playback) last ran.
+    counter: Mutex<(PlayCounter, Option<Instant>)>,
     scanning: AtomicBool,
     /// Recent waveform overviews, keyed by file, size, modified time and bucket count.
     waveforms: Mutex<VecDeque<(WaveformKey, Arc<Overview>)>>,
@@ -212,6 +259,9 @@ impl App {
         let app = App {
             library: Mutex::new(Library::open(data_dir.join(LIBRARY_FILE))?),
             playlists: Mutex::new(PlaylistStore::open(data_dir.join(PLAYLISTS_FILE))?),
+            stats: Mutex::new(Stats::open(data_dir.join(STATS_FILE))?),
+            stats_dirty: AtomicBool::new(false),
+            counter: Mutex::new((PlayCounter::default(), None)),
             player,
             settings_dirty: AtomicBool::new(settings.device != saved_device),
             settings: Mutex::new(settings),
@@ -241,6 +291,12 @@ impl App {
     /// shell does so on a timer and on exit); setters only mark the settings as changed so that
     /// dragging a slider doesn't write a file per mouse move.
     pub fn flush(&self) -> Result<()> {
+        if self.stats_dirty.swap(false, Ordering::AcqRel) {
+            if let Err(e) = self.stats.lock().save() {
+                self.stats_dirty.store(true, Ordering::Release);
+                return Err(e);
+            }
+        }
         if self.settings_dirty.swap(false, Ordering::AcqRel) {
             let snapshot = self.settings();
             if let Err(e) = write_json_atomic(&self.data_dir.join(SETTINGS_FILE), &snapshot) {
@@ -327,13 +383,63 @@ impl App {
             })
             .collect()
     }
-    /// Returns false if there's no preset with that name.
+    /// Applies a built-in preset or one the person saved. Returns false if there's no preset with
+    /// that name. Built-in presets leave the pre-amp alone; saved ones restore theirs.
     pub fn apply_eq_preset(&self, name: &str) -> bool {
+        let custom = self.settings.lock().custom_eq_presets.iter().find(|p| p.name.eq_ignore_ascii_case(name.trim())).cloned();
+        if let Some(p) = custom {
+            self.player.eq().set_preamp_db(p.preamp_db);
+            self.player.eq().set_gains_db(&p.gains_db);
+            self.eq_changed();
+            return true;
+        }
         let ok = self.player.eq().apply_preset(name);
         if ok {
             self.eq_changed();
         }
         ok
+    }
+    /// Saves the current equaliser curve and pre-amp under `name`, replacing a saved preset of the
+    /// same name. Names of built-in presets are taken. Returns the name as stored.
+    pub fn save_eq_preset(&self, name: &str) -> Result<String> {
+        let name: String = name.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(MAX_PRESET_NAME_CHARS).collect();
+        if name.is_empty() {
+            return Err(Error::Other("give the preset a name".into()));
+        }
+        if crate::dsp::eq::PRESETS.iter().any(|(n, _)| n.eq_ignore_ascii_case(&name)) || name.eq_ignore_ascii_case("custom") {
+            return Err(Error::Other(format!("\"{name}\" is a built-in preset name; pick another")));
+        }
+        let eq = EqSettings::from_params(self.player.eq());
+        let mut full = false;
+        self.update(|s| {
+            let preset = CustomPreset { name: name.clone(), preamp_db: eq.preamp_db, gains_db: eq.gains_db };
+            let existing = s.custom_eq_presets.iter().position(|p| p.name.eq_ignore_ascii_case(&name));
+            match existing {
+                Some(i) => s.custom_eq_presets[i] = preset,
+                None if s.custom_eq_presets.len() >= MAX_CUSTOM_PRESETS => full = true,
+                None => s.custom_eq_presets.push(preset),
+            }
+        });
+        if full {
+            return Err(Error::Other(format!("at most {MAX_CUSTOM_PRESETS} saved presets; delete one first")));
+        }
+        Ok(name)
+    }
+    /// Returns false if there was no saved preset with that name.
+    pub fn delete_eq_preset(&self, name: &str) -> bool {
+        let mut removed = false;
+        self.update(|s| {
+            let before = s.custom_eq_presets.len();
+            s.custom_eq_presets.retain(|p| !p.name.eq_ignore_ascii_case(name.trim()));
+            removed = s.custom_eq_presets.len() != before;
+        });
+        removed
+    }
+
+    // ---- tray ----
+
+    pub fn set_tray(&self, tray: TraySettings) {
+        self.update(|s| s.tray = tray);
     }
 
     /// The front end's own saved state (theme, layout...); `null` until it saves something.
@@ -425,6 +531,93 @@ impl App {
         meta::read_meta(path)
     }
 
+    // ---- imported fonts ----
+
+    fn fonts_dir(&self) -> PathBuf {
+        self.data_dir.join("fonts")
+    }
+    pub fn fonts(&self) -> Vec<crate::fonts::FontEntry> {
+        crate::fonts::list(&self.fonts_dir())
+    }
+    pub fn import_font(&self, src: &Path) -> Result<crate::fonts::FontEntry> {
+        crate::fonts::import(&self.fonts_dir(), src)
+    }
+    pub fn remove_font(&self, file: &str) -> bool {
+        crate::fonts::remove(&self.fonts_dir(), file)
+    }
+    pub fn font_bytes(&self, file: &str) -> Option<(Vec<u8>, &'static str)> {
+        crate::fonts::read(&self.fonts_dir(), file)
+    }
+
+    // ---- play history and favourites ----
+
+    fn with_stats<T>(&self, f: impl FnOnce(&mut Stats) -> T) -> T {
+        let out = f(&mut self.stats.lock());
+        self.stats_dirty.store(true, Ordering::Release);
+        out
+    }
+
+    /// Call about once a second. Notices when a track starts and when it's been heard for long
+    /// enough to count as a play. Cheap: it doesn't copy the queue.
+    pub fn poll_playback(&self) {
+        let now = Instant::now();
+        let (current, playing, pos) = {
+            let st = self.player.status();
+            (self.player.current_track(), st == crate::engine::Status::Playing, self.player.position_secs())
+        };
+        let tick = {
+            let mut guard = self.counter.lock();
+            let dt = guard.1.map_or(0.0, |t| now.duration_since(t).as_secs_f64());
+            guard.1 = Some(now);
+            guard.0.tick(current.as_ref(), playing, pos, dt)
+        };
+        if let Some(cur) = current {
+            if tick.started || tick.counted {
+                self.with_stats(|s| {
+                    if tick.started {
+                        s.record_start(&cur.path, now_secs());
+                    }
+                    if tick.counted {
+                        s.record_play(&cur.path);
+                    }
+                });
+            }
+        }
+    }
+
+    /// Play counts and last-played times of every track that has been played.
+    pub fn play_stats(&self) -> Vec<PlayStat> {
+        let mut v: Vec<PlayStat> = self
+            .stats
+            .lock()
+            .all()
+            .iter()
+            .map(|(p, s)| PlayStat { path: p.clone(), plays: s.plays, last_played: s.last_played })
+            .collect();
+        v.sort_by(|a, b| a.path.cmp(&b.path));
+        v
+    }
+    /// Forgets the play history of one track, or of everything if `path` is `None`.
+    pub fn reset_play_stats(&self, path: Option<&Path>) {
+        self.with_stats(|s| s.reset(path));
+    }
+
+    /// Favourite files, most recently favourited first (including ones no longer in the library).
+    pub fn favourite_paths(&self) -> Vec<PathBuf> {
+        self.stats.lock().favourites()
+    }
+    /// Favourites that are in the library, most recently favourited first.
+    pub fn favourites(&self) -> Vec<TrackMeta> {
+        let paths = self.favourite_paths();
+        let lib = self.library.lock();
+        paths.iter().filter_map(|p| lib.get(p).cloned()).collect()
+    }
+    /// Marks or unmarks files as favourites. Returns how many actually changed.
+    pub fn set_favourite(&self, paths: &[PathBuf], on: bool) -> usize {
+        let at = now_secs();
+        self.with_stats(|s| paths.iter().filter(|p| s.set_favourite(p, on, at)).count())
+    }
+
     // ---- per-track extras ----
 
     /// The loudness outline of a track for a waveform seek bar. Decodes the whole file the first
@@ -494,8 +687,23 @@ impl App {
     pub fn move_in_playlist(&self, id: PlaylistId, from: usize, to: usize) -> Result<()> {
         self.with_playlists(|s| s.move_track(id, from, to))
     }
-    pub fn import_m3u(&self, file: &Path) -> Result<(PlaylistId, usize)> {
-        self.with_playlists(|s| s.import_m3u(file))
+    fn resolver(&self) -> Resolver {
+        Resolver::new(self.library.lock().tracks())
+    }
+    /// Imports an M3U/M3U8 file. Entries whose files aren't where the playlist says are matched
+    /// to library files by name and tags; see [`ImportReport`] for what was found.
+    pub fn import_m3u(&self, file: &Path) -> Result<ImportReport> {
+        let resolver = self.resolver();
+        self.with_playlists(|s| s.import_m3u(file, &|p, label| resolver.resolve(p, label)))
+    }
+    /// Retries the entries of a playlist that point at missing files, e.g. after adding a folder.
+    pub fn relink_playlist(&self, id: PlaylistId) -> Result<RelinkReport> {
+        let resolver = self.resolver();
+        self.with_playlists(|s| s.relink(id, &|p, label| resolver.resolve(p, label)))
+    }
+    /// Which of these files exist right now, in the same order.
+    pub fn paths_exist(&self, paths: &[PathBuf]) -> Vec<bool> {
+        paths.iter().map(|p| fs::metadata(p).is_ok()).collect()
     }
     /// Writes a playlist as M3U8, with durations and "Artist - Title" for tracks in the library.
     pub fn export_m3u(&self, id: PlaylistId, dest: &Path) -> Result<()> {
@@ -509,7 +717,20 @@ impl App {
         if tracks.is_empty() {
             return Err(Error::Other("the playlist is empty".into()));
         }
-        self.player.set_queue(tracks, start, true);
+        // Entries whose files are gone are left out rather than failing one by one; `start` keeps
+        // pointing at the same track, or the next playable one if that track is missing.
+        let exists = self.paths_exist(&tracks);
+        let playable = exists.iter().filter(|&&e| e).count();
+        if playable == 0 {
+            return Err(Error::Other(format!(
+                "none of the {} tracks in this playlist could be found on this PC. Try Relink after adding the folder that holds your music",
+                tracks.len()
+            )));
+        }
+        let start = start.min(tracks.len() - 1);
+        let new_start = exists[..start].iter().filter(|&&e| e).count().min(playable - 1);
+        let tracks: Vec<PathBuf> = tracks.into_iter().zip(exists).filter_map(|(t, e)| e.then_some(t)).collect();
+        self.player.set_queue(tracks, new_start, true);
         Ok(())
     }
 }
@@ -824,8 +1045,9 @@ mod tests {
         let text = fs::read_to_string(&dest).unwrap();
         assert!(text.contains("#EXTINF:1,The Testers - Tagged Song"), "{text}");
         assert!(text.contains("\na.flac\n") && text.contains("\nb.mp3\n"), "relative to the playlist file: {text}");
-        let (new_id, n) = app.import_m3u(&dest).unwrap();
-        assert_eq!(n, 2);
+        let report = app.import_m3u(&dest).unwrap();
+        assert_eq!((report.total, report.missing_count), (2, 0));
+        let new_id = report.id;
         assert_eq!(app.playlist(new_id).unwrap().tracks, app.playlist(id).unwrap().tracks);
     }
 
@@ -843,8 +1065,103 @@ mod tests {
         }
         assert_eq!(app.player.queue().entries[1].path, fixture("tagged.opus"));
         let empty = app.create_playlist("E", vec![]).unwrap();
+        let gone = app.create_playlist("G", vec![PathBuf::from("/definitely/not/here.opus")]).unwrap();
+        assert!(app.play_playlist(gone, 0).unwrap_err().to_string().contains("could be found"));
         assert!(app.play_playlist(empty, 0).is_err());
         assert!(app.play_playlist(12345, 0).is_err());
         app.player.stop();
+    }
+
+    #[test]
+    fn saved_eq_presets_round_trip_and_reject_bad_names() {
+        let state = tempfile::tempdir().unwrap();
+        let app = open(state.path());
+        app.set_eq_gains_db([1.0, 2.0, 3.0, 4.0, 5.0, 0.0, 0.0, 0.0, 0.0, -2.0]);
+        app.set_eq_preamp_db(-3.0);
+        assert_eq!(app.save_eq_preset("  My   mix ").unwrap(), "My mix");
+        assert!(app.save_eq_preset("rock").is_err(), "built-in names are taken");
+        assert!(app.save_eq_preset("   ").is_err());
+        app.apply_eq_preset("Flat");
+        app.set_eq_preamp_db(0.0);
+        assert!(app.apply_eq_preset("my MIX"));
+        assert_eq!(app.settings().eq.gains_db[4], 5.0);
+        assert_eq!(app.settings().eq.preamp_db, -3.0);
+        app.flush().unwrap();
+        assert_eq!(open(state.path()).settings().custom_eq_presets.len(), 1);
+        assert!(app.delete_eq_preset("My Mix"));
+        assert!(!app.delete_eq_preset("My Mix"));
+        assert!(!app.apply_eq_preset("My Mix"));
+    }
+
+    #[test]
+    fn built_in_presets_are_within_range_and_uniquely_named() {
+        let mut names = std::collections::HashSet::new();
+        for (n, g) in crate::dsp::eq::PRESETS {
+            assert!(names.insert(n.to_lowercase()), "duplicate {n}");
+            assert!(g.iter().all(|x| x.abs() <= crate::dsp::eq::MAX_GAIN_DB), "{n}");
+        }
+        assert!(names.len() >= 20);
+    }
+
+    #[test]
+    fn tray_settings_are_remembered() {
+        let state = tempfile::tempdir().unwrap();
+        let app = open(state.path());
+        assert_eq!(app.settings().tray, TraySettings::default());
+        app.set_tray(TraySettings { minimize_to_tray: true, close_to_tray: false });
+        app.flush().unwrap();
+        assert!(open(state.path()).settings().tray.minimize_to_tray);
+    }
+
+    #[test]
+    fn favourites_persist_and_only_library_tracks_are_listed() {
+        let state = tempfile::tempdir().unwrap();
+        let m = music();
+        let app = open(state.path());
+        app.add_library_folder(m.path()).unwrap();
+        app.scan_library(&mut |_| {}).unwrap();
+        let (a, b) = (m.path().join("a.flac"), m.path().join("b.mp3"));
+        assert_eq!(app.set_favourite(&[a.clone(), b.clone(), PathBuf::from("/gone.flac")], true), 3);
+        assert_eq!(app.set_favourite(&[a.clone()], true), 0);
+        assert_eq!(app.favourites().len(), 2);
+        assert_eq!(app.favourite_paths().len(), 3);
+        assert_eq!(app.set_favourite(&[b], false), 1);
+        app.flush().unwrap();
+        let again = open(state.path());
+        assert!(again.favourite_paths().contains(&a));
+        assert_eq!(again.favourite_paths().len(), 2);
+    }
+
+    #[test]
+    fn playing_a_track_records_a_start_and_then_a_play() {
+        let state = tempfile::tempdir().unwrap();
+        // Real-time speed, because plays are counted in wall-clock time.
+        let slow = PlayerConfig { device: None, offline: Some(OfflineConfig { sample_rate: 48_000, sink: Arc::new(Mutex::new(Vec::new())), speed: 1.0 }) };
+        let app = App::new(state.path(), slow).unwrap().0;
+        let f = fixture("chirp_44k_stereo.flac");
+        app.player.set_queue(vec![f.clone()], 0, true);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            app.poll_playback();
+            if app.play_stats().iter().any(|s| s.path == f && s.last_played > 0) {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "start never recorded");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        // The fixture is a few seconds long, so half of that counts as a play.
+        loop {
+            app.poll_playback();
+            if app.play_stats().iter().any(|s| s.path == f && s.plays == 1) {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "play never counted");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        app.player.stop();
+        app.flush().unwrap();
+        assert_eq!(open(state.path()).play_stats()[0].plays, 1);
+        app.reset_play_stats(None);
+        assert!(app.play_stats().is_empty());
     }
 }

@@ -88,11 +88,28 @@ export function setVars(el, vars) { for (const [k, v] of Object.entries(vars)) e
 export function toast(message, kind = 'info') {
   const host = document.getElementById('toasts');
   if (!host) return;
+  // The same message twice in a row is one toast, and never more than a handful at once.
+  if ([...host.children].some((el) => el.textContent === message && !el.classList.contains('out'))) return;
+  while (host.children.length >= 4) host.firstChild.remove();
   const t = h('div', { class: `toast toast-${kind}`, role: kind === 'error' ? 'alert' : 'status' }, message);
   host.append(t);
   setTimeout(() => t.classList.add('out'), 3800);
   setTimeout(() => t.remove(), 4300);
 }
+
+/** "3 min ago", "yesterday", "5 Mar 2025": a rough, friendly age for a time in epoch seconds. */
+export function ago(secs, now = Date.now()) {
+  if (!secs) return '';
+  const d = Math.max(0, now / 1000 - secs);
+  if (d < 60) return 'just now';
+  if (d < 3600) return `${Math.floor(d / 60)} min ago`;
+  if (d < 86400) return `${Math.floor(d / 3600)} h ago`;
+  if (d < 172800) return 'yesterday';
+  if (d < 86400 * 30) return `${Math.floor(d / 86400)} days ago`;
+  return new Date(secs * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+export const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** Pointer-drag helper: calls move(dx, dy, event) until release. */
 export function drag(el, { start, move, end }) {

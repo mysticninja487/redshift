@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use redshift_core::app::{App, EqSettings, Settings};
+use redshift_core::app::{App, CustomPreset, EqSettings, PlayStat, Settings, TraySettings};
 use redshift_core::dsp::eq::{BAND_COUNT, BAND_FREQS, PRESETS};
 use redshift_core::dsp::spectrum::{SpectrumConfig, VizFrame};
 use redshift_core::engine::output::{list_output_devices, DeviceInfo};
@@ -25,10 +25,13 @@ use redshift_core::engine::{PlayerConfig, PlayerState, QueueView, ReplayGainMode
 use redshift_core::library::{Album, Artist, ScanReport};
 use redshift_core::lyrics::Lyrics;
 use redshift_core::meta::TrackMeta;
-use redshift_core::playlists::{Playlist, PlaylistId, PlaylistSummary};
+use redshift_core::fonts::FontEntry;
+use redshift_core::playlists::{ImportReport, Playlist, PlaylistId, PlaylistSummary, RelinkReport};
 use redshift_core::queue::{EntryId, RepeatMode};
 use redshift_core::util::percent_decode;
-use tauri::{Emitter, Manager, RunEvent, State};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
 
 struct AppState(Arc<App>);
 
@@ -151,11 +154,14 @@ struct EqInfo {
     settings: EqSettings,
     band_freqs_hz: [f32; BAND_COUNT],
     presets: Vec<(&'static str, [f32; BAND_COUNT])>,
+    /// Presets the person saved, in the order they were saved.
+    custom_presets: Vec<CustomPreset>,
 }
 
 #[tauri::command]
 fn eq_info(state: State<AppState>) -> EqInfo {
-    EqInfo { settings: state.0.settings().eq, band_freqs_hz: BAND_FREQS, presets: PRESETS.to_vec() }
+    let settings = state.0.settings();
+    EqInfo { settings: settings.eq, band_freqs_hz: BAND_FREQS, presets: PRESETS.to_vec(), custom_presets: settings.custom_eq_presets }
 }
 #[tauri::command]
 fn set_eq_enabled(state: State<AppState>, on: bool) {
@@ -176,6 +182,14 @@ fn set_eq_gains_db(state: State<AppState>, gains: [f32; BAND_COUNT]) {
 #[tauri::command]
 fn apply_eq_preset(state: State<AppState>, name: String) -> bool {
     state.0.apply_eq_preset(&name)
+}
+#[tauri::command]
+fn save_eq_preset(state: State<AppState>, name: String) -> CmdResult<String> {
+    state.0.save_eq_preset(&name).map_err(err)
+}
+#[tauri::command]
+fn delete_eq_preset(state: State<AppState>, name: String) -> bool {
+    state.0.delete_eq_preset(&name)
 }
 #[tauri::command]
 fn eq_curve(state: State<AppState>, points: usize) -> Vec<[f32; 2]> {
@@ -317,8 +331,20 @@ fn move_in_playlist(state: State<AppState>, id: PlaylistId, from: usize, to: usi
     state.0.move_in_playlist(id, from, to).map_err(err)
 }
 #[tauri::command]
-fn import_m3u(state: State<AppState>, file: PathBuf) -> CmdResult<(PlaylistId, usize)> {
-    state.0.import_m3u(&file).map_err(err)
+async fn import_m3u(state: State<'_, AppState>, file: PathBuf) -> CmdResult<ImportReport> {
+    // Matching entries against the library touches the disk, so keep it off the UI thread.
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.import_m3u(&file)).await.map_err(err)?.map_err(err)
+}
+#[tauri::command]
+async fn relink_playlist(state: State<'_, AppState>, id: PlaylistId) -> CmdResult<RelinkReport> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.relink_playlist(id)).await.map_err(err)?.map_err(err)
+}
+#[tauri::command]
+async fn paths_exist(state: State<'_, AppState>, paths: Vec<PathBuf>) -> CmdResult<Vec<bool>> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.paths_exist(&paths)).await.map_err(err)
 }
 #[tauri::command]
 fn export_m3u(state: State<AppState>, id: PlaylistId, dest: PathBuf) -> CmdResult<()> {
@@ -327,6 +353,112 @@ fn export_m3u(state: State<AppState>, id: PlaylistId, dest: PathBuf) -> CmdResul
 #[tauri::command]
 fn play_playlist(state: State<AppState>, id: PlaylistId, start: usize) -> CmdResult<()> {
     state.0.play_playlist(id, start).map_err(err)
+}
+
+// ---- favourites and play history ----
+
+#[tauri::command]
+fn favourite_paths(state: State<AppState>) -> Vec<PathBuf> {
+    state.0.favourite_paths()
+}
+#[tauri::command]
+fn favourites(state: State<AppState>) -> Vec<TrackMeta> {
+    state.0.favourites()
+}
+#[tauri::command]
+fn set_favourite(state: State<AppState>, paths: Vec<PathBuf>, on: bool) -> usize {
+    state.0.set_favourite(&paths, on)
+}
+#[tauri::command]
+fn play_stats(state: State<AppState>) -> Vec<PlayStat> {
+    state.0.play_stats()
+}
+#[tauri::command]
+fn reset_play_stats(state: State<AppState>, path: Option<PathBuf>) {
+    state.0.reset_play_stats(path.as_deref());
+}
+
+// ---- fonts ----
+
+#[tauri::command]
+fn fonts(state: State<AppState>) -> Vec<FontEntry> {
+    state.0.fonts()
+}
+#[tauri::command]
+fn import_font(state: State<AppState>, path: PathBuf) -> CmdResult<FontEntry> {
+    state.0.import_font(&path).map_err(err)
+}
+#[tauri::command]
+fn remove_font(state: State<AppState>, file: String) -> bool {
+    state.0.remove_font(&file)
+}
+
+// ---- tray ----
+
+const TRAY_ID: &str = "redshift";
+
+fn show_main_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+}
+
+/// Adds or removes the tray icon so it's there exactly when one of the tray options is on.
+fn sync_tray(app: &AppHandle, tray: TraySettings) -> tauri::Result<()> {
+    let wanted = tray.minimize_to_tray || tray.close_to_tray;
+    if !wanted {
+        let _ = app.remove_tray_by_id(TRAY_ID);
+        return Ok(());
+    }
+    if app.tray_by_id(TRAY_ID).is_some() {
+        return Ok(());
+    }
+    let menu = Menu::with_items(
+        app,
+        &[
+            &MenuItem::with_id(app, "show", "Show Redshift", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "toggle", "Play / Pause", true, None::<&str>)?,
+            &MenuItem::with_id(app, "next", "Next", true, None::<&str>)?,
+            &MenuItem::with_id(app, "previous", "Previous", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?,
+        ],
+    )?;
+    let mut builder = TrayIconBuilder::with_id(TRAY_ID)
+        .tooltip("Redshift")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| {
+            let Some(state) = app.try_state::<AppState>() else { return };
+            match event.id().as_ref() {
+                "show" => show_main_window(app),
+                "toggle" => state.0.player.toggle_pause(),
+                "next" => state.0.player.next(),
+                "previous" => state.0.player.previous(),
+                "quit" => app.exit(0),
+                _ => {}
+            }
+        })
+        .on_tray_icon_event(|icon, event| {
+            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                show_main_window(icon.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+    builder.build(app)?;
+    Ok(())
+}
+
+#[tauri::command]
+fn set_tray(app: AppHandle, state: State<AppState>, minimize_to_tray: bool, close_to_tray: bool) -> CmdResult<()> {
+    let tray = TraySettings { minimize_to_tray, close_to_tray };
+    state.0.set_tray(tray);
+    sync_tray(&app, tray).map_err(err)
 }
 
 /// Serves cover art for `cover://localhost/<percent-encoded audio file path>`.
@@ -346,10 +478,39 @@ fn serve_cover(app: &tauri::AppHandle, uri_path: &str) -> tauri::http::Response<
     .expect("static headers are valid")
 }
 
+/// Serves imported fonts for `font://localhost/<file name>`.
+fn serve_font(app: &tauri::AppHandle, uri_path: &str) -> tauri::http::Response<Cow<'static, [u8]>> {
+    let file = percent_decode(uri_path.trim_start_matches('/'));
+    match app.try_state::<AppState>().and_then(|s| s.0.font_bytes(&file)) {
+        Some((bytes, mime)) => tauri::http::Response::builder()
+            .header("Content-Type", mime)
+            .header("Cache-Control", "max-age=3600")
+            .header("Access-Control-Allow-Origin", "*")
+            .body(Cow::Owned(bytes)),
+        None => tauri::http::Response::builder().status(404).body(Cow::Borrowed(&[][..])),
+    }
+    .expect("static headers are valid")
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .register_uri_scheme_protocol("cover", |ctx, request| serve_cover(ctx.app_handle(), request.uri().path()))
+        .register_uri_scheme_protocol("font", |ctx, request| serve_font(ctx.app_handle(), request.uri().path()))
+        .on_window_event(|window, event| {
+            let Some(state) = window.app_handle().try_state::<AppState>() else { return };
+            let tray = state.0.settings().tray;
+            match event {
+                WindowEvent::CloseRequested { api, .. } if tray.close_to_tray => {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+                WindowEvent::Resized(_) if tray.minimize_to_tray && window.is_minimized().unwrap_or(false) => {
+                    let _ = window.hide();
+                }
+                _ => {}
+            }
+        })
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             let (core, events) = App::new(data_dir, PlayerConfig::default())?;
@@ -369,7 +530,16 @@ fn main() {
                 let _ = saver.flush();
             })?;
 
+            // Counting plays needs a regular look at what the player is doing.
+            let counter = core.clone();
+            std::thread::Builder::new().name("play-counter".into()).spawn(move || loop {
+                std::thread::sleep(Duration::from_millis(500));
+                counter.poll_playback();
+            })?;
+
+            let tray = core.settings().tray;
             app.manage(AppState(core));
+            sync_tray(app.handle(), tray)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -378,6 +548,8 @@ fn main() {
             get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_replaygain,
             output_devices, set_output_device,
             eq_info, set_eq_enabled, set_eq_preamp_db, set_eq_band_db, set_eq_gains_db, apply_eq_preset, eq_curve,
+            save_eq_preset, delete_eq_preset, set_tray, favourite_paths, favourites, set_favourite, play_stats,
+            reset_play_stats, fonts, import_font, remove_font, relink_playlist, paths_exist,
             viz_frame, configure_viz, ui_state, set_ui_state,
             library_folders, add_library_folder, remove_library_folder, scan_library, is_scanning,
             library_tracks, search_library, library_albums, library_artists, recently_added, track_meta, lyrics, waveform,

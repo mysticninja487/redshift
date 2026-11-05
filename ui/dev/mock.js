@@ -21,6 +21,7 @@ const ALBUMS = [
 ];
 const LYRIC_WORDS = ['light', 'water', 'hold', 'slow', 'home', 'again', 'tonight', 'quiet', 'open', 'signal', 'rain', 'wire', 'gold', 'turn', 'stay', 'wake', 'glass', 'river', 'shadow', 'blue', 'engine', 'morning', 'paper', 'drift'];
 
+const NOW = Math.floor(Date.now() / 1000);
 function makeLibrary() {
   const tracks = [];
   for (const [ai, a] of ALBUMS.entries()) {
@@ -31,7 +32,7 @@ function makeLibrary() {
         path, title, artist: a.artist, album: a.title, album_artist: a.artist, genre: ['Indie', 'Electronic', 'Folk', 'Ambient'][ai % 4], year: a.year,
         track_no: i + 1, disc_no: 1, duration_secs: Math.round(150 + r() * 140), sample_rate: a.rate, bit_depth: a.bits, channels: 2,
         bitrate_kbps: a.codec === 'opus' ? 128 : null, format: a.codec, replaygain_track_db: +(-3 - r() * 6).toFixed(1), replaygain_album_db: -5.2,
-        replaygain_track_peak: 0.97, has_embedded_lyrics: false, modified: 1, size: 1e7, _album: ai,
+        replaygain_track_peak: 0.97, has_embedded_lyrics: false, modified: 1, size: 1e7, added: NOW - Math.floor((ai * 9 + i * 0.7) * 86400 * 0.6 + r() * 3600), _album: ai,
       });
     });
   }
@@ -57,6 +58,7 @@ const artists = () => {
 
 // ---------------------------------------------------------------- covers
 const coverCache = new Map();
+window.__REDSHIFT_FONT__ = (file) => `fonts/${file}`;
 window.__REDSHIFT_COVER__ = (path) => {
   const t = find(decodeURIComponent(path));
   if (!t) return 'data:,';
@@ -105,7 +107,12 @@ const S = {
   eq: { enabled: true, preamp_db: 0, gains_db: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
 };
 const EQ_FREQS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-const PRESETS = [['Flat', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], ['Bass boost', [6, 5, 4, 2, 0, 0, 0, 0, 0, 0]], ['Vocal', [-2, -2, 0, 2, 4, 4, 3, 1, 0, -1]], ['Treble', [0, 0, 0, 0, 0, 1, 3, 5, 6, 6]], ['Loudness', [5, 3, 0, -1, -1, 0, 1, 3, 5, 4]], ['Acoustic', [3, 3, 2, 1, 1, 1, 2, 3, 3, 2]]];
+const CUSTOM_PRESETS = [];
+const TRAY = { minimize_to_tray: false, close_to_tray: false };
+const FONTS = [];
+const FAVS = []; // most recent first
+const STATS = new Map(); // path -> { plays, last_played }
+const PRESETS = [['Flat', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], ['Bass Boost', [6, 5, 4, 2, 0.5, 0, 0, 0, 0, 0]], ['Bass Reducer', [-6, -5, -4, -2, -0.5, 0, 0, 0, 0, 0]], ['Treble Boost', [0, 0, 0, 0, 0, 0.5, 2, 4, 5, 6]], ['Vocal', [-2, -2, -1, 1, 3, 3.5, 3, 1.5, 0, -1]], ['Rock', [4.5, 3.5, 2, -1, -2, -0.5, 2, 3.5, 4.5, 4.5]], ['Pop', [-1.5, 1, 3, 4, 3, 0.5, -1, -1.5, -1.5, -1.5]], ['Jazz', [3, 2, 1, 2, -1.5, -1.5, 0, 1, 2, 3]], ['Classical', [3.5, 2.5, 2, 1.5, -1, -1, 0, 2, 2.5, 3]], ['Electronic', [5, 4, 1, 0, -2, 2, 1, 1.5, 4, 5]], ['Loudness', [6, 4, 0, 0, -1, 0, -0.5, 1, 4, 5]], ['Acoustic', [3, 3, 2, 0.5, 1, 1, 2, 2.5, 3, 2]], ['Hip-Hop', [5, 4.5, 2, 3, -1, -0.5, 1.5, -0.5, 2, 3]], ['R&B', [2.5, 6, 5, 1.5, -2, -1.5, 2, 2.5, 2.5, 3]], ['Dance', [6, 4.5, 2.5, 0, 0, -2.5, -3, -3, 0, 0]], ['Metal', [4, 3, 0, -2, -1, 1, 3.5, 4, 3, 2]], ['Piano', [1.5, 0.5, 0, 1.5, 2.5, 2.5, 3, 2.5, 3, 2.5]], ['Lounge', [-3, -1.5, 0, 1.5, 3, 2, 0, -1.5, 2, 1]], ['Live', [-2.5, 0, 2, 2.5, 3, 3, 3, 2, 1.5, 1.5]], ['Small Speakers', [6, 5, 4, 3, 2, 0, -1, -2, -2.5, -3]], ['Late Night', [4, 3, 0, 0, 1, 2, 1.5, -1, -2, -3]], ['Headphones', [4, 3, 1.5, -1, -1, 0.5, 1.5, 3, 3.5, 3]], ['Spoken Word', [-5, -4, -2, 1, 3, 4, 4, 3, 1, -2]]];
 
 const position = () => (S.status === 'playing' ? S.pos + (performance.now() - S.t0) / 1000 : S.pos);
 const curEntry = () => S.entries.find((e) => e.id === S.cur) ?? null;
@@ -119,6 +126,15 @@ function tick() {
 }
 setInterval(tick, 250);
 
+function noteStart(path) {
+  if (!path) return;
+  const st = STATS.get(path) ?? { plays: 0, last_played: 0 };
+  st.last_played = Math.floor(Date.now() / 1000);
+  STATS.set(path, st);
+}
+function noteCounted(path) { const st = STATS.get(path); if (st) st.plays++; }
+setInterval(() => { if (S.status === 'playing' && position() > 5) { const e = curEntry(); if (e && !S.counted?.has(e.id)) { (S.counted ??= new Set()).add(e.id); noteCounted(e.path); } } }, 1000);
+
 function go(dir, auto = false) {
   if (!S.entries.length) return;
   let i = S.entries.findIndex((e) => e.id === S.cur);
@@ -127,6 +143,7 @@ function go(dir, auto = false) {
   if (i >= S.entries.length) { if (S.repeat === 'all') i = 0; else if (auto) { S.status = 'stopped'; S.pos = 0; emit('player-event', { type: 'ended' }); return; } else return; }
   if (i < 0) { if (position() > 3) { S.pos = 0; S.t0 = performance.now(); return; } i = 0; }
   S.cur = S.entries[i].id; S.pos = 0; S.t0 = performance.now(); S.status = 'playing';
+  noteStart(curEntry()?.path);
   emit('player-event', { type: 'track_changed', entry_id: S.cur });
 }
 const queueView = () => {
@@ -174,9 +191,10 @@ function eqCurve(points) {
 }
 
 // ---------------------------------------------------------------- playlists, scan
-const PL = { seq: 3, list: [
+const PL = { seq: 4, list: [
   { id: 1, name: 'Evening drive', tracks: tracks.filter((t) => t._album === 0 || t._album === 5).slice(0, 7).map((t) => t.path) },
   { id: 2, name: 'Focus', tracks: tracks.filter((t) => t._album === 3).map((t) => t.path) },
+  { id: 3, name: 'driving down the roads of tokyo', tracks: [...tracks.filter((t) => t._album === 1).slice(0, 3).map((t) => t.path), '/storage/emulated/0/Music/Gone Band/Lost Album/01 Missing Song.opus', '/storage/emulated/0/Music/Gone Band/Lost Album/02 Another One.opus'] },
 ] };
 const plSummary = () => PL.list.map((p) => ({ id: p.id, name: p.name, track_count: p.tracks.length, modified: 0 }));
 if (params.has('empty')) PL.list = [];
@@ -191,13 +209,19 @@ async function scan() {
   return { added: tracks.length, updated: 0, removed: 0, unchanged: 0, failed: [] };
 }
 
+if (!params.has('empty') && !params.has('fresh')) {
+  tracks.slice(0, 18).forEach((t, i) => STATS.set(t.path, { plays: Math.max(0, 14 - i * 2 + (i % 3)), last_played: NOW - i * 5400 - (i % 4) * 777 }));
+  STATS.get(tracks[2].path).plays = 21;
+  FAVS.push(tracks[0].path, tracks[9].path, tracks[15].path, tracks[24].path);
+}
+
 // ---------------------------------------------------------------- commands
 const ui = () => { try { return JSON.parse(localStorage.getItem('redshift-mock-ui') ?? 'null'); } catch { return null; } };
-const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, viz: {}, ui: ui() });
+const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, viz: {}, custom_eq_presets: CUSTOM_PRESETS, tray: TRAY, ui: ui() });
 const addEntries = (paths, at = S.entries.length) => S.entries.splice(at, 0, ...paths.map((path) => ({ id: S.seq++, path })));
 const cmds = {
-  set_queue: ({ paths, start, autoplay }) => { S.entries = []; addEntries(paths); S.cur = S.entries[start]?.id ?? null; S.pos = 0; S.t0 = performance.now(); S.status = autoplay && S.cur ? 'playing' : 'stopped'; emit('player-event', { type: 'queue_changed' }); emit('player-event', { type: 'track_changed', entry_id: S.cur }); },
-  play_entry: ({ id }) => { S.cur = id; S.pos = 0; S.t0 = performance.now(); S.status = 'playing'; emit('player-event', { type: 'track_changed', entry_id: id }); },
+  set_queue: ({ paths, start, autoplay }) => { S.entries = []; addEntries(paths); S.cur = S.entries[start]?.id ?? null; S.pos = 0; S.t0 = performance.now(); S.status = autoplay && S.cur ? 'playing' : 'stopped'; if (S.status === 'playing') noteStart(curEntry()?.path); emit('player-event', { type: 'queue_changed' }); emit('player-event', { type: 'track_changed', entry_id: S.cur }); },
+  play_entry: ({ id }) => { S.cur = id; noteStart(curEntry()?.path); S.pos = 0; S.t0 = performance.now(); S.status = 'playing'; emit('player-event', { type: 'track_changed', entry_id: id }); },
   pause: () => { S.pos = position(); S.status = 'paused'; }, resume: () => { S.t0 = performance.now(); S.status = 'playing'; },
   toggle_pause: () => { if (S.status === 'playing') cmds.pause(); else if (S.status === 'paused') cmds.resume(); else if (S.entries.length) { S.cur ??= S.entries[0].id; S.pos = 0; S.t0 = performance.now(); S.status = 'playing'; emit('player-event', { type: 'track_changed', entry_id: S.cur }); } },
   stop: () => { S.status = 'stopped'; S.pos = 0; }, next: () => go(1), previous: () => go(-1),
@@ -213,10 +237,34 @@ const cmds = {
   set_crossfade_secs: ({ secs }) => { S.crossfade = secs; }, set_replaygain: ({ mode, preampDb }) => { S.rg = mode; S.rgPre = preampDb; },
   output_devices: () => [{ id: 'spk', name: 'Speakers (Mock Audio)', is_default: true }, { id: 'hp', name: 'Headphones (Mock USB DAC)', is_default: false }],
   set_output_device: ({ id }) => { S.device = id; },
-  eq_info: () => ({ settings: S.eq, band_freqs_hz: EQ_FREQS, presets: PRESETS }),
+  eq_info: () => ({ settings: S.eq, band_freqs_hz: EQ_FREQS, presets: PRESETS, custom_presets: CUSTOM_PRESETS }),
   set_eq_enabled: ({ on }) => { S.eq.enabled = on; }, set_eq_preamp_db: ({ db }) => { S.eq.preamp_db = db; },
   set_eq_band_db: ({ band, db }) => { S.eq.gains_db[band] = db; }, set_eq_gains_db: ({ gains }) => { S.eq.gains_db = gains; },
-  apply_eq_preset: ({ name }) => { const p = PRESETS.find((x) => x[0] === name); if (p) S.eq.gains_db = [...p[1]]; return S.eq; },
+  apply_eq_preset: ({ name }) => {
+    const c = CUSTOM_PRESETS.find((x) => x.name.toLowerCase() === name.toLowerCase());
+    if (c) { S.eq.gains_db = [...c.gains_db]; S.eq.preamp_db = c.preamp_db; return true; }
+    const p = PRESETS.find((x) => x[0].toLowerCase() === name.toLowerCase()); if (p) S.eq.gains_db = [...p[1]]; return !!p;
+  },
+  save_eq_preset: ({ name }) => {
+    const n = name.trim().replace(/\s+/g, ' ');
+    if (!n) throw new Error('give the preset a name');
+    if (PRESETS.some((p) => p[0].toLowerCase() === n.toLowerCase())) throw new Error(`"${n}" is a built-in preset name; pick another`);
+    const i = CUSTOM_PRESETS.findIndex((x) => x.name.toLowerCase() === n.toLowerCase());
+    const preset = { name: n, preamp_db: S.eq.preamp_db, gains_db: [...S.eq.gains_db] };
+    if (i >= 0) CUSTOM_PRESETS[i] = preset; else CUSTOM_PRESETS.push(preset);
+    return n;
+  },
+  delete_eq_preset: ({ name }) => { const i = CUSTOM_PRESETS.findIndex((x) => x.name.toLowerCase() === name.toLowerCase()); if (i >= 0) CUSTOM_PRESETS.splice(i, 1); return i >= 0; },
+  set_tray: ({ minimizeToTray, closeToTray }) => { TRAY.minimize_to_tray = minimizeToTray; TRAY.close_to_tray = closeToTray; },
+  favourite_paths: () => [...FAVS],
+  set_favourite: ({ paths, on }) => { let n = 0; for (const p of paths) { const i = FAVS.indexOf(p); if (on && i < 0) { FAVS.unshift(p); n++; } else if (!on && i >= 0) { FAVS.splice(i, 1); n++; } } return n; },
+  play_stats: () => [...STATS].map(([path, v]) => ({ path, ...v })),
+  reset_play_stats: ({ path }) => { if (path) STATS.delete(path); else STATS.clear(); },
+  fonts: () => FONTS,
+  import_font: ({ path }) => { const file = path.split('/').pop(); const e = { file, family: file.replace(/\.[^.]+$/, '').replace(/[_-]/g, ' ') }; if (!FONTS.some((f) => f.file === file)) FONTS.push(e); return e; },
+  remove_font: ({ file }) => { const i = FONTS.findIndex((f) => f.file === file); if (i >= 0) FONTS.splice(i, 1); return i >= 0; },
+  paths_exist: ({ paths }) => paths.map((p) => !!find(p)),
+  relink_playlist: ({ id }) => { const p = PL.list.find((x) => x.id === id); let relinked = 0, still = 0; p.tracks = p.tracks.map((t) => { if (find(t)) return t; const hit = tracks.find((x) => x.path.split('/').pop().toLowerCase() === t.split('/').pop().toLowerCase()); if (hit) { relinked++; return hit.path; } still++; return t; }); return { relinked, still_missing: still }; },
   eq_curve: ({ points }) => eqCurve(points),
   viz_frame: vizFrame, configure_viz: () => {},
   ui_state: ui, set_ui_state: ({ value }) => { localStorage.setItem('redshift-mock-ui', JSON.stringify(value)); },
@@ -232,13 +280,13 @@ const cmds = {
   move_playlist: () => {}, add_to_playlist: ({ id, tracks: ts }) => { PL.list.find((p) => p.id === id).tracks.push(...ts); },
   remove_from_playlist: ({ id, positions }) => { const p = PL.list.find((x) => x.id === id); p.tracks = p.tracks.filter((_, i) => !positions.includes(i)); },
   move_in_playlist: ({ id, from, to }) => { const p = PL.list.find((x) => x.id === id); const [t] = p.tracks.splice(from, 1); p.tracks.splice(to, 0, t); },
-  import_m3u: () => [PL.seq, 0], export_m3u: () => {}, play_playlist: ({ id, start }) => { const p = PL.list.find((x) => x.id === id); cmds.set_queue({ paths: p.tracks, start, autoplay: true }); },
+  import_m3u: () => { const id = PL.seq++; PL.list.push({ id, name: 'playlist', tracks: [tracks[0].path, tracks[3].path, '/storage/emulated/0/Music/Gone Band/Lost Album/01 Missing.opus'] }); return { id, name: 'playlist', total: 3, matched: 2, relinked: 0, missing_count: 1, missing: ['/storage/emulated/0/Music/Gone Band/Lost Album/01 Missing.opus'] }; }, export_m3u: () => {}, play_playlist: ({ id, start }) => { const p = PL.list.find((x) => x.id === id); const ok = p.tracks.filter((t) => find(t)); if (!ok.length) throw new Error('none of the tracks in this playlist could be found on this PC'); cmds.set_queue({ paths: ok, start: Math.min(start, ok.length - 1), autoplay: true }); },
 };
 
 window.__TAURI__ = {
   core: { invoke: async (cmd, args = {}) => { const f = cmds[cmd]; if (!f) throw new Error(`mock: unknown command ${cmd}`); return f(args); } },
   event: { listen: async (name, cb) => { (listeners[name] ??= []).push(cb); return () => { listeners[name] = listeners[name].filter((x) => x !== cb); }; } },
-  dialog: { open: async ({ directory } = {}) => (directory ? '/music/More Music' : '/music/playlist.m3u8'), save: async ({ defaultPath } = {}) => defaultPath ?? 'out' },
+  dialog: { open: async ({ directory } = {}) => window.__mockPick ?? (directory ? '/music/More Music' : '/music/playlist.m3u8'), save: async ({ defaultPath } = {}) => defaultPath ?? 'out' },
 };
 
 // Start with something playing so screenshots have content.

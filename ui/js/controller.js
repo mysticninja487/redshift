@@ -76,10 +76,11 @@ export async function refreshSettings() {
 }
 
 export async function initController() {
-  await Promise.all([refreshPlayer(), refreshQueue(), refreshSettings()]);
+  await Promise.all([refreshPlayer(), refreshQueue(), refreshSettings(), refreshFavs().catch(() => {}), refreshStats().catch(() => {})]);
   await listen('player-event', async (ev) => {
     if (ev.type === 'track_changed' || ev.type === 'queue_changed') await refreshQueue();
-    if (ev.type === 'error') toast(ev.message, 'error');
+    if (ev.type === 'error') reportPlayError(ev.message);
+    if (ev.type === 'track_changed') refreshStats().catch(() => {});
     if (ev.type === 'device_changed') await refreshPlayer();
     if (ev.type === 'ended') await refreshPlayer();
     emit('player-event', ev);
@@ -94,6 +95,39 @@ export async function initController() {
   }, 200);
 }
 
+// A queue with many missing files would otherwise raise one error per file; gather those that
+// arrive together into a single message.
+let errBuf = [], errTimer = 0;
+function reportPlayError(message) {
+  errBuf.push(message);
+  clearTimeout(errTimer);
+  errTimer = setTimeout(() => {
+    const [first] = errBuf, n = errBuf.length;
+    errBuf = [];
+    toast(n === 1 ? first : `${n} tracks couldn't be played. First: ${first}`, 'error');
+  }, 400);
+}
+
+export async function refreshFavs() {
+  state.favOrder = await api.favouritePaths();
+  state.favs = new Set(state.favOrder);
+  emit('favs');
+}
+export async function refreshStats() {
+  const rows = await api.playStats();
+  state.stats = new Map(rows.map((r) => [r.path, r]));
+  emit('stats');
+}
+/** Adds `paths` to the favourites, or removes them if they all are favourites already. */
+export async function toggleFavourite(paths) {
+  const list = [...new Set(paths)];
+  if (!list.length) return;
+  const remove = list.every((p) => state.favs.has(p));
+  await act(api.setFavourite(list, !remove));
+  await refreshFavs();
+  toast(remove ? 'Removed from favourites' : list.length > 1 ? `Added ${list.length} tracks to favourites` : 'Added to favourites');
+}
+
 export function setView(view) {
   if (state.view === view) return;
   state.view = view;
@@ -103,6 +137,12 @@ export function setView(view) {
 // ---- actions the panels share ----
 
 export const playPaths = (paths, start = 0) => act(api.setQueue(paths, start, true));
+/** Plays the given tracks in random order (turning shuffle on). */
+export async function shufflePlay(paths) {
+  if (!paths.length) return;
+  await act(api.setShuffle(true));
+  return playPaths(paths, Math.floor(Math.random() * paths.length));
+}
 export const queueNext = (paths) => act(api.queuePlayNext(paths)).then(() => toast('Added to play next'));
 export const queueAdd = (paths) => act(api.queueAppend(paths)).then(() => toast(paths.length > 1 ? `Added ${paths.length} tracks to the queue` : 'Added to the queue'));
 

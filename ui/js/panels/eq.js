@@ -2,10 +2,12 @@
 
 import { api } from '../api.js';
 import { act, refreshSettings } from '../controller.js';
+import { toast } from '../util.js';
 import { state } from '../state.js';
 import { tokens } from '../theme.js';
 import { debounce, h } from '../util.js';
 import { button, select, slider, toggle } from '../ui/controls.js';
+import { confirmDialog, promptText } from '../ui/dialog.js';
 import { rgba } from '../viz/util.js';
 import { lifecycle } from './common.js';
 
@@ -21,7 +23,20 @@ export function mount(el) {
   const preCol = h('div', { class: 'eq-band eq-pre' }, h('span', { class: 'eq-val' }, '0'), pre, h('span', { class: 'eq-freq' }, 'Pre'));
   const on = toggle({ value: true, label: 'Equaliser on', onChange: (v) => { act(api.eqEnabled(v)); changed(); } });
   const preset = select({ options: [{ value: '', label: 'Custom' }], value: '', label: 'Preset', onChange: (name) => { if (name) act(api.eqPreset(name).then(sync)); } });
-  const head = h('div', { class: 'panel-head eq-head' }, h('div', { class: 'q-title' }, 'Equaliser'), preset, button('Reset', () => act(api.eqPreset('Flat').then(sync)), { cls: 'eq-reset' }), on);
+  const saveBtn = button('Save…', async () => {
+    const name = await promptText('Save preset', { ok: 'Save', placeholder: 'Preset name', value: '' });
+    if (!name) return;
+    const saved = await act(api.saveEqPreset(name));
+    if (saved) { await sync(); preset.set(saved); toast(`Saved preset "${saved}"`); }
+  }, { cls: 'eq-save' });
+  const delBtn = button('Delete', async () => {
+    const name = preset.value;
+    if (!name || !(await confirmDialog('Delete preset?', `"${name}" will be removed. Built-in presets can't be deleted.`, { ok: 'Delete' }))) return;
+    await act(api.deleteEqPreset(name));
+    await sync();
+  }, { cls: 'eq-del' });
+  delBtn.hidden = true;
+  const head = h('div', { class: 'panel-head eq-head' }, h('div', { class: 'q-title' }, 'Equaliser'), preset, saveBtn, delBtn, button('Reset', () => act(api.eqPreset('Flat').then(sync)), { cls: 'eq-reset' }), on);
   el.append(h('div', { class: 'eq' }, head, cv, h('div', { class: 'eq-grid' }, preCol, bandsEl)));
 
   const readout = () => {
@@ -29,20 +44,30 @@ export function mount(el) {
     pre.set(info.settings.preamp_db); preCol.querySelector('.eq-val').textContent = String(info.settings.preamp_db);
     on.set(info.settings.enabled);
     el.classList.toggle('eq-off', !info.settings.enabled);
-    const match = info.presets.find(([, g]) => g.every((x, i) => Math.abs(x - info.settings.gains_db[i]) < 0.01));
-    preset.set(match ? match[0] : '');
+    const same = (g) => g.every((x, i) => Math.abs(x - info.settings.gains_db[i]) < 0.01);
+    const custom = (info.custom_presets ?? []).find((p) => same(p.gains_db) && Math.abs(p.preamp_db - info.settings.preamp_db) < 0.01);
+    const match = custom ? custom.name : info.presets.find(([, g]) => same(g))?.[0];
+    fillPresets();
+    preset.set(match ?? '');
+    delBtn.hidden = !custom;
   };
   const refreshCurve = debounce(async () => { curve = await api.eqCurve(120).catch(() => []); draw(); }, 30);
+  /** The preset list: Custom, the built-in presets, then the ones the person saved. */
+  function fillPresets() {
+    const saved = info.custom_presets ?? [];
+    preset.replaceChildren(...[h('option', { value: '' }, 'Custom'),
+      saved.length ? h('optgroup', { label: 'Saved' }, saved.map((p) => h('option', { value: p.name }, p.name))) : null,
+      h('optgroup', { label: 'Built-in' }, info.presets.map(([n]) => h('option', { value: n }, n)))].filter(Boolean));
+  }
   async function sync() { info = await api.eqInfo(); await refreshSettings(); readout(); refreshCurve(); }
   function changed() { if (info) { refreshCurve(); } }
 
   async function build() {
     info = await api.eqInfo();
-    preset.replaceChildren(h('option', { value: '' }, 'Custom'), ...info.presets.map(([n]) => h('option', { value: n }, n)));
     info.band_freqs_hz.forEach((_, i) => {
       const val = h('span', { class: 'eq-val' }, '0');
       const s = slider({ min: -12, max: 12, step: 0.5, value: info.settings.gains_db[i], vertical: true, center: true, label: `${FREQ_LABEL[i]} Hz`, reset: 0, format: (v) => `${v} dB`,
-        onInput: (v) => { info.settings.gains_db[i] = v; val.textContent = v > 0 ? `+${v}` : String(v); act(api.eqBand(i, v)); changed(); preset.set(''); } });
+        onInput: (v) => { info.settings.gains_db[i] = v; val.textContent = v > 0 ? `+${v}` : String(v); act(api.eqBand(i, v)); changed(); preset.set(''); delBtn.hidden = true; } });
       sliders.push({ s, val });
       bandsEl.append(h('div', { class: 'eq-band' }, val, s, h('span', { class: 'eq-freq' }, FREQ_LABEL[i])));
     });
@@ -72,7 +97,7 @@ export function mount(el) {
     g.fillStyle = rgba(off ? tokens.fg : tokens.accent, 0.14); g.fill();
   }
   new ResizeObserver(draw).observe(cv);
-  L.on(['theme', 'settings'], () => { if (info && state.settings) { info.settings = state.settings.eq; readout(); refreshCurve(); } });
+  L.on(['theme', 'settings'], () => { if (info && state.settings) { info.settings = state.settings.eq; info.custom_presets = state.settings.custom_eq_presets ?? info.custom_presets; readout(); refreshCurve(); } });
   build().catch((e) => console.error('equaliser failed to load', e));
   return { destroy: () => L.destroy() };
 }

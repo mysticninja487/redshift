@@ -8,11 +8,14 @@ pub mod decode;
 pub mod dsp;
 pub mod engine;
 pub mod error;
+pub mod fonts;
 pub mod library;
 pub mod lyrics;
 pub mod meta;
 pub mod playlists;
 pub mod queue;
+pub mod resolve;
+pub mod stats;
 pub mod util;
 pub mod waveform;
 

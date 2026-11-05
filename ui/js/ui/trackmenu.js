@@ -1,7 +1,8 @@
 // The "what can I do with these tracks" menu, shared by the queue, library and playlists.
 
 import { api } from '../api.js';
-import { act, playPaths, queueAdd, queueNext } from '../controller.js';
+import { act, playPaths, queueAdd, queueNext, toggleFavourite } from '../controller.js';
+import { state } from '../state.js';
 import { emit } from '../bus.js';
 import { toast } from '../util.js';
 import { promptText } from './dialog.js';
@@ -17,6 +18,7 @@ export async function trackMenuItems(paths, extra = []) {
     { label: 'Play next', onClick: () => queueNext(paths) },
     { label: 'Add to queue', onClick: () => queueAdd(paths) },
     { sep: true },
+    { label: paths.every((p) => state.favs.has(p)) ? 'Remove from favourites' : 'Add to favourites', onClick: () => toggleFavourite(paths) },
     {
       label: 'Add to playlist',
       submenu: [

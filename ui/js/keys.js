@@ -3,7 +3,8 @@
 
 import { api } from './api.js';
 import { act, setView } from './controller.js';
-import { get, getPrefs, set, setPref, setSkin } from './prefs.js';
+import { featureOn, get, getPrefs, set, setPref, setSkin } from './prefs.js';
+import { toggleEqDrawer } from './ui/eqdrawer.js';
 import { skins } from './skins.js';
 import { VIZ } from './viz/index.js';
 import { position, state } from './state.js';
@@ -31,6 +32,9 @@ export const ACTIONS = [
   { id: 'skinnext', label: 'Next skin', key: ']', run: () => { const s = cycle(skins.map((x) => x.id), getPrefs().skin, 1); setSkin(s); toast(`Skin: ${skins.find((x) => x.id === s).name}`); } },
   { id: 'skinprev', label: 'Previous skin', key: '[', run: () => { const s = cycle(skins.map((x) => x.id), getPrefs().skin, -1); setSkin(s); toast(`Skin: ${skins.find((x) => x.id === s).name}`); } },
   { id: 'viznext', label: 'Next visualiser', key: 'V', run: () => { const ids = VIZ.map((v) => v.id); const target = get('hero.mode') === 'viz' ? 'hero.viz' : 'viz.main'; const n = cycle(ids, get(target), 1); set(target, n); toast(`Visualiser: ${VIZ.find((v) => v.id === n).name}`); } },
+  { id: 'lyrics', label: 'Lyrics on / off', key: 'L', run: () => { setPref('features.lyrics', !featureOn('lyrics')); toast(`Lyrics ${featureOn('lyrics') ? 'on' : 'off'}`); } },
+  { id: 'vizonoff', label: 'Visualisers on / off', key: 'Shift+V', run: () => { setPref('features.viz', !featureOn('viz')); toast(`Visualisers ${featureOn('viz') ? 'on' : 'off'}`); } },
+  { id: 'eqdrawer', label: 'Equaliser', key: 'E', run: () => toggleEqDrawer() },
   { id: 'scheme', label: 'Light / dark', key: 'D', run: () => { const cur = document.documentElement.dataset.scheme; set('color.scheme', cur === 'dark' ? 'light' : 'dark'); } },
   { id: 'fullscreen', label: 'Fullscreen', key: 'F', run: () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.().catch(() => {}); } },
 ];

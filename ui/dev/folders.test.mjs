@@ -1,0 +1,11 @@
+import { folderContents, tracksUnder, crumbs } from '../js/folders.js';
+import assert from 'node:assert/strict';
+const t = (path) => ({ path });
+const tracks = [t('D:\\Music\\A\\Album 1\\02 b.flac'), t('D:\\Music\\A\\Album 1\\01 a.flac'), t('D:\\Music\\A\\single.opus'), t('D:\\Music\\B\\x.mp3'), t('D:\\Music2\\y.mp3')];
+const c = folderContents(tracks, 'D:\\Music\\A');
+assert.deepEqual(c.dirs.map((d) => [d.name, d.tracks.length]), [['Album 1', 2]]);
+assert.deepEqual(c.files.map((f) => f.path), ['D:\\Music\\A\\single.opus']);
+assert.equal(folderContents(tracks, 'D:\\Music').dirs.length, 2, 'Music2 is not inside Music');
+assert.deepEqual(tracksUnder(tracks, 'D:/Music/A').map((x) => x.path.split('\\').pop()), ['01 a.flac', '02 b.flac', 'single.opus']);
+assert.deepEqual(crumbs('D:\\Music\\', 'D:/Music/A/Album 1').map((x) => x.name), ['Music', 'A', 'Album 1']);
+console.log('ok');

@@ -1,7 +1,7 @@
 // The centrepiece. Modes: turntable (a record that spins, with a tonearm that tracks the song),
 // art (the cover, with optional sun / halftone / glitch treatments), viz (any visualiser), none.
 
-import { cfg, get } from '../prefs.js';
+import { cfg, featureOn, get } from '../prefs.js';
 import { duration, isPlaying, position, state } from '../state.js';
 import { clear, clamp, h, svg } from '../util.js';
 import { mountViz, watchLive } from '../viz/engine.js';
@@ -89,6 +89,9 @@ function vizHero(host) {
   return { destroy: () => handle.destroy() };
 }
 
+/** The centrepiece mode, with the visualiser swapped for the cover while visualisers are off. */
+const heroMode = (c) => (c.hero.mode === 'viz' && !featureOn('viz') ? 'art' : c.hero.mode);
+
 const MODES = { turntable, art, viz: vizHero, none: () => null };
 
 export function mount(el) {
@@ -98,12 +101,12 @@ export function mount(el) {
   let sig = '', inner = null;
   function build() {
     const c = cfg();
-    const s = [c.hero.mode, c.hero.viz, c.hero.plinth, c.hero.sun, c.hero.halftone, c.hero.glitch, c.hero.tonearm].join('|');
+    const s = [heroMode(c), c.hero.viz, c.hero.plinth, c.hero.sun, c.hero.halftone, c.hero.glitch, c.hero.tonearm].join('|');
     if (s === sig) return;
     sig = s;
     inner?.destroy(); clear(host);
-    host.dataset.mode = c.hero.mode;
-    inner = (MODES[c.hero.mode] ?? MODES.art)(host, c) ?? null;
+    host.dataset.mode = heroMode(c);
+    inner = (MODES[heroMode(c)] ?? MODES.art)(host, c) ?? null;
   }
   L.on('ui', build);
   build();

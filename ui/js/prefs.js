@@ -30,7 +30,9 @@ export const DEFAULT_PREFS = {
   skin: 'turntable',
   skins: {},
   keys: {},
-  library: { tab: 'albums', sort: 'artist', albumSize: 190 },
+  library: { tab: 'albums', sort: 'default', albumSize: 190, playMode: 'single' },
+  // On/off switches that apply to every skin.
+  features: { lyrics: true, viz: true },
   introSeen: false,
 };
 
@@ -44,6 +46,8 @@ export async function loadPrefs() {
   return prefs;
 }
 export const getPrefs = () => prefs;
+/** True if the named feature ('lyrics' or 'viz') is switched on (they're on unless turned off). */
+export const featureOn = (name) => prefs.features?.[name] !== false;
 
 /** The settings in force for the current skin (or `skinId`). */
 export function cfg(skinId = prefs.skin) {

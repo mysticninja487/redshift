@@ -30,7 +30,23 @@ export const FONTS = [
   { id: 'Georgia', label: 'Georgia', stack: 'Georgia, "Times New Roman", serif' },
   { id: 'Bahnschrift', label: 'Bahnschrift', stack: 'Bahnschrift, "Arial Narrow", "Segoe UI", sans-serif' },
 ];
-export const fontStack = (id) => FONTS.find((f) => f.id === id)?.stack ?? FONTS[0].stack;
+/** CSS family name an imported font file is registered under. */
+export const importedFamily = (file) => `Redshift import ${cleanFontName(file)}`;
+/** Makes a typed font name safe to put inside a CSS string. */
+export const cleanFontName = (name) => String(name).replace(/["'\\;{}<>\n\r]/g, '').trim().slice(0, 80);
+
+/**
+ * A CSS font stack for a font id: one of the built-in ids, `file:<name>` for a font the person
+ * imported, or `local:<Family>` for any font installed on their PC.
+ */
+export function fontStack(id) {
+  if (typeof id === 'string' && id.startsWith('file:')) return `"${importedFamily(id.slice(5))}", "Segoe UI", system-ui, sans-serif`;
+  if (typeof id === 'string' && id.startsWith('local:')) {
+    const name = cleanFontName(id.slice(6));
+    if (name) return `"${name}", "Segoe UI", system-ui, sans-serif`;
+  }
+  return FONTS.find((f) => f.id === id)?.stack ?? FONTS[0].stack;
+}
 
 /** Accent presets for the "Preset" colour mode. */
 export const ACCENTS = [

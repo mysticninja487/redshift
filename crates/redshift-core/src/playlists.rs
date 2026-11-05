@@ -38,6 +38,31 @@ pub struct PlaylistSummary {
     pub modified: u64,
 }
 
+/// What an M3U import found.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ImportReport {
+    pub id: PlaylistId,
+    pub name: String,
+    /// Entries in the file (streams excluded).
+    pub total: usize,
+    /// Entries whose file exists as written.
+    pub matched: usize,
+    /// Entries pointing somewhere else that were matched to a library file.
+    pub relinked: usize,
+    /// Entries that couldn't be found (kept in the playlist, dimmed, and skipped on play).
+    pub missing_count: usize,
+    /// The first few of those, as written in the file.
+    pub missing: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct RelinkReport {
+    pub relinked: usize,
+    pub still_missing: usize,
+}
+
+const MAX_REPORTED_MISSING: usize = 100;
+
 #[derive(Serialize, Deserialize)]
 struct Db {
     version: u32,
@@ -198,14 +223,62 @@ impl PlaylistStore {
     }
 
     /// Reads an M3U/M3U8 file into a new playlist named after the file. Relative entries are
-    /// resolved against the file's folder. Returns the new id and the number of entries found.
-    pub fn import_m3u(&mut self, file: &Path) -> Result<(PlaylistId, usize)> {
+    /// resolved against the file's folder, then each entry is passed to `resolve` (path, `#EXTINF`
+    /// label), which returns the file to use or `None` if there isn't one. Entries that can't be
+    /// found stay in the playlist as written, so they can be relinked after the library changes.
+    pub fn import_m3u(&mut self, file: &Path, resolve: &dyn Fn(&Path, Option<&str>) -> Option<PathBuf>) -> Result<ImportReport> {
         let text = decode_m3u(&fs::read(file)?);
         let base = file.parent().unwrap_or(Path::new("."));
-        let tracks = parse_m3u(&text, base);
-        let name = file.file_stem().and_then(|s| s.to_str()).unwrap_or("Imported playlist");
-        let n = tracks.len();
-        Ok((self.create_with(name, tracks), n))
+        let entries = parse_m3u_entries(&text, base);
+        let name = file.file_stem().and_then(|s| s.to_str()).unwrap_or("Imported playlist").to_owned();
+        let total = entries.len();
+        let (mut matched, mut relinked) = (0, 0);
+        let mut missing = Vec::new();
+        let mut tracks = Vec::with_capacity(total);
+        for (path, label) in entries {
+            match resolve(&path, label.as_deref()) {
+                Some(found) if found == path => {
+                    matched += 1;
+                    tracks.push(path);
+                }
+                Some(found) => {
+                    relinked += 1;
+                    tracks.push(found);
+                }
+                None => {
+                    missing.push(path.to_string_lossy().into_owned());
+                    tracks.push(path);
+                }
+            }
+        }
+        let id = self.create_with(&name, tracks);
+        let missing_count = missing.len();
+        missing.truncate(MAX_REPORTED_MISSING);
+        Ok(ImportReport { id, name, total, matched, relinked, missing_count, missing })
+    }
+
+    /// Replaces entries that no longer resolve to a file with whatever `resolve` finds now (after
+    /// a library rescan, say). Returns how many were fixed and how many are still missing.
+    pub fn relink(&mut self, id: PlaylistId, resolve: &dyn Fn(&Path, Option<&str>) -> Option<PathBuf>) -> Result<RelinkReport> {
+        let p = self.get_mut(id)?;
+        let (mut relinked, mut still_missing) = (0, 0);
+        for t in &mut p.tracks {
+            if t.exists() {
+                continue;
+            }
+            match resolve(t, None) {
+                Some(found) if found != *t => {
+                    *t = found;
+                    relinked += 1;
+                }
+                Some(_) => {}
+                None => still_missing += 1,
+            }
+        }
+        if relinked > 0 {
+            p.modified = now();
+        }
+        Ok(RelinkReport { relinked, still_missing })
     }
 
     /// Writes a playlist as UTF-8 M3U8. Tracks inside the destination folder are written as
@@ -235,12 +308,26 @@ pub fn decode_m3u(bytes: &[u8]) -> String {
 /// `file://` URLs decoded, other URLs (streams) dropped, backslashes treated as separators, and
 /// relative paths resolved against `base`.
 pub fn parse_m3u(text: &str, base: &Path) -> Vec<PathBuf> {
+    parse_m3u_entries(text, base).into_iter().map(|(p, _)| p).collect()
+}
+
+/// Like [`parse_m3u`], but each path comes with the label from the `#EXTINF` line before it (the
+/// part after the first comma, usually "Artist - Title").
+pub fn parse_m3u_entries(text: &str, base: &Path) -> Vec<(PathBuf, Option<String>)> {
     let mut out = Vec::new();
+    let mut label: Option<String> = None;
     for line in text.trim_start_matches('\u{feff}').lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
+        if line.is_empty() {
             continue;
         }
+        if line.starts_with('#') {
+            if let Some(rest) = strip_prefix_ci(line, "#EXTINF:") {
+                label = rest.split_once(',').map(|(_, l)| l.trim().to_owned()).filter(|l| !l.is_empty());
+            }
+            continue;
+        }
+        let label = label.take();
         let entry = if let Some(rest) = strip_prefix_ci(line, "file://") {
             // file:///C:/Music/a.flac or file:///home/me/a.flac
             let decoded = percent_decode(rest);
@@ -257,7 +344,7 @@ pub fn parse_m3u(text: &str, base: &Path) -> Vec<PathBuf> {
         // A drive letter means "absolute" even when parsing on a system that doesn't know drives.
         let absolute = has_drive(&entry) || has_root(Path::new(&entry));
         let path = PathBuf::from(entry);
-        out.push(if absolute { path } else { normalize(&base.join(path)) });
+        out.push((if absolute { path } else { normalize(&base.join(path)) }, label));
     }
     out
 }
@@ -537,10 +624,10 @@ mod tests {
         let id = s.create_with("rt", tracks.clone());
         let file = root.join("my mix.m3u8");
         s.export_m3u(id, &file, &|_| None).unwrap();
-        let (new_id, n) = s.import_m3u(&file).unwrap();
-        assert_eq!(n, 3);
-        assert_ne!(new_id, id);
-        let imported = s.get(new_id).unwrap();
+        let r = s.import_m3u(&file, &|p, _| Some(p.to_path_buf())).unwrap();
+        assert_eq!(r.total, 3);
+        assert_ne!(r.id, id);
+        let imported = s.get(r.id).unwrap();
         assert_eq!(imported.name, "my mix", "named after the file");
         assert_eq!(imported.tracks, tracks);
     }
@@ -548,8 +635,44 @@ mod tests {
     #[test]
     fn import_of_missing_file_is_an_error_and_creates_nothing() {
         let (mut s, d) = store();
-        assert!(s.import_m3u(&d.path().join("nope.m3u")).is_err());
+        assert!(s.import_m3u(&d.path().join("nope.m3u"), &|_, _| None).is_err());
         assert!(s.list().is_empty());
+    }
+
+    #[test]
+    fn extinf_labels_are_paired_with_the_next_entry() {
+        let text = "#EXTM3U\n#EXTINF:12,Artist - One\n/a/1.opus\n#EXTINF:-1,\n/a/2.opus\n/a/3.opus\n#EXTINF:5,Artist - Four, Part 2\n/a/4.opus\n";
+        let e = parse_m3u_entries(text, Path::new("/"));
+        let labels: Vec<_> = e.iter().map(|(_, l)| l.as_deref()).collect();
+        assert_eq!(labels, vec![Some("Artist - One"), None, None, Some("Artist - Four, Part 2")]);
+    }
+
+    #[test]
+    fn import_reports_matched_relinked_and_missing_and_keeps_every_entry() {
+        let (mut s, d) = store();
+        let file = d.path().join("trip.m3u8");
+        fs::write(&file, "/phone/a.opus\n/phone/b.opus\n/phone/gone.opus\n").unwrap();
+        let resolve = |p: &Path, _: Option<&str>| match p.file_name().unwrap().to_str().unwrap() {
+            "a.opus" => Some(p.to_path_buf()),
+            "b.opus" => Some(PathBuf::from("/lib/b.opus")),
+            _ => None,
+        };
+        let r = s.import_m3u(&file, &resolve).unwrap();
+        assert_eq!((r.total, r.matched, r.relinked, r.missing_count), (3, 1, 1, 1));
+        assert_eq!(r.missing, vec!["/phone/gone.opus".to_string()]);
+        assert_eq!(s.get(r.id).unwrap().tracks, paths(&["/phone/a.opus", "/lib/b.opus", "/phone/gone.opus"]));
+    }
+
+    #[test]
+    fn relink_fixes_only_entries_that_are_missing_and_findable() {
+        let (mut s, d) = store();
+        let real = d.path().join("real.opus");
+        fs::write(&real, b"x").unwrap();
+        let id = s.create_with("p", vec![real.clone(), PathBuf::from("/nowhere/x.opus"), PathBuf::from("/nowhere/y.opus")]);
+        let r = s.relink(id, &|p, _| (p.file_name().unwrap() == "x.opus").then(|| PathBuf::from("/lib/x.opus"))).unwrap();
+        assert_eq!((r.relinked, r.still_missing), (1, 1));
+        assert_eq!(s.get(id).unwrap().tracks, vec![real, PathBuf::from("/lib/x.opus"), PathBuf::from("/nowhere/y.opus")]);
+        assert!(s.relink(404, &|_, _| None).is_err());
     }
 
     #[test]

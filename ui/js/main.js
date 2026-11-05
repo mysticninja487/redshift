@@ -2,9 +2,11 @@
 
 import { on } from './bus.js';
 import { initController, setView } from './controller.js';
+import { loadImportedFonts } from './fonts.js';
+import { eqDrawerOpen, onEqDrawer, toggleEqDrawer } from './ui/eqdrawer.js';
 import { initKeys } from './keys.js';
 import { mountLayout } from './layout.js';
-import { cfg, flushPrefs, getPrefs, loadPrefs, set, setSkin } from './prefs.js';
+import { cfg, featureOn, flushPrefs, getPrefs, loadPrefs, set, setPref, setSkin } from './prefs.js';
 import { skins } from './skins.js';
 import { state } from './state.js';
 import { applyTheme } from './theme.js';
@@ -19,14 +21,41 @@ function buildChrome() {
     h('button', { class: 'nav-btn', type: 'button', dataset: { view: id }, onclick: () => setView(id) }, icon(ic, 16), h('span', null, label))));
   const skinSel = select({ label: 'Skin', value: getPrefs().skin, options: skins.map((s) => ({ value: s.id, label: s.name })), onChange: (v) => setSkin(v) });
   skinSel.classList.add('skin-select');
-  const scheme = iconButton('sliders', 'Switch light or dark', () => set('color.scheme', document.documentElement.dataset.scheme === 'dark' ? 'light' : 'dark'), { cls: 'scheme-btn' });
+  // Shows the mode a click switches to: a sun while it's dark, a moon while it's light.
+  const scheme = h('button', { class: 'btn icon-btn scheme-btn', type: 'button', onclick: () => set('color.scheme', document.documentElement.dataset.scheme === 'dark' ? 'light' : 'dark') });
+  const paintScheme = () => {
+    const dark = document.documentElement.dataset.scheme === 'dark';
+    const label = dark ? 'Switch to light mode' : 'Switch to dark mode';
+    scheme.title = label;
+    scheme.setAttribute('aria-label', label);
+    scheme.dataset.mode = dark ? 'dark' : 'light';
+    scheme.replaceChildren(icon(dark ? 'sun' : 'moon', 20));
+  };
+  on('theme', paintScheme);
+  paintScheme();
+
+  // Quick switches for the Now Playing screen: lyrics, visualisers and the equaliser drawer.
+  const lyricsBtn = iconButton('lyrics', 'Lyrics', () => setPref('features.lyrics', !featureOn('lyrics')), { cls: 'tool-btn tool-lyrics' });
+  const vizBtn = iconButton('viz', 'Visualisers', () => setPref('features.viz', !featureOn('viz')), { cls: 'tool-btn tool-viz' });
+  const eqBtn = iconButton('eq', 'Equaliser', (e) => toggleEqDrawer(e.currentTarget), { cls: 'tool-btn tool-eq' });
+  const paintTools = () => {
+    const l = featureOn('lyrics'), v = featureOn('viz');
+    lyricsBtn.setAttribute('aria-pressed', String(l)); lyricsBtn.title = lyricsBtn.ariaLabel = l ? 'Lyrics: on (click to hide)' : 'Lyrics: off (click to show)';
+    vizBtn.setAttribute('aria-pressed', String(v)); vizBtn.title = vizBtn.ariaLabel = v ? 'Visualisers: on (click to hide)' : 'Visualisers: off (click to show)';
+    eqBtn.setAttribute('aria-pressed', String(eqDrawerOpen()));
+    lyricsBtn.classList.toggle('is-off', !l); vizBtn.classList.toggle('is-off', !v);
+  };
+  on('ui', paintTools);
+  onEqDrawer(paintTools);
+  paintTools();
+  const nowTools = h('div', { class: 'now-tools', role: 'group', 'aria-label': 'Now playing tools' }, lyricsBtn, vizBtn, eqBtn);
   const full = iconButton('fullscreen', 'Fullscreen', () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => {})), { cls: 'full-btn' });
   on('ui', () => skinSel.set(getPrefs().skin));
   on('view', (v) => nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === v))));
   nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === state.view)));
   return h('header', { class: 'chrome' },
     h('div', { class: 'brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }), h('span', { class: 'brand-name' }, 'Redshift')),
-    nav, h('div', { class: 'chrome-tools' }, skinSel, scheme, full));
+    nav, h('div', { class: 'chrome-tools' }, nowTools, skinSel, scheme, full));
 }
 
 /** Background layers that skins show or hide with CSS: ghost type, sun, rings, side labels. */
@@ -71,6 +100,7 @@ function buildViews(app) {
 async function boot() {
   if (!window.__TAURI__) await import('../dev/mock.js');
   await loadPrefs();
+  await loadImportedFonts();
   applyTheme();
   const app = document.getElementById('app');
   app.replaceChildren(h('div', { class: 'bg' }), buildDecor(), buildChrome());

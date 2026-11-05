@@ -148,3 +148,9 @@
 .art.glitching .g1 { transform: translateX(var(--gx, 6px)); filter: hue-rotate(90deg) saturate(2); }
 .art.glitching .g2 { transform: translateX(calc(var(--gx, 6px) * -1)); filter: hue-rotate(-90deg) saturate(2); }
 @container (max-width: 360px) { .eq-band:nth-child(even) .eq-freq { visibility: hidden; } .eq-val { font-size: .55rem; } .eq-head { gap: 6px; } }
+
+/* favourite heart next to the playing title */
+.i-title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.i-title-row .i-title { min-width: 0; }
+.i-fav { opacity: 1; flex: none; width: 34px; height: 34px; }
+.i-fav:not(.on) { color: var(--fg3); }

@@ -2,10 +2,13 @@
 // the lyrics from one side to the other keeps its scroll position and any running animation.
 
 import { MODULES } from './panels/index.js';
-import { cfg } from './prefs.js';
+import { cfg, featureOn } from './prefs.js';
 import { PANELS, SLOTS } from './skins.js';
 import { h } from './util.js';
 import { on } from './bus.js';
+
+/** Panels that disappear when a feature is switched off. */
+const OFF_WITH = { lyrics: 'lyrics', viz: 'viz', meters: 'viz' };
 
 export function mountLayout(root) {
   const slotEls = {};
@@ -23,6 +26,7 @@ export function mountLayout(root) {
       const order = [];
       for (const id of assignment[slot] ?? []) {
         if (!MODULES[id] || wanted.has(id)) continue; // unknown, or already placed elsewhere
+        if (OFF_WITH[id] && !featureOn(OFF_WITH[id])) continue; // switched off for every skin
         wanted.add(id);
         let p = live.get(id);
         if (!p) {

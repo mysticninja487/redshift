@@ -16,6 +16,13 @@ export function coverUrl(path) {
   return isWindows ? `http://cover.localhost/${enc}` : `cover://localhost/${enc}`;
 }
 
+/** URL of an imported font file (served by the app). */
+export function fontUrl(file) {
+  if (window.__REDSHIFT_FONT__) return window.__REDSHIFT_FONT__(file);
+  const enc = encodeURIComponent(file);
+  return isWindows ? `http://font.localhost/${enc}` : `font://localhost/${enc}`;
+}
+
 export async function pickFolder() {
   const r = await T().dialog.open({ directory: true, multiple: false });
   return typeof r === 'string' ? r : null;
@@ -49,7 +56,8 @@ export const api = {
   // eq
   eqInfo: () => invoke('eq_info'), eqEnabled: (on) => invoke('set_eq_enabled', { on }), eqPreamp: (db) => invoke('set_eq_preamp_db', { db }),
   eqBand: (band, db) => invoke('set_eq_band_db', { band, db }), eqGains: (gains) => invoke('set_eq_gains_db', { gains }),
-  eqPreset: (name) => invoke('apply_eq_preset', { name }), eqCurve: (points) => invoke('eq_curve', { points }),
+  eqPreset: (name) => invoke('apply_eq_preset', { name }), saveEqPreset: (name) => invoke('save_eq_preset', { name }),
+  deleteEqPreset: (name) => invoke('delete_eq_preset', { name }), eqCurve: (points) => invoke('eq_curve', { points }),
   // visualisation
   vizFrame: () => invoke('viz_frame'), configureViz: (config) => invoke('configure_viz', { config }),
   // ui state
@@ -71,4 +79,11 @@ export const api = {
   moveInPlaylist: (id, from, to) => invoke('move_in_playlist', { id, from, to }),
   importM3u: (file) => invoke('import_m3u', { file }), exportM3u: (id, dest) => invoke('export_m3u', { id, dest }),
   playPlaylist: (id, start = 0) => invoke('play_playlist', { id, start }),
+  relinkPlaylist: (id) => invoke('relink_playlist', { id }), pathsExist: (paths) => invoke('paths_exist', { paths }),
+  // favourites and play history
+  favouritePaths: () => invoke('favourite_paths'), setFavourite: (paths, on) => invoke('set_favourite', { paths, on }),
+  playStats: () => invoke('play_stats'), resetPlayStats: (path = null) => invoke('reset_play_stats', { path }),
+  // fonts and tray
+  fonts: () => invoke('fonts'), importFont: (path) => invoke('import_font', { path }), removeFont: (file) => invoke('remove_font', { file }),
+  setTray: (minimizeToTray, closeToTray) => invoke('set_tray', { minimizeToTray, closeToTray }),
 };

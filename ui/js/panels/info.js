@@ -1,6 +1,6 @@
 // Title, artist, album and the file's technical details.
 
-import { setView } from '../controller.js';
+import { setView, toggleFavourite } from '../controller.js';
 import { get } from '../prefs.js';
 import { state } from '../state.js';
 import { fmtKhz, h } from '../util.js';
@@ -26,6 +26,8 @@ export function mount(el) {
   const L = lifecycle();
   const art = cover();
   const title = h('h2', { class: 'i-title' });
+  const heart = h('button', { class: 'fav-btn i-fav', type: 'button', title: 'Favourite', 'aria-label': 'Favourite', onclick: () => state.trackPath && toggleFavourite([state.trackPath]) }, icon('heart', 20));
+  const titleRow = h('div', { class: 'i-title-row' }, title, heart);
   const artist = h('div', { class: 'i-artist' });
   const album = h('div', { class: 'i-album' });
   const pos = h('div', { class: 'i-pos' });
@@ -33,7 +35,7 @@ export function mount(el) {
   const empty = h('div', { class: 'i-empty' },
     h('p', null, 'Add a music folder to start listening.'),
     h('button', { class: 'btn primary', type: 'button', onclick: () => setView('library') }, icon('folder', 16), 'Open library'));
-  const text = h('div', { class: 'i-text' }, pos, title, artist, album, tech, empty);
+  const text = h('div', { class: 'i-text' }, pos, titleRow, artist, album, tech, empty);
   el.append(h('div', { class: 'info' }, art.el, text));
 
   function render() {
@@ -43,6 +45,11 @@ export function mount(el) {
     art.set(state.coverUrl);
     title.textContent = idle ? 'Nothing playing' : t.title || 'Untitled';
     title.title = title.textContent;
+    heart.hidden = idle;
+    const fav = !!state.trackPath && state.favs.has(state.trackPath);
+    heart.classList.toggle('on', fav);
+    heart.setAttribute('aria-pressed', String(fav));
+    heart.title = heart.ariaLabel = fav ? 'Remove from favourites' : 'Add to favourites';
     artist.textContent = idle ? '' : t.artist || '';
     album.replaceChildren(...(idle ? [] : [h('span', { class: 'i-album-name' }, t.album || ''), t.year ? h('span', { class: 'i-year' }, String(t.year)) : null]));
     const idx = state.queue.entries.findIndex((e) => e.id === state.queue.current_entry);
@@ -62,7 +69,7 @@ export function mount(el) {
     if (rg && db != null) bits.push(`${db > 0 ? '+' : ''}${db.toFixed(1)} dB`);
     tech.replaceChildren(...bits.map((b) => h('li', null, b)));
   }
-  L.on(['track', 'queue', 'ui', 'player-event'], render);
+  L.on(['track', 'queue', 'ui', 'player-event', 'favs'], render);
   L.on('status', render);
   render();
   return { destroy: () => L.destroy() };

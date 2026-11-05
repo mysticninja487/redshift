@@ -87,7 +87,11 @@ pub fn scan(
         });
         match (known.get(&path), stat) {
             (Some(old), Some((mtime, size))) if old.modified == mtime && old.size == size => {
-                tracks.push(old.clone());
+                let mut t = old.clone();
+                if t.added == 0 {
+                    t.added = t.modified;
+                }
+                tracks.push(t);
                 report.unchanged += 1;
             }
             _ => to_read.push(path),
@@ -117,11 +121,18 @@ pub fn scan(
         for (path, result) in rx.iter() {
             done += 1;
             match result {
-                Ok(m) => {
-                    if known.contains_key(&path) {
-                        report.updated += 1;
-                    } else {
-                        report.added += 1;
+                Ok(mut m) => {
+                    match known.get(&path) {
+                        Some(old) => {
+                            report.updated += 1;
+                            m.added = if old.added > 0 { old.added } else { old.modified };
+                        }
+                        None => {
+                            report.added += 1;
+                            // The first scan of a library says nothing about when each file
+                            // arrived, so the file's own date stands in; later scans stamp "now".
+                            m.added = if known.is_empty() { m.modified } else { crate::stats::now_secs() };
+                        }
                     }
                     tracks.push(m);
                 }
@@ -301,10 +312,10 @@ impl Library {
         groups.into_values().map(|(name, albums, tracks)| Artist { name, album_count: albums.len(), track_count: tracks }).collect()
     }
 
-    /// The most recently modified files first, for a "recently added" view.
+    /// The tracks that joined the library most recently first, for a "recently added" view.
     pub fn recently_added(&self, limit: usize) -> Vec<&TrackMeta> {
         let mut v: Vec<_> = self.tracks.values().collect();
-        v.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| browse_order(a, b)));
+        v.sort_by(|a, b| b.added.cmp(&a.added).then_with(|| browse_order(a, b)));
         v.truncate(limit);
         v
     }
@@ -534,17 +545,17 @@ mod tests {
     }
 
     #[test]
-    fn recently_added_orders_by_modification_time() {
+    fn recently_added_orders_by_the_date_added() {
         let dir = music_dir();
         let (mut lib, _state) = library_of(&dir);
         let paths: Vec<_> = lib.tracks.keys().cloned().collect();
         for (i, p) in paths.iter().enumerate() {
-            lib.tracks.get_mut(p).unwrap().modified = 1_000 + i as u64;
+            lib.tracks.get_mut(p).unwrap().added = 1_000 + i as u64;
         }
         let recent = lib.recently_added(2);
         assert_eq!(recent.len(), 2);
-        assert!(recent[0].modified > recent[1].modified);
-        assert_eq!(recent[0].modified, 1_000 + paths.len() as u64 - 1);
+        assert!(recent[0].added > recent[1].added);
+        assert_eq!(recent[0].added, 1_000 + paths.len() as u64 - 1);
     }
 
     #[test]
