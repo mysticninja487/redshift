@@ -137,14 +137,24 @@ export const blur = {
       vs.push(st.v[i]);
     }
     const slot = w / o.pods;
-    ctx.save();
-    if (o.blur > 0) ctx.filter = `blur(${o.blur}px)`;
-    ctx.fillStyle = '#fff';
+    // The soft pods are drawn small and blurred once, then scaled up: a blur is low-frequency
+    // anyway, and a filter on every pod of a full-size canvas costs a whole surface each.
+    const sc = 0.25, lw = Math.max(8, Math.round(w * sc)), lh = Math.max(8, Math.round(h * sc));
+    const layer = keep(e.store, 'blurLayers', () => ({ a: document.createElement('canvas'), b: document.createElement('canvas') }));
+    if (layer.a.width !== lw || layer.a.height !== lh) { layer.a.width = layer.b.width = lw; layer.a.height = layer.b.height = lh; }
+    const a = layer.a.getContext('2d'), b = layer.b.getContext('2d');
+    a.setTransform(sc, 0, 0, sc, 0, 0); a.clearRect(0, 0, w, h);
+    a.fillStyle = '#fff';
     for (let i = 0; i < o.pods; i++) {
       const hh = Math.max(2, vs[i] * h * o.height), ww = slot * (0.26 + vs[i] * 0.4);
-      ctx.beginPath(); ctx.ellipse((i + 0.5) * slot, cy, ww, hh, 0, 0, Math.PI * 2); ctx.fill();
+      a.beginPath(); a.ellipse((i + 0.5) * slot, cy, ww, hh, 0, 0, Math.PI * 2); a.fill();
     }
-    ctx.restore();
+    b.setTransform(1, 0, 0, 1, 0, 0); b.clearRect(0, 0, lw, lh);
+    b.filter = o.blur > 0 ? `blur(${(o.blur * sc).toFixed(2)}px)` : 'none';
+    b.drawImage(layer.a, 0, 0);
+    b.filter = 'none';
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(layer.b, 0, 0, w, h);
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
     ctx.globalAlpha = 0.55;
     ctx.beginPath();

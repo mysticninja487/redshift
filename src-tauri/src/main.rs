@@ -43,106 +43,106 @@ fn err(e: impl std::fmt::Display) -> String {
 
 // ---- transport and queue ----
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_queue(state: State<AppState>, paths: Vec<PathBuf>, start: usize, autoplay: bool) {
     state.0.player.set_queue(paths, start, autoplay);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn play_entry(state: State<AppState>, id: EntryId) {
     state.0.player.play_entry(id);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn pause(state: State<AppState>) {
     state.0.player.pause();
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn resume(state: State<AppState>) {
     state.0.player.resume();
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn toggle_pause(state: State<AppState>) {
     state.0.player.toggle_pause();
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn stop(state: State<AppState>) {
     state.0.player.stop();
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn next(state: State<AppState>) {
     state.0.player.next();
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn previous(state: State<AppState>) {
     state.0.player.previous();
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn seek(state: State<AppState>, secs: f64) {
     state.0.player.seek(secs);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn queue_append(state: State<AppState>, paths: Vec<PathBuf>) {
     state.0.player.append(paths);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn queue_play_next(state: State<AppState>, paths: Vec<PathBuf>) {
     state.0.player.play_next(paths);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn queue_remove(state: State<AppState>, id: EntryId) {
     state.0.player.remove(id);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn queue_move(state: State<AppState>, from: usize, to: usize) {
     state.0.player.move_entry(from, to);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn queue_clear(state: State<AppState>) {
     state.0.player.clear_queue();
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn player_state(state: State<AppState>) -> PlayerState {
     state.0.player.state()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn queue_view(state: State<AppState>) -> QueueView {
     state.0.player.queue()
 }
 
 // ---- sound settings (saved) ----
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_settings(state: State<AppState>) -> Settings {
     state.0.settings()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_volume(state: State<AppState>, volume: f32) {
     state.0.set_volume(volume);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_muted(state: State<AppState>, muted: bool) {
     state.0.set_muted(muted);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_shuffle(state: State<AppState>, on: bool) {
     state.0.set_shuffle(on);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_repeat(state: State<AppState>, mode: RepeatMode) {
     state.0.set_repeat(mode);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_crossfade_secs(state: State<AppState>, secs: f32) {
     state.0.set_crossfade_secs(secs);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_replaygain(state: State<AppState>, mode: ReplayGainMode, preamp_db: f32) {
     state.0.set_replaygain(mode, preamp_db);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn output_devices() -> Vec<DeviceInfo> {
     list_output_devices()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_output_device(state: State<AppState>, id: Option<String>) {
     state.0.set_device(id);
 }
@@ -158,77 +158,77 @@ struct EqInfo {
     custom_presets: Vec<CustomPreset>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn eq_info(state: State<AppState>) -> EqInfo {
     let settings = state.0.settings();
     EqInfo { settings: settings.eq, band_freqs_hz: BAND_FREQS, presets: PRESETS.to_vec(), custom_presets: settings.custom_eq_presets }
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_eq_enabled(state: State<AppState>, on: bool) {
     state.0.set_eq_enabled(on);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_eq_preamp_db(state: State<AppState>, db: f32) {
     state.0.set_eq_preamp_db(db);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_eq_band_db(state: State<AppState>, band: usize, db: f32) {
     state.0.set_eq_band_db(band, db);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_eq_gains_db(state: State<AppState>, gains: [f32; BAND_COUNT]) {
     state.0.set_eq_gains_db(gains);
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn apply_eq_preset(state: State<AppState>, name: String) -> bool {
     state.0.apply_eq_preset(&name)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn save_eq_preset(state: State<AppState>, name: String) -> CmdResult<String> {
     state.0.save_eq_preset(&name).map_err(err)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_eq_preset(state: State<AppState>, name: String) -> bool {
     state.0.delete_eq_preset(&name)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn eq_curve(state: State<AppState>, points: usize) -> Vec<[f32; 2]> {
     state.0.eq_curve(points)
 }
 
 // ---- visualisation ----
 
-#[tauri::command]
+#[tauri::command(async)]
 fn viz_frame(state: State<AppState>) -> VizFrame {
     state.0.player.viz()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn configure_viz(state: State<AppState>, config: SpectrumConfig) {
     state.0.configure_viz(config);
 }
 
 // ---- the UI's own saved state (theme, layout, customisation) ----
 
-#[tauri::command]
+#[tauri::command(async)]
 fn ui_state(state: State<AppState>) -> serde_json::Value {
     state.0.ui_state()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_ui_state(state: State<AppState>, value: serde_json::Value) -> CmdResult<()> {
     state.0.set_ui_state(value).map_err(err)
 }
 
 // ---- library ----
 
-#[tauri::command]
+#[tauri::command(async)]
 fn library_folders(state: State<AppState>) -> Vec<PathBuf> {
     state.0.library_folders()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn add_library_folder(state: State<AppState>, folder: PathBuf) -> CmdResult<bool> {
     state.0.add_library_folder(&folder).map_err(err)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_library_folder(state: State<AppState>, folder: PathBuf) -> CmdResult<bool> {
     state.0.remove_library_folder(&folder).map_err(err)
 }
@@ -251,31 +251,31 @@ async fn scan_library(app: tauri::AppHandle, state: State<'_, AppState>) -> CmdR
     .map_err(err)?
     .map_err(err)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn is_scanning(state: State<AppState>) -> bool {
     state.0.is_scanning()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn library_tracks(state: State<AppState>) -> Vec<TrackMeta> {
     state.0.tracks()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn search_library(state: State<AppState>, query: String) -> Vec<TrackMeta> {
     state.0.search(&query)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn library_albums(state: State<AppState>) -> Vec<Album> {
     state.0.albums()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn library_artists(state: State<AppState>) -> Vec<Artist> {
     state.0.artists()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn recently_added(state: State<AppState>, limit: usize) -> Vec<TrackMeta> {
     state.0.recently_added(limit)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn track_meta(state: State<AppState>, path: PathBuf) -> CmdResult<TrackMeta> {
     state.0.track_meta(&path).map_err(err)
 }
@@ -287,46 +287,46 @@ async fn waveform(state: State<'_, AppState>, path: PathBuf, buckets: usize) -> 
     let overview = tauri::async_runtime::spawn_blocking(move || core.waveform(&path, buckets)).await.map_err(err)?.map_err(err)?;
     Ok((*overview).clone())
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn lyrics(state: State<AppState>, path: PathBuf) -> Option<Lyrics> {
     state.0.lyrics(&path)
 }
 
 // ---- playlists ----
 
-#[tauri::command]
+#[tauri::command(async)]
 fn playlists(state: State<AppState>) -> Vec<PlaylistSummary> {
     state.0.playlists()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn playlist(state: State<AppState>, id: PlaylistId) -> Option<Playlist> {
     state.0.playlist(id)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn create_playlist(state: State<AppState>, name: String, tracks: Vec<PathBuf>) -> CmdResult<PlaylistId> {
     state.0.create_playlist(&name, tracks).map_err(err)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn rename_playlist(state: State<AppState>, id: PlaylistId, name: String) -> CmdResult<()> {
     state.0.rename_playlist(id, &name).map_err(err)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_playlist(state: State<AppState>, id: PlaylistId) -> CmdResult<()> {
     state.0.delete_playlist(id).map_err(err)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn move_playlist(state: State<AppState>, id: PlaylistId, to: usize) -> CmdResult<()> {
     state.0.move_playlist(id, to).map_err(err)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn add_to_playlist(state: State<AppState>, id: PlaylistId, tracks: Vec<PathBuf>, position: Option<usize>) -> CmdResult<()> {
     state.0.add_to_playlist(id, &tracks, position).map_err(err)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_from_playlist(state: State<AppState>, id: PlaylistId, positions: Vec<usize>) -> CmdResult<usize> {
     state.0.remove_from_playlist(id, &positions).map_err(err)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn move_in_playlist(state: State<AppState>, id: PlaylistId, from: usize, to: usize) -> CmdResult<()> {
     state.0.move_in_playlist(id, from, to).map_err(err)
 }
@@ -346,49 +346,49 @@ async fn paths_exist(state: State<'_, AppState>, paths: Vec<PathBuf>) -> CmdResu
     let core = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || core.paths_exist(&paths)).await.map_err(err)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn export_m3u(state: State<AppState>, id: PlaylistId, dest: PathBuf) -> CmdResult<()> {
     state.0.export_m3u(id, &dest).map_err(err)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn play_playlist(state: State<AppState>, id: PlaylistId, start: usize) -> CmdResult<()> {
     state.0.play_playlist(id, start).map_err(err)
 }
 
 // ---- favourites and play history ----
 
-#[tauri::command]
+#[tauri::command(async)]
 fn favourite_paths(state: State<AppState>) -> Vec<PathBuf> {
     state.0.favourite_paths()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn favourites(state: State<AppState>) -> Vec<TrackMeta> {
     state.0.favourites()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn set_favourite(state: State<AppState>, paths: Vec<PathBuf>, on: bool) -> usize {
     state.0.set_favourite(&paths, on)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn play_stats(state: State<AppState>) -> Vec<PlayStat> {
     state.0.play_stats()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn reset_play_stats(state: State<AppState>, path: Option<PathBuf>) {
     state.0.reset_play_stats(path.as_deref());
 }
 
 // ---- fonts ----
 
-#[tauri::command]
+#[tauri::command(async)]
 fn fonts(state: State<AppState>) -> Vec<FontEntry> {
     state.0.fonts()
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn import_font(state: State<AppState>, path: PathBuf) -> CmdResult<FontEntry> {
     state.0.import_font(&path).map_err(err)
 }
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_font(state: State<AppState>, file: String) -> bool {
     state.0.remove_font(&file)
 }
@@ -467,12 +467,12 @@ fn serve_cover(app: &tauri::AppHandle, uri_path: &str) -> tauri::http::Response<
     let cover = app.try_state::<AppState>().and_then(|s| s.0.cover(Path::new(&path)));
     match cover {
         Some(c) => tauri::http::Response::builder()
-            .header("Content-Type", c.mime)
+            .header("Content-Type", c.mime.clone())
             .header("Cache-Control", "max-age=3600")
             // The UI reads cover pixels (to theme itself from the artwork), which a canvas only
             // allows for images served with CORS enabled.
             .header("Access-Control-Allow-Origin", "*")
-            .body(Cow::Owned(c.data)),
+            .body(Cow::Owned(c.data.clone())),
         None => tauri::http::Response::builder().status(404).body(Cow::Borrowed(&[][..])),
     }
     .expect("static headers are valid")
@@ -495,8 +495,16 @@ fn serve_font(app: &tauri::AppHandle, uri_path: &str) -> tauri::http::Response<C
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .register_uri_scheme_protocol("cover", |ctx, request| serve_cover(ctx.app_handle(), request.uri().path()))
-        .register_uri_scheme_protocol("font", |ctx, request| serve_font(ctx.app_handle(), request.uri().path()))
+        // These answer on a worker thread: reading a cover means parsing a whole audio file's tags,
+        // which would otherwise freeze the window while it happens.
+        .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
+            let (app, path) = (ctx.app_handle().clone(), request.uri().path().to_string());
+            std::thread::spawn(move || responder.respond(serve_cover(&app, &path)));
+        })
+        .register_asynchronous_uri_scheme_protocol("font", |ctx, request, responder| {
+            let (app, path) = (ctx.app_handle().clone(), request.uri().path().to_string());
+            std::thread::spawn(move || responder.respond(serve_font(&app, &path)));
+        })
         .on_window_event(|window, event| {
             let Some(state) = window.app_handle().try_state::<AppState>() else { return };
             let tray = state.0.settings().tray;

@@ -72,6 +72,7 @@ export function initKeys() {
     if (t instanceof HTMLElement && (t.closest('[role="slider"]') || t.closest('.segmented')) && /^(Arrow|Home|End|Page)/.test(e.key)) return;
     if (t instanceof HTMLElement && t.tagName === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
     if (document.querySelector('.dialog-back')) return;
+    if ((e.ctrlKey || e.metaKey) && e.key === ',') { e.preventDefault(); setView('settings'); return; }
     const combo = comboFromEvent(e);
     if (!combo) return;
     const action = ACTIONS.find((a) => comboFor(a.id) === combo);

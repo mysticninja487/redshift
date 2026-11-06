@@ -2,6 +2,9 @@
 // visualiser), not just a colour set; CSS for each lives in css/skins/<id>.css. Anything a skin
 // decides here is only a default: the person's own choices are stored per skin on top of it.
 //
+// `vizOff` says what a skin's centrepiece becomes when visualisers are switched off and the skin's
+// hero is a visualiser: 'quiet' (the album set as type) or 'none' (the skin's type and colour alone).
+//
 // Slots are the places panels can sit: top, left, stage (the big middle), right, bottom. Each skin
 // gives them its own geometry; a panel dropped in a different slot restyles itself to fit.
 
@@ -14,7 +17,6 @@ export const PANELS = [
   { id: 'seek', name: 'Progress', blurb: 'Position bar with elapsed and remaining time.' },
   { id: 'queue', name: 'Up next', blurb: 'The play queue; drag to reorder.' },
   { id: 'lyrics', name: 'Lyrics', blurb: 'Synced lyrics that follow the song.' },
-  { id: 'eq', name: 'Equaliser', blurb: 'Ten bands, pre-amp and presets.' },
   { id: 'viz', name: 'Visualiser', blurb: 'A second visualiser, independent of the hero.' },
   { id: 'meters', name: 'Level meters', blurb: 'Left and right level with peak hold.' },
 ];
@@ -65,6 +67,27 @@ export const ACCENTS = [
 
 const SKINS = [
   {
+    id: 'classic',
+    name: 'Classic',
+    blurb: 'The familiar layout: a sidebar, the cover and track in the middle, lyrics and the queue beside them, a player bar along the bottom.',
+    scheme: 'dark',
+    hasDecor: false,
+    vizOff: 'none',
+    palette: {
+      dark: { bg: '#101216', bg2: '#171a20', bg3: '#21252d', fg: '#eceef2', accent: '#e2312d' },
+      light: { bg: '#f2f3f6', bg2: '#ffffff', bg3: '#e6e8ed', fg: '#15181d', accent: '#d42a26' },
+    },
+    fonts: { display: 'Inter', body: 'Inter', mono: 'JetBrains Mono' },
+    defaults: {
+      hero: { mode: 'art' },
+      viz: { main: 'bars', side: 'bars' },
+      seek: { style: 'line' },
+      shape: { radius: 10, shadow: 0.7 },
+      decor: false,
+      layout: { slots: { left: [], stage: ['hero', 'info'], right: ['lyrics', 'queue'], bottom: ['transport', 'seek'], top: [] } },
+    },
+  },
+  {
     id: 'turntable',
     name: 'Turntable',
     blurb: 'A record on the deck. Charcoal and warm paper split on the diagonal, with the tonearm tracking the song.',
@@ -74,6 +97,8 @@ const SKINS = [
       light: { bg: '#e3d8c3', bg2: '#ebe2d0', bg3: '#f3ecdd', fg: '#1b1a18', accent: '#d42a26', paper: '#14161a', ink: '#f0ebdf' },
     },
     fonts: { display: 'Space Grotesk', body: 'Inter', mono: 'JetBrains Mono' },
+    // Options only this skin has (Settings shows them under the skin's own heading).
+    options: ['spin', 'tonearm', 'plinth', 'label'],
     defaults: {
       hero: { mode: 'turntable', tonearm: true },
       viz: { main: 'bars', side: 'bars' },
@@ -85,6 +110,7 @@ const SKINS = [
   {
     id: 'noir',
     name: 'Noir Studio',
+    vizOff: 'quiet',
     blurb: 'A record sleeve in the dark. Hairline columns, a serif title and the whole song drawn as fine vertical lines.',
     scheme: 'dark',
     palette: {
@@ -104,6 +130,7 @@ const SKINS = [
   {
     id: 'wavelength',
     name: 'Wavelength',
+    vizOff: 'none',
     blurb: 'Giant grotesk type over a blurred waveform. The background sweeps from light to dark through the cover\'s colours.',
     scheme: 'dark',
     palette: {
@@ -129,6 +156,7 @@ const SKINS = [
       dark: { bg: '#080b10', bg2: '#0f141b', bg3: '#171e28', fg: '#e9edf2', accent: '#ff7a2f' },
     },
     fonts: { display: 'Barlow Condensed', body: 'Barlow Condensed', mono: 'JetBrains Mono' },
+    options: ['glitch'],
     defaults: {
       hero: { mode: 'art', glitch: true },
       viz: { main: 'spectrogram', side: 'ridges' },
@@ -147,6 +175,7 @@ const SKINS = [
       dark: { bg: '#161519', bg2: '#1d1c21', bg3: '#26252b', fg: '#e8e3da', accent: '#e24b44' },
     },
     fonts: { display: 'Cormorant Garamond', body: 'Inter', mono: 'JetBrains Mono' },
+    options: ['sun', 'halftone'],
     defaults: {
       hero: { mode: 'art', halftone: true, sun: true },
       viz: { main: 'lines', side: 'lines' },
@@ -158,6 +187,7 @@ const SKINS = [
   {
     id: 'soft',
     name: 'Soft Console',
+    vizOff: 'none',
     blurb: 'Pressed-plastic controls, real knobs and a glowing sphere on its orbit. Quiet, tactile, a little clinical.',
     scheme: 'light',
     palette: {
@@ -165,18 +195,20 @@ const SKINS = [
       dark: { bg: '#181a1f', bg2: '#1f2229', bg3: '#2a2e37', fg: '#e5e7eb', accent: '#ff3b5c' },
     },
     fonts: { display: 'Space Grotesk', body: 'Inter', mono: 'JetBrains Mono' },
+    hasDecor: false, // no background decoration layers, so Settings leaves out the Decoration switch
     defaults: {
       hero: { mode: 'viz', viz: 'orb' },
       viz: { main: 'orb', side: 'bars' },
       seek: { style: 'line' },
       shape: { radius: 18, shadow: 1.2 },
       transport: { volume: 'knob' },
-      layout: { slots: { left: ['eq'], stage: ['hero', 'info'], right: ['queue'], bottom: ['transport', 'seek'], top: [] } },
+      layout: { slots: { left: [], stage: ['hero', 'info'], right: ['queue'], bottom: ['transport', 'seek'], top: [] } },
     },
   },
   {
     id: 'pixel',
     name: 'Pixel Mono',
+    vizOff: 'quiet',
     blurb: 'A pocket recorder\'s spec sheet. Pill buttons, dotted outlines, pixel display type on a grainy orange glow.',
     scheme: 'light',
     palette: {

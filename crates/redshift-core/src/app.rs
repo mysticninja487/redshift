@@ -35,6 +35,10 @@ use crate::waveform::{self, Overview};
 
 /// How many waveform overviews are kept for replays.
 const WAVEFORM_CACHE_SIZE: usize = 48;
+/// How many covers (or "no cover" answers) are kept. The window asks for the playing track's
+/// cover several times, and a library view asks for one per album; parsing a file's tags each
+/// time is slow for large FLAC files.
+const COVER_CACHE_SIZE: usize = 40;
 
 pub const SETTINGS_FILE: &str = "settings.json";
 pub const LIBRARY_FILE: &str = "library.json";
@@ -218,7 +222,11 @@ pub struct App {
     scanning: AtomicBool,
     /// Recent waveform overviews, keyed by file, size, modified time and bucket count.
     waveforms: Mutex<VecDeque<(WaveformKey, Arc<Overview>)>>,
+    /// Recent covers, keyed by file, size and modified time. `None` remembers a file with no cover.
+    covers: Mutex<VecDeque<(CoverKey, Option<Arc<Cover>>)>>,
 }
+
+type CoverKey = (PathBuf, u64, u64);
 
 type WaveformKey = (PathBuf, u64, u64, usize);
 
@@ -268,6 +276,7 @@ impl App {
             data_dir,
             scanning: AtomicBool::new(false),
             waveforms: Mutex::new(VecDeque::new()),
+            covers: Mutex::new(VecDeque::new()),
         };
         Ok((app, events))
     }
@@ -647,8 +656,29 @@ impl App {
         meta::is_audio_file(path).then(|| lyrics::find_lyrics(path)).flatten()
     }
     /// Cover art for an audio file (same restriction as [`lyrics`](Self::lyrics)).
-    pub fn cover(&self, path: &Path) -> Option<Cover> {
-        meta::is_audio_file(path).then(|| meta::read_cover(path)).flatten()
+    pub fn cover(&self, path: &Path) -> Option<Arc<Cover>> {
+        if !meta::is_audio_file(path) {
+            return None;
+        }
+        let key = fs::metadata(path).ok().map(|m| {
+            let mtime = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
+            (path.to_path_buf(), m.len(), mtime)
+        });
+        if let Some(key) = &key {
+            if let Some((_, hit)) = self.covers.lock().iter().find(|(k, _)| k == key) {
+                return hit.clone();
+            }
+        }
+        // Read outside the lock: a big file can take a while and other covers shouldn't wait.
+        let found = meta::read_cover(path).map(Arc::new);
+        if let Some(key) = key {
+            let mut cache = self.covers.lock();
+            cache.push_back((key, found.clone()));
+            while cache.len() > COVER_CACHE_SIZE {
+                cache.pop_front();
+            }
+        }
+        found
     }
 
     // ---- playlists (each change is saved straight away) ----
@@ -989,6 +1019,18 @@ mod tests {
         app.scanning.store(false, Ordering::Release);
         app.scan_library(&mut |_| {}).unwrap();
         assert!(!app.is_scanning());
+    }
+
+    #[test]
+    fn covers_are_remembered_and_the_cache_is_bounded() {
+        let state = tempfile::tempdir().unwrap();
+        let app = open(state.path());
+        let a = app.cover(&fixture("tagged.flac")).expect("has a cover");
+        let b = app.cover(&fixture("tagged.flac")).expect("still has one");
+        assert!(Arc::ptr_eq(&a, &b), "the second ask is served from the cache");
+        assert!(app.cover(&fixture("chirp_44k_stereo.flac")).is_none());
+        assert!(app.cover(&fixture("chirp_44k_stereo.flac")).is_none(), "a miss is remembered too");
+        assert!(app.covers.lock().len() <= COVER_CACHE_SIZE);
     }
 
     #[test]

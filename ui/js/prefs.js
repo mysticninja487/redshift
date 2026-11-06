@@ -27,7 +27,8 @@ export const BASE = {
 
 export const DEFAULT_PREFS = {
   v: 1,
-  skin: 'turntable',
+  skin: 'classic',
+  layoutVersion: 2,
   skins: {},
   keys: {},
   library: { tab: 'albums', sort: 'default', albumSize: 190, playMode: 'single' },
@@ -37,12 +38,19 @@ export const DEFAULT_PREFS = {
 };
 
 let prefs = clone(DEFAULT_PREFS);
+let migrated = false;
+/** True once, right after an older install was moved to the Classic layout. */
+export const takeMigrated = () => { const m = migrated; migrated = false; return m; };
 const save = debounce(() => api.setUiState(prefs).catch((e) => console.warn('saving UI settings failed', e)), 500);
 
 export async function loadPrefs() {
   let saved = null;
   try { saved = await api.uiState(); } catch (e) { console.warn('loading UI settings failed', e); }
-  prefs = deepMerge(clone(DEFAULT_PREFS), saved && typeof saved === 'object' && saved.v === 1 ? saved : {});
+  const had = saved && typeof saved === 'object' && saved.v === 1;
+  prefs = deepMerge(clone(DEFAULT_PREFS), had ? saved : {});
+  // People who set Redshift up before the Classic layout existed move to it once. Their own
+  // per-skin choices are kept, and the other skins are one click away.
+  if (had && (saved.layoutVersion ?? 0) < 2) { prefs.skin = 'classic'; prefs.layoutVersion = 2; migrated = true; }
   return prefs;
 }
 export const getPrefs = () => prefs;

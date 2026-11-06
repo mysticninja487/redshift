@@ -54,11 +54,21 @@ function coverLoads(url) {
   });
 }
 
-export async function refreshQueue() {
-  const prev = state.queue.current_entry;
-  state.queue = await api.queueView();
-  emit('queue');
-  if (state.queue.current_entry !== prev) await loadTrack(state.queue.current_entry);
+// A track change and a queue change usually arrive together; one fetch of the (possibly very
+// long) queue serves both, and a request that comes in mid-fetch triggers exactly one more.
+let queueFetch = null, queueAgain = false;
+export function refreshQueue() {
+  if (queueFetch) { queueAgain = true; return queueFetch; }
+  queueFetch = (async () => {
+    do {
+      queueAgain = false;
+      const prev = state.queue.current_entry;
+      state.queue = await api.queueView();
+      emit('queue');
+      if (state.queue.current_entry !== prev) await loadTrack(state.queue.current_entry);
+    } while (queueAgain);
+  })().finally(() => { queueFetch = null; });
+  return queueFetch;
 }
 
 export async function refreshPlayer() {

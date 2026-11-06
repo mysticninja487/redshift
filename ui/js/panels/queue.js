@@ -20,7 +20,14 @@ export function mount(el) {
   const head = h('div', { class: 'panel-head' }, title, count, iconButton('trash', 'Clear queue', () => act(api.queueClear()), { size: 16, cls: 'q-clear' }));
   const empty = h('div', { class: 'empty' }, icon('queue', 28), h('p', null, 'The queue is empty. Play an album or add tracks from the library.'));
   const meta = new Map(); // path -> tags, filled in as rows come into view
-  let dragging = null;
+  const asked = new Set(); // paths whose tags have been requested already (one request each)
+  let dragging = null, repaint = 0;
+  // Tags arrive one by one; repaint once per frame rather than once per arrival, and never while
+  // a row is being dragged (the repaint would pull it out from under the pointer).
+  const repaintSoon = () => {
+    if (repaint) return;
+    repaint = requestAnimationFrame(() => { repaint = 0; if (dragging) repaintSoon(); else list.refresh(); });
+  };
 
   const rowH = () => ROW[document.documentElement.dataset.density] ?? 46;
   const list = virtualList({ rowHeight: rowH(), cls: 'q-list', render: (i) => row(i) });
@@ -29,7 +36,10 @@ export function mount(el) {
   function row(i) {
     const e = state.queue.entries[i];
     const m = meta.get(e.path);
-    if (m === undefined) getMeta(e.path).then((t) => { meta.set(e.path, t ?? null); list.refresh(); });
+    if (m === undefined && !asked.has(e.path)) {
+      asked.add(e.path);
+      getMeta(e.path).then((t) => { meta.set(e.path, t ?? null); repaintSoon(); });
+    }
     const isCur = e.id === state.queue.current_entry;
     const playing = isCur && state.player.status === 'playing';
     const grip = h('span', { class: 'q-grip', title: 'Drag to reorder' }, icon('grip', 14));
@@ -85,5 +95,5 @@ export function mount(el) {
   }
   L.on(['queue', 'status', 'ui'], render);
   render();
-  return { destroy: () => L.destroy() };
+  return { destroy: () => { cancelAnimationFrame(repaint); repaint = -1; L.destroy(); } };
 }

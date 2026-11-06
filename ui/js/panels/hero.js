@@ -1,7 +1,8 @@
 // The centrepiece. Modes: turntable (a record that spins, with a tonearm that tracks the song),
 // art (the cover, with optional sun / halftone / glitch treatments), viz (any visualiser), none.
 
-import { cfg, featureOn, get } from '../prefs.js';
+import { cfg, featureOn, get, getPrefs } from '../prefs.js';
+import { getSkin } from '../skins.js';
 import { duration, isPlaying, position, state } from '../state.js';
 import { clear, clamp, h, svg } from '../util.js';
 import { mountViz, watchLive } from '../viz/engine.js';
@@ -89,10 +90,27 @@ function vizHero(host) {
   return { destroy: () => handle.destroy() };
 }
 
-/** The centrepiece mode, with the visualiser swapped for the cover while visualisers are off. */
-const heroMode = (c) => (c.hero.mode === 'viz' && !featureOn('viz') ? 'art' : c.hero.mode);
+/**
+ * A quiet centrepiece for skins whose hero is a visualiser: the album set large in the skin's own
+ * display type. No picture, so nothing sits in the skin's design that the skin didn't draw.
+ */
+function quiet(host) {
+  const L = lifecycle();
+  const album = h('div', { class: 'quiet-album' }), meta = h('div', { class: 'quiet-meta' });
+  host.append(h('div', { class: 'quiet' }, album, meta));
+  const render = () => {
+    const t = state.track;
+    album.textContent = t ? t.album || t.title || '' : '';
+    meta.textContent = t ? [t.artist, t.year].filter(Boolean).join('  ·  ') : '';
+  };
+  L.on('track', render); render();
+  return { destroy: () => L.destroy() };
+}
 
-const MODES = { turntable, art, viz: vizHero, none: () => null };
+/** The centrepiece mode. With visualisers off, a visualiser hero becomes what the skin says (skins.js). */
+const heroMode = (c) => (c.hero.mode === 'viz' && !featureOn('viz') ? (getSkin(getPrefs().skin).vizOff === 'quiet' ? 'quiet' : 'none') : c.hero.mode);
+
+const MODES = { turntable, art, viz: vizHero, quiet, none: () => null };
 
 export function mount(el) {
   const L = lifecycle();

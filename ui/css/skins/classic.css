@@ -1,0 +1,46 @@
+/* Classic: the conventional layout. A sidebar down the left (navigation, settings and the quick
+   tools), the cover and track in the middle, lyrics and the queue on the right, and a player bar
+   along the bottom. Everything is still a normal skin: panels can be moved and restyled in Settings. */
+:root[data-skin="classic"] { --side-w: 232px; --chrome-h: 0px; --gap: calc(16px * var(--density)); }
+[data-skin="classic"] #app { grid-template-columns: var(--side-w) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+[data-skin="classic"] .chrome { grid-column: 1; grid-row: 1; flex-direction: column; align-items: stretch; gap: 4px; padding: 20px 12px 14px; background: var(--bg2); border-right: var(--bw) solid var(--line); min-height: 0; overflow-y: auto; }
+[data-skin="classic"] .views { grid-column: 2; grid-row: 1; }
+
+[data-skin="classic"] .brand { margin: 0 0 18px; padding: 0 10px; font-size: 1.2rem; }
+[data-skin="classic"] .nav { flex-direction: column; gap: 2px; flex: 1; min-height: 0; }
+[data-skin="classic"] .nav-btn { width: 100%; justify-content: flex-start; gap: 12px; padding: 11px 12px; font-size: .95rem; border-radius: var(--r-ctl); }
+[data-skin="classic"] .nav-btn[aria-current="true"] { background: color-mix(in srgb, var(--accent) 17%, transparent); color: var(--fg); box-shadow: inset 3px 0 0 var(--accent); }
+[data-skin="classic"] .nav-btn[aria-current="true"] svg { color: var(--accent-text); }
+/* Settings sits at the foot of the list, apart from the places you go to listen. */
+[data-skin="classic"] .nav-btn[data-view="settings"] { margin-top: auto; }
+
+[data-skin="classic"] .chrome-tools { flex-wrap: wrap; justify-content: flex-start; gap: 6px; margin: 8px 0 0; padding-top: 12px; border-top: var(--bw) solid var(--line); }
+[data-skin="classic"] .chrome-tools .skin-select { order: -1; flex: 1 1 100%; max-width: none; margin-bottom: 4px; }
+[data-skin="classic"] .now-tools { order: -2; flex: 1 1 100%; display: flex; gap: 4px; margin-bottom: 4px; }
+[data-skin="classic"] .now-tools .btn { flex: 1; }
+[data-skin="classic"] .settings-btn { display: none; } /* it's in the list already */
+[data-skin="classic"][data-view="now"] .brand-name { letter-spacing: .01em; }
+
+/* the pages */
+[data-skin="classic"] .stage-grid { padding: 22px 22px 18px; gap: 18px; grid-template-areas: "top top" "stage right" "bottom bottom"; grid-template-columns: minmax(0, 1fr) clamp(300px, 30vw, 400px); }
+[data-skin="classic"] .view:not(#now) { padding: 22px 26px 18px; }
+[data-skin="classic"] .slot[data-slot="right"] { width: auto; }
+[data-skin="classic"] .slot[data-slot="stage"] { justify-content: center; gap: 18px; align-items: center; }
+[data-skin="classic"] .slot[data-slot="stage"] > .panel[data-panel="hero"] { width: 100%; }
+[data-skin="classic"] .art-frame { width: 100%; box-shadow: 0 18px 50px rgba(0, 0, 0, calc(.35 * var(--shadow-k))); border-radius: calc(var(--r-panel) + 4px); }
+[data-skin="classic"] .slot[data-slot="stage"] .info { flex-direction: column; align-items: center; text-align: center; gap: 4px; }
+[data-skin="classic"] .slot[data-slot="stage"] .i-text { justify-items: center; }
+[data-skin="classic"] .slot[data-slot="stage"] .i-title { font-size: clamp(1.35rem, 2.2vw, 2rem); }
+[data-skin="classic"] .slot[data-slot="stage"] .i-tech { justify-content: center; }
+[data-skin="classic"] .slot[data-slot="stage"] .i-pos { display: none; }
+
+/* the player bar */
+[data-skin="classic"] .slot[data-slot="bottom"] { background: var(--bg2); border: var(--bw) solid var(--line); border-radius: calc(var(--r-panel) + 4px); padding: 10px 20px; gap: 24px; box-shadow: 0 8px 30px rgba(0, 0, 0, calc(.2 * var(--shadow-k))); }
+[data-skin="classic"] .panel[data-panel="queue"], [data-skin="classic"] .panel[data-panel="lyrics"] { background: var(--bg2); box-shadow: none; }
+[data-skin="classic"] .q-title { color: var(--fg); letter-spacing: .06em; }
+[data-skin="classic"] .t-play { border-radius: 50%; }
+
+/* narrow windows: the sidebar shrinks to icons */
+@media (max-width: 1000px) { :root[data-skin="classic"] { --side-w: 64px; } [data-skin="classic"] .brand-name, [data-skin="classic"] .nav-btn span { display: none; } [data-skin="classic"] .brand { justify-content: center; padding: 0; } [data-skin="classic"] .nav-btn { justify-content: center; padding: 12px 0; } [data-skin="classic"] .chrome-tools .skin-select { display: none; } [data-skin="classic"] .chrome { padding: 18px 8px 12px; } [data-skin="classic"] .now-tools { flex-direction: column; } }
+@media (max-width: 860px) { [data-skin="classic"] .stage-grid { grid-template-areas: "stage" "right" "bottom"; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 240px auto; overflow-y: auto; } }
+[data-skin="classic"] .now-tools { border: 0; padding: 0; margin-right: 0; }

@@ -9,7 +9,8 @@ import { act, refreshPlayer, refreshSettings, setView } from '../controller.js';
 import { ACTIONS, captureKeys, comboFor, comboFromEvent, prettyCombo, setCombo } from '../keys.js';
 import { importFontFile, importedFonts, removeImportedFont } from '../fonts.js';
 import { cfg, exportSkinOverrides, featureOn, getPrefs, importSkinOverrides, isOverridden, resetSkin, set, setPref, setSkin } from '../prefs.js';
-import { ACCENTS, FONTS, PANELS, SLOTS, cleanFontName, skins } from '../skins.js';
+import { ACCENTS, FONTS, PANELS, SLOTS, cleanFontName, getSkin, skins } from '../skins.js';
+import { icon } from '../ui/icons.js';
 import { state } from '../state.js';
 import { tokens } from '../theme.js';
 import { clear, clone, h, toast } from '../util.js';
@@ -18,8 +19,10 @@ import { mountViz } from '../viz/engine.js';
 import { button, colorInput, iconButton, segmented, select, slider, toggle } from '../ui/controls.js';
 import { confirmDialog } from '../ui/dialog.js';
 
+// [id, label, icon]. The 'skin' entry only exists for skins that have options of their own.
 const TABS = [
-  ['appearance', 'Appearance'], ['layout', 'Layout'], ['visual', 'Visualisers'], ['playback', 'Playback'], ['lyrics', 'Lyrics & info'], ['keys', 'Shortcuts'], ['data', 'Data'],
+  ['appearance', 'Appearance', 'palette'], ['skin', '', 'record'], ['playback', 'Playback', 'play'], ['lyrics', 'Lyrics & info', 'lyrics'],
+  ['visual', 'Visualisers', 'viz'], ['layout', 'Layout', 'layout'], ['keys', 'Shortcuts', 'keyboard'], ['data', 'Data & reset', 'database'],
 ];
 const HERO_MODES = [{ value: 'art', label: 'Cover art' }, { value: 'turntable', label: 'Turntable' }, { value: 'viz', label: 'Visualiser' }, { value: 'none', label: 'Nothing' }];
 const SLOT_NAMES = { top: 'Top', left: 'Left', stage: 'Centre', right: 'Right', bottom: 'Bottom' };
@@ -34,10 +37,11 @@ const num = (v, d = 2) => +Number(v).toFixed(d);
 
 export function mountSettings(root) {
   let tab = 'appearance';
-  const tabs = h('div', { class: 'lib-tabs set-tabs', role: 'tablist' }, TABS.map(([id, name]) => h('button', { class: 'lib-tab', type: 'button', role: 'tab', dataset: { tab: id }, onclick: () => { tab = id; render(); } }, name)));
-  const head = h('header', { class: 'v-head' }, iconButton('chevronLeft', 'Back to now playing', () => setView('now'), { cls: 'v-back' }), h('h1', { class: 'v-title' }, 'Settings'), tabs);
+  const tabs = h('nav', { class: 'set-nav', role: 'tablist', 'aria-orientation': 'vertical', 'aria-label': 'Settings sections' }, TABS.map(([id, name, ic]) =>
+    h('button', { class: 'set-tab', type: 'button', role: 'tab', dataset: { tab: id }, onclick: () => { tab = id; render(); } }, icon(ic, 18), h('span', null, name))));
+  const head = h('header', { class: 'v-head' }, iconButton('chevronLeft', 'Back to now playing', () => setView('now'), { cls: 'v-back' }), h('h1', { class: 'v-title' }, 'Settings'));
   const body = h('div', { class: 'v-body set-body' });
-  root.append(head, body);
+  root.append(head, h('div', { class: 'set-shell' }, tabs, body));
   let previews = [];
   let renderedSkin = null;
 
@@ -46,7 +50,14 @@ export function mountSettings(root) {
     previews.forEach((p) => p.destroy?.()); previews = [];
     captureKeys(false);
     renderedSkin = getPrefs().skin;
-    tabs.querySelectorAll('.lib-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+    const mine = getSkin(getPrefs().skin);
+    if (tab === 'skin' && !mine.options?.length) tab = 'appearance';
+    tabs.querySelectorAll('.set-tab').forEach((b) => {
+      const isSkin = b.dataset.tab === 'skin';
+      b.hidden = isSkin && !mine.options?.length;
+      if (isSkin) b.lastChild.textContent = `${mine.name} options`;
+      b.setAttribute('aria-selected', String(b.dataset.tab === tab));
+    });
     const st = body.scrollTop;
     clear(body).append(TAB_BUILDERS[tab]());
     body.scrollTop = st;
@@ -102,9 +113,8 @@ export function mountSettings(root) {
         row('Shadows', slider({ min: 0, max: 2, step: 0.1, value: c.shape.shadow, label: 'Shadows', onInput: (v) => set('shape.shadow', v), format: (v) => `${Math.round(v * 100)}%` }), { path: 'shape.shadow', redo: again }),
         row('Frosted glass', slider({ min: 0, max: 1, step: 0.05, value: c.shape.glass, label: 'Frosted glass', onInput: (v) => set('shape.glass', v), format: (v) => `${Math.round(v * 100)}%` }), { path: 'shape.glass', redo: again }),
         row('Film grain', slider({ min: 0, max: 1, step: 0.05, value: c.shape.grain, label: 'Film grain', onInput: (v) => set('shape.grain', v), format: (v) => `${Math.round(v * 100)}%` }), { path: 'shape.grain', redo: again }),
-        row('Decoration', toggle({ label: 'Decoration', value: c.decor, onChange: (v) => set('decor', v) }), { hint: 'Ghost headings, background shapes and similar flourishes.', path: 'decor', redo: again }),
-        row('Reduce motion', segmented({ label: 'Reduce motion', options: [{ value: 'system', label: 'Follow system' }, { value: 'on', label: 'On' }, { value: 'off', label: 'Off' }], value: c.motion.reduce === true ? 'on' : c.motion.reduce === false ? 'off' : c.motion.reduce, onChange: (v) => set('motion.reduce', v) }), { path: 'motion.reduce', redo: again }),
-        row('Spinning record', toggle({ label: 'Spinning record', value: c.motion.spin, onChange: (v) => set('motion.spin', v) }), { path: 'motion.spin', redo: again })));
+        skin.hasDecor === false ? null : row('Decoration', toggle({ label: 'Decoration', value: c.decor, onChange: (v) => set('decor', v) }), { hint: 'Ghost headings, background shapes and similar flourishes.', path: 'decor', redo: again }),
+        row('Reduce motion', segmented({ label: 'Reduce motion', options: [{ value: 'system', label: 'Follow system' }, { value: 'on', label: 'On' }, { value: 'off', label: 'Off' }], value: c.motion.reduce === true ? 'on' : c.motion.reduce === false ? 'off' : c.motion.reduce, onChange: (v) => set('motion.reduce', v) }), { path: 'motion.reduce', redo: again })));
   }
   /**
    * A font chooser: the built-in fonts, fonts the person imported, any font installed on the PC
@@ -170,6 +180,35 @@ export function mountSettings(root) {
         row('Mirror left and right', toggle({ label: 'Mirror left and right', value: c.layout.flip, onChange: (v) => set('layout.flip', v) }), { path: 'layout.flip', redo: again })));
   }
 
+
+  /** The turntable centrepiece's own settings: shared by the Turntable skin's page and the centrepiece group. */
+  function turntableRows() {
+    const c = cfg();
+    return [
+      row('Spinning record', toggle({ label: 'Spinning record', value: c.motion.spin, onChange: (v) => set('motion.spin', v) }), { hint: 'The record turns while a song plays.', path: 'motion.spin', redo: again }),
+      row('Tonearm', toggle({ label: 'Tonearm', value: c.hero.tonearm, onChange: (v) => set('hero.tonearm', v) }), { path: 'hero.tonearm', redo: again }),
+      row('Plinth', toggle({ label: 'Plinth', value: c.hero.plinth, onChange: (v) => set('hero.plinth', v) }), { path: 'hero.plinth', redo: again }),
+      row('Label', segmented({ label: 'Record label', options: [{ value: 'art', label: 'Cover' }, { value: 'accent', label: 'Accent' }], value: c.hero.label, onChange: (v) => set('hero.label', v) }), { path: 'hero.label', redo: again }),
+    ];
+  }
+
+  // ---------- Skin options (only the current skin's own) ----------
+  function skinTab() {
+    const c = cfg(), skin = getSkin(getPrefs().skin);
+    const REG = {
+      turntable: () => group('Turntable', ...turntableRows()),
+      glitch: () => group('Glitch', row('Glitch on the beat', toggle({ label: 'Glitch on the beat', value: c.hero.glitch, onChange: (v) => set('hero.glitch', v) }), { hint: 'The cover and title tear briefly on strong beats.', path: 'hero.glitch', redo: again })),
+      paper: () => group('Print look',
+        row('Red sun', toggle({ label: 'Sun behind the cover', value: c.hero.sun, onChange: (v) => set('hero.sun', v) }), { path: 'hero.sun', redo: again }),
+        row('Halftone cover', toggle({ label: 'Halftone cover', value: c.hero.halftone, onChange: (v) => set('hero.halftone', v) }), { hint: 'Prints the cover as a coarse dot screen.', path: 'hero.halftone', redo: again })),
+    };
+    const o = skin.options ?? [], parts = [];
+    if (o.includes('tonearm')) parts.push(REG.turntable());
+    if (o.includes('glitch')) parts.push(REG.glitch());
+    if (o.includes('sun') || o.includes('halftone')) parts.push(REG.paper());
+    return h('div', { class: 'set-page' }, h('p', { class: 'hint' }, `These only exist in ${skin.name}. Switch skin and they are replaced by that skin's own options, if it has any.`), ...parts);
+  }
+
   // ---------- Visualisers ----------
   function visual() {
     const c = cfg();
@@ -195,14 +234,8 @@ export function mountSettings(root) {
     return h('div', { class: 'set-page' },
       group('Visualisers', row('Show visualisers', toggle({ label: 'Show visualisers', value: featureOn('viz'), onChange: (v) => setPref('features.viz', v) }), { hint: 'Switch off to hide every visualiser and the level meters in all skins. Also on the Now Playing top bar (Shift+V).' })),
       group('Centrepiece', row('Shows', segmented({ label: 'Centrepiece', options: HERO_MODES, value: c.hero.mode, onChange: (v) => { set('hero.mode', v); render(); } }), { path: 'hero.mode', redo: again }),
-        c.hero.mode === 'turntable' && h('div', null,
-          row('Tonearm', toggle({ label: 'Tonearm', value: c.hero.tonearm, onChange: (v) => set('hero.tonearm', v) }), { path: 'hero.tonearm', redo: again }),
-          row('Plinth', toggle({ label: 'Plinth', value: c.hero.plinth, onChange: (v) => set('hero.plinth', v) }), { path: 'hero.plinth', redo: again }),
-          row('Label', segmented({ label: 'Record label', options: [{ value: 'art', label: 'Cover' }, { value: 'accent', label: 'Accent' }], value: c.hero.label, onChange: (v) => set('hero.label', v) }), { path: 'hero.label', redo: again })),
-        c.hero.mode === 'art' && h('div', null,
-          row('Red sun', toggle({ label: 'Sun behind the cover', value: c.hero.sun, onChange: (v) => set('hero.sun', v) }), { path: 'hero.sun', redo: again }),
-          row('Halftone', toggle({ label: 'Halftone cover', value: c.hero.halftone, onChange: (v) => set('hero.halftone', v) }), { path: 'hero.halftone', redo: again }),
-          row('Glitch on the beat', toggle({ label: 'Glitch on the beat', value: c.hero.glitch, onChange: (v) => set('hero.glitch', v) }), { path: 'hero.glitch', redo: again }))),
+        // A skin that owns these shows them under its own heading instead (see skinTab).
+        c.hero.mode === 'turntable' && !getSkin(getPrefs().skin).options?.includes('tonearm') ? h('div', null, ...turntableRows()) : null),
       group(c.hero.mode === 'viz' ? 'Centrepiece visualiser' : 'Main visualiser', pickGrid(heroTarget, cur), optionsFor(cur)),
       group('Visualiser panel', h('p', { class: 'hint' }, 'The Visualiser and Level meters panels can sit anywhere (see Layout).'), pickGrid('viz.side', c.viz.side), optionsFor(c.viz.side)),
       group('Drawing',
@@ -225,8 +258,7 @@ export function mountSettings(root) {
         row('Pre-amp', slider({ min: -12, max: 12, step: 0.5, value: p.replaygain_preamp_db, center: true, reset: 0, label: 'ReplayGain pre-amp', onChange: (v) => act(api.setReplayGain(state.player.replaygain, v)).then(refreshPlayer), format: (v) => `${v > 0 ? '+' : ''}${v} dB` }))),
       group('Output', row('Device', dev), h('p', { class: 'hint' }, p.sample_rate ? `Running at ${p.sample_rate / 1000} kHz. Songs at other rates are converted.` : '')),
       group('Equaliser', h('p', { class: 'hint' }, 'Ten bands, a pre-amp, built-in presets and your own saved presets. The Now Playing screen has an Equaliser button in the top bar, or press E.'),
-        button('Open the equaliser', () => setEqDrawer(true), { iconName: 'eq' }),
-        button('Add the equaliser as a panel', () => { const s = clone(cfg().layout.slots); for (const k of SLOTS) s[k] = (s[k] ?? []).filter((x) => x !== 'eq'); (s.right ??= []).push('eq'); set('layout.slots', s); toast('Equaliser added to the right column'); })),
+        button('Open the equaliser', () => setEqDrawer(true), { iconName: 'eq' })),
       group('Library',
         row('Playing a track from a list', segmented({ label: 'Playing a track from a list', options: [{ value: 'single', label: 'Just that track' }, { value: 'list', label: 'Continue through the list' }], value: getPrefs().library.playMode ?? 'single', onChange: (v) => setPref('library.playMode', v) }),
           { hint: 'What double-clicking a track or pressing its play button does. The right-click menu always offers both.' })),
@@ -307,7 +339,7 @@ export function mountSettings(root) {
       group('Reset', row('Everything', button('Reset all appearance settings', async () => { if (await confirmDialog('Reset everything?', 'Every skin goes back to its defaults and shortcuts are restored. Your music, playlists and playback settings are untouched.', { ok: 'Reset all' })) { const { setPref } = await import('../prefs.js'); setPref('skins', {}); setPref('keys', {}); render(); } }, { cls: 'danger' }))));
   }
 
-  const TAB_BUILDERS = { appearance, layout, visual, playback, lyrics: lyricsTab, keys: keysTab, data };
+  const TAB_BUILDERS = { appearance, skin: skinTab, layout, visual, playback, lyrics: lyricsTab, keys: keysTab, data };
   on('ui', () => { if (state.view === 'settings' && getPrefs().skin !== renderedSkin) render(); });
   on('view', (v) => { if (v === 'settings') render(); else { previews.forEach((p) => p.destroy?.()); previews = []; } });
   render();

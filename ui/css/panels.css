@@ -154,3 +154,13 @@
 .i-title-row .i-title { min-width: 0; }
 .i-fav { opacity: 1; flex: none; width: 34px; height: 34px; }
 .i-fav:not(.on) { color: var(--fg3); }
+
+/* ---------- quiet hero (visualisers off) ---------- */
+.hero[data-mode="none"] { display: none; }
+.quiet { display: grid; align-content: center; justify-items: center; gap: .6em; width: 100%; height: 100%; padding: 4% 6%; text-align: center; min-width: 0; }
+.quiet-album { font-family: var(--font-display); font-weight: 700; font-size: clamp(2.4rem, 7.4vw, 7rem); line-height: .96; letter-spacing: -.02em; text-wrap: balance; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.quiet-meta { font-family: var(--font-body); font-size: clamp(.9rem, 1.4vw, 1.25rem); color: var(--fg2); letter-spacing: .04em; }
+/* With no centrepiece, its panel gives up the space and what remains is centred in the stage. */
+.panel[data-panel="hero"]:has(> .hero[data-mode="none"]) { display: none; }
+.slot[data-slot="stage"]:has(> .panel[data-panel="hero"] > .hero[data-mode="none"]) { justify-content: center; }
+[data-skin="pixel"] .quiet-album { font-size: clamp(1.6rem, 4.2vw, 3.8rem); line-height: 1.2; letter-spacing: 0; }

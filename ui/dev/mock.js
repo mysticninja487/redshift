@@ -3,12 +3,14 @@
 // synthetic spectrum frames, lyrics, an equaliser and playlists. Nothing here is real audio.
 // Loaded only when window.__TAURI__ is missing; see js/main.js.
 //
-// URL switches: ?empty (no library), ?seed=N (different synthetic music), ?paused (start paused).
+// URL switches: ?empty (no library), ?seed=N (different synthetic music), ?paused (start paused),
+// ?big=N (N extra invented tracks, for long queues), ?latency=ms (delay every command, like real IPC).
 
 const params = new URLSearchParams(location.search);
 const rnd = (seed) => () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
 const hash = (s) => { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
 const SEED = Number(params.get('seed') ?? 7);
+const LATENCY = Number(params.get('latency') ?? 0) || 0;
 
 // ---------------------------------------------------------------- library
 const ALBUMS = [
@@ -34,6 +36,17 @@ function makeLibrary() {
         bitrate_kbps: a.codec === 'opus' ? 128 : null, format: a.codec, replaygain_track_db: +(-3 - r() * 6).toFixed(1), replaygain_album_db: -5.2,
         replaygain_track_peak: 0.97, has_embedded_lyrics: false, modified: 1, size: 1e7, added: NOW - Math.floor((ai * 9 + i * 0.7) * 86400 * 0.6 + r() * 3600), _album: ai,
       });
+    });
+  }
+  // ?big=N adds N more tracks across invented albums, to test long queues and libraries.
+  const extra = Math.max(0, Math.min(20000, Number(params.get('big') ?? 0) || 0));
+  for (let i = 0; i < extra; i++) {
+    const a = ALBUMS[i % ALBUMS.length], album = Math.floor(i / 12), r = rnd(hash(`big${i}`) + SEED);
+    const title = `${a.titles[i % a.titles.length]} ${i}`;
+    tracks.push({
+      path: `/music/${a.artist}/Mix ${album}/${String(i % 12 + 1).padStart(2, '0')} ${title}.${a.codec}`, title, artist: a.artist, album: `Mix ${album}`, album_artist: a.artist,
+      genre: 'Mixed', year: 2000 + (i % 24), track_no: i % 12 + 1, disc_no: 1, duration_secs: Math.round(120 + r() * 200), sample_rate: a.rate, bit_depth: a.bits, channels: 2,
+      bitrate_kbps: null, format: a.codec, replaygain_track_db: -6, replaygain_album_db: -6, replaygain_track_peak: 0.9, has_embedded_lyrics: false, modified: 1, size: 1e7, added: NOW - i * 60, _album: i % ALBUMS.length,
     });
   }
   return tracks;
@@ -284,7 +297,11 @@ const cmds = {
 };
 
 window.__TAURI__ = {
-  core: { invoke: async (cmd, args = {}) => { const f = cmds[cmd]; if (!f) throw new Error(`mock: unknown command ${cmd}`); return f(args); } },
+  core: { invoke: async (cmd, args = {}) => {
+    const f = cmds[cmd]; if (!f) throw new Error(`mock: unknown command ${cmd}`);
+    if (LATENCY && cmd !== 'viz_frame') await new Promise((r) => setTimeout(r, LATENCY * (0.5 + Math.random())));
+    return f(args);
+  } },
   event: { listen: async (name, cb) => { (listeners[name] ??= []).push(cb); return () => { listeners[name] = listeners[name].filter((x) => x !== cb); }; } },
   dialog: { open: async ({ directory } = {}) => window.__mockPick ?? (directory ? '/music/More Music' : '/music/playlist.m3u8'), save: async ({ defaultPath } = {}) => defaultPath ?? 'out' },
 };

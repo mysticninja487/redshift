@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/now-playing-turntable.jpg" alt="Redshift in the Turntable skin: a spinning record, the play queue and synced lyrics" width="880">
+  <img src="docs/screenshots/now-playing-classic.jpg" alt="Redshift in the Classic layout: a sidebar, the cover and track in the middle, lyrics and the play queue on the right, a player bar along the bottom" width="880">
 </p>
 
 Redshift reads the music you already have. No account, no streaming, no tracking: point it at your folders and play. It's built with Tauri 2 and a Rust audio engine, so it starts quickly and stays light.
@@ -43,10 +43,10 @@ This is an early version. If something breaks, please [open an issue](https://gi
 **Looks like you chose it**
 
 <p align="center">
-  <img src="docs/screenshots/skins.jpg" alt="The seven skins: Turntable, Noir Studio, Wavelength, Mist HUD, Paper, Soft Console and Pixel Mono, plus a light version of Noir Studio" width="900">
+  <img src="docs/screenshots/skins.jpg" alt="Skins: Turntable, Noir Studio, Wavelength, Mist HUD, Paper, Soft Console and Pixel Mono, plus a light version of Noir Studio" width="900">
 </p>
 
-- Seven skins, each a whole composition rather than a colour set: Turntable, Noir Studio, Wavelength, Mist HUD, Paper, Soft Console and Pixel Mono. Switch from the top bar, or with `[` and `]`.
+- Eight skins, each a whole composition rather than a colour set. Classic is the default: a sidebar, the cover and track in the middle, lyrics and the queue beside them, a player bar along the bottom. The others are Turntable, Noir Studio, Wavelength, Mist HUD, Paper, Soft Console and Pixel Mono. Switch from the skin menu, or with `[` and `]`. Options that only one skin has (the turntable's tonearm, Paper's halftone) show up under that skin's own heading in Settings.
 - Light and dark, an accent from the skin, a preset, a custom colour, or colours taken from the current album art.
 - Your own fonts for any skin: a built-in font, an installed font by name, or an imported font file. Text size, spacing, corner radius, line weight, shadows, frosted glass and grain are adjustable, and you can rearrange the panels.
 
@@ -143,7 +143,7 @@ Folder and file pickers come from the dialog plugin: `window.__TAURI__.dialog.op
 
 ## The interface
 
-Seven skins, switchable from the header or with `[` and `]`. A skin is a whole composition (grid, type, decoration, default hero and visualiser), not just a colour set. Each one remembers its own settings.
+Eight skins, switchable from the skin menu or with `[` and `]`. A skin is a whole composition (grid, type, decoration, default hero and visualiser), not just a colour set. Each one remembers its own settings.
 
 | Skin | Look |
 | --- | --- |
@@ -155,7 +155,7 @@ Seven skins, switchable from the header or with `[` and `]`. A skin is a whole c
 | Soft Console | Pressed-plastic surfaces, real knobs, a glowing orb |
 | Pixel Mono | Pill buttons, dotted outlines, pixel type, dot-matrix visualiser |
 
-Everything is customisable in Settings: light/dark, accent from the skin, a preset, a custom colour or the current album art; fonts, text size, spacing, corner radius, line weight, shadows, frosted glass, film grain; where each panel sits (or hide it) and the column sizes; twelve visualisers, each with its own options, for the centrepiece and for a separate panel; progress-bar style; lyrics size, alignment and fade; remappable keyboard shortcuts; export and import of a skin's settings.
+Everything is customisable in Settings (the gear button, or `Ctrl` `,`): light/dark, accent from the skin, a preset, a custom colour or the current album art; fonts, text size, spacing, corner radius, line weight, shadows, frosted glass, film grain; where each panel sits (or hide it) and the column sizes; twelve visualisers, each with its own options, for the centrepiece and for a separate panel; progress-bar style; lyrics size, alignment and fade; remappable keyboard shortcuts; export and import of a skin's settings.
 
 Visualisers: bars, hairlines, oscilloscope, ring, wavelength blur, orb, particles, spectrogram, vectorscope, dot matrix, ridges, level meters.
 

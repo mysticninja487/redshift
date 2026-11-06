@@ -6,7 +6,7 @@ import { loadImportedFonts } from './fonts.js';
 import { eqDrawerOpen, onEqDrawer, toggleEqDrawer } from './ui/eqdrawer.js';
 import { initKeys } from './keys.js';
 import { mountLayout } from './layout.js';
-import { cfg, featureOn, flushPrefs, getPrefs, loadPrefs, set, setPref, setSkin } from './prefs.js';
+import { cfg, featureOn, flushPrefs, getPrefs, loadPrefs, set, setPref, setSkin, takeMigrated } from './prefs.js';
 import { skins } from './skins.js';
 import { state } from './state.js';
 import { applyTheme } from './theme.js';
@@ -49,13 +49,16 @@ function buildChrome() {
   onEqDrawer(paintTools);
   paintTools();
   const nowTools = h('div', { class: 'now-tools', role: 'group', 'aria-label': 'Now playing tools' }, lyricsBtn, vizBtn, eqBtn);
+  // Always visible whatever the skin does with the navigation links: settings are one click away.
+  const gear = iconButton('settings', 'Settings (Ctrl+,)', () => setView('settings'), { cls: 'settings-btn' });
+  on('view', (v) => gear.setAttribute('aria-pressed', String(v === 'settings')));
   const full = iconButton('fullscreen', 'Fullscreen', () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => {})), { cls: 'full-btn' });
   on('ui', () => skinSel.set(getPrefs().skin));
   on('view', (v) => nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === v))));
   nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === state.view)));
   return h('header', { class: 'chrome' },
     h('div', { class: 'brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }), h('span', { class: 'brand-name' }, 'Redshift')),
-    nav, h('div', { class: 'chrome-tools' }, nowTools, skinSel, scheme, full));
+    nav, h('div', { class: 'chrome-tools' }, nowTools, skinSel, scheme, gear, full));
 }
 
 /** Background layers that skins show or hide with CSS: ghost type, sun, rings, side labels. */
@@ -107,6 +110,7 @@ async function boot() {
   buildViews(app);
   app.append(h('div', { class: 'grain' }));
   initKeys();
+  if (takeMigrated()) setTimeout(() => toast('Redshift now opens in the new Classic layout. Your other skins are still in the skin menu and Settings.'), 800);
   try { await initController(); } catch (e) { console.error(e); toast('Could not reach the audio engine', 'error'); }
   document.documentElement.dataset.ready = 'true';
   addEventListener('pagehide', flushPrefs);
