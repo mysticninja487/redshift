@@ -1,23 +1,96 @@
-# Redshift
+<h1 align="center">Redshift</h1>
 
-A local music player for Windows, built with Tauri 2 and a Rust audio engine.
+<p align="center">
+  A local music player for Windows with a cosmic streak: it plays your own FLAC and Opus files<br>
+  through a built-in equaliser, shows synced lyrics, and looks the way you want it to.
+</p>
 
-**Status: the engine and the interface are both built.** The engine is covered by tests but has only been run in a Linux sandbox with a simulated sound card, never on real Windows audio hardware, so expect the first real run to turn up bugs in the device layer. The interface has been run and clicked through in Chromium against a mock backend (`ui/dev/mock.js`), but not yet inside the real Tauri window on Windows.
+<p align="center">
+  <img src="docs/screenshots/now-playing-turntable.jpg" alt="Redshift in the Turntable skin: a spinning record, the play queue and synced lyrics" width="880">
+</p>
+
+Redshift reads the music you already have. No account, no streaming, no tracking: point it at your folders and play. It's built with Tauri 2 and a Rust audio engine, so it starts quickly and stays light.
+
+> The screenshots use invented demo albums and a stand-in player, so the artists and songs are made up.
+
+## Download
+
+Get the latest installer or the portable `.exe` from the [Releases page](https://github.com/mysticninja487/redshift/releases). It runs on Windows 10 and 11 (it uses WebView2, which is already part of both). Windows may show a "protected your PC" warning because the app isn't code-signed yet; choose "More info" then "Run anyway".
+
+This is an early version. If something breaks, please [open an issue](https://github.com/mysticninja487/redshift/issues).
 
 ## What it does
 
-- **Formats:** FLAC (up to 24-bit / 192 kHz), Opus, MP3, Ogg Vorbis, WAV, AAC/M4A/ALAC. Gapless playback; sample rates are converted to whatever the output device runs at.
-- **Crossfade** between tracks (0-12 s, equal-power), or gapless when set to 0.
-- **10-band equalizer** with pre-amp, 24 built-in presets and your own saved presets, plus the response curve for drawing it.
-- **ReplayGain** (off / track / album, with pre-amp, never boosting a track past its own peak).
-- **Synced lyrics:** `.lrc` files next to the song or lyrics embedded in the tags, with line and word timing.
-- **Visualiser data:** spectrum bars with peak hold, oscilloscope traces, level meters and a bass level, as plain numbers for the UI to draw however it likes.
-- **Library:** folder scanning (incremental, parallel), albums, artists, folder browsing, search, cover art from tags or `cover.jpg`-style files.
-- **Favourites and history:** favourite tracks, play counts and last-played times (a play counts after half a track or 30 s), recently played, most played (tracks, albums, artists), recently added and not played lists.
-- **Playlists:** create, reorder, M3U/M3U8 import and export. Importing matches entries from other devices to your library by file name, folders and the `#EXTINF` title, keeps what it can't find (dimmed, skipped on play) and can relink them later.
-- **Tray:** minimise to the tray and/or hide on close, with play/pause/next/previous in the tray menu.
-- **Fonts:** any skin can use a built-in font, an installed font by name, or an imported .ttf/.otf/.woff/.woff2 file.
-- **Settings** (volume, EQ, crossfade, device and so on) are saved and restored, along with a free-form blob the UI can use for theme and layout choices.
+**Plays your music properly**
+
+- FLAC up to 24-bit / 192 kHz, Opus, MP3, Ogg Vorbis, WAV and AAC/M4A/ALAC.
+- Gapless playback, or crossfade between tracks (0-12 s). Any sample rate is converted to what your sound device runs at.
+- ReplayGain (track or album, with a pre-amp) and output device selection.
+
+**Sounds the way you like**
+
+<p align="center">
+  <img src="docs/screenshots/equaliser.jpg" alt="The equaliser drawer open over the Now Playing screen" width="760">
+</p>
+
+- A 10-band equaliser with a pre-amp, a live response curve, 24 built-in presets and your own saved presets. Open it from the top bar of Now Playing (or press `E`).
+
+**Lyrics and visualisers**
+
+- Synced lyrics from `.lrc` files next to the song or from the file's tags, with line and word timing.
+- Twelve visualisers: bars, hairlines, oscilloscope, ring, wavelength blur, orb, particles, spectrogram, vectorscope, dot matrix, ridges and level meters. Lyrics and visualisers each switch off for every skin with one button.
+
+**Looks like you chose it**
+
+<p align="center">
+  <img src="docs/screenshots/skins.jpg" alt="The seven skins: Turntable, Noir Studio, Wavelength, Mist HUD, Paper, Soft Console and Pixel Mono, plus a light version of Noir Studio" width="900">
+</p>
+
+- Seven skins, each a whole composition rather than a colour set: Turntable, Noir Studio, Wavelength, Mist HUD, Paper, Soft Console and Pixel Mono. Switch from the top bar, or with `[` and `]`.
+- Light and dark, an accent from the skin, a preset, a custom colour, or colours taken from the current album art.
+- Your own fonts for any skin: a built-in font, an installed font by name, or an imported font file. Text size, spacing, corner radius, line weight, shadows, frosted glass and grain are adjustable, and you can rearrange the panels.
+
+**A library that knows your listening**
+
+<p align="center">
+  <img src="docs/screenshots/library-most-played.jpg" alt="The Library, on the Most played tab" width="760">
+</p>
+
+- Albums, artists, all songs and a folder browser, with search. Play or shuffle any album, artist, folder or playlist, or double-click a track to play just that one.
+- Favourites, recently played, most played (tracks, albums, artists), recently added and not played.
+- Playlists with M3U/M3U8 import and export. Playlists made on another device are matched to your library by file name, folders and track title; anything that can't be found is kept, dimmed and skipped, and can be relinked later.
+- Minimise to the system tray, with play/pause/next/previous in the tray menu.
+
+## Getting started
+
+1. Install Redshift and open it.
+2. Go to **Library > Folders**, choose **Add folder** and pick your music folder. It scans in the background and never changes your files.
+3. Pick an album and press play.
+
+| Key | Action | Key | Action |
+| --- | --- | --- | --- |
+| `Space` | Play / pause | `[` `]` | Previous / next skin |
+| `Shift` + `←` `→` | Previous / next track | `V` | Next visualiser |
+| `←` `→` | Seek 5 s | `Shift` + `V` | Visualisers on / off |
+| `↑` `↓` | Volume | `L` | Lyrics on / off |
+| `S` `R` `M` | Shuffle, repeat, mute | `E` | Equaliser |
+| `1` `2` `3` | Now playing, Library, Settings | `D` | Light / dark |
+| `Ctrl` + `F` | Search the library | `F` | Fullscreen |
+
+Every shortcut can be changed in Settings.
+
+<p align="center">
+  <img src="docs/screenshots/library-albums.jpg" alt="The Library, showing albums" width="430">
+  <img src="docs/screenshots/settings.jpg" alt="The Settings screen" width="430">
+</p>
+
+---
+
+# For developers
+
+Redshift is a Rust workspace with a plain-JavaScript front end (no bundler). To build it from source you need Rust 1.85+ with the MSVC toolchain, CMake (libopus is compiled from source), and the Tauri CLI (`cargo install tauri-cli --version "^2"`). Then `cargo tauri dev` runs it and `cargo tauri build` makes an installer. If the build stops in `audiopus_sys` with a CMake error, set `CMAKE_POLICY_VERSION_MINIMUM=3.5`. Releases are built by the "Windows build" GitHub Actions workflow when a `v*` tag is pushed.
+
+The icons in `src-tauri/icons` are placeholders; replace them with `cargo tauri icon your-logo.png`.
 
 ## Layout
 
@@ -33,27 +106,6 @@ src-tauri/            Thin Tauri shell: one command per `App` method, plus event
 ui/                   Front end: plain ES modules, no bundler (see "The interface")
 scripts/              Generates the audio fixtures the tests use
 ```
-
-
-## Building on Windows
-
-You need:
-
-1. [Rust](https://rustup.rs) (1.85 or newer) with the MSVC toolchain, and the Visual Studio C++ build tools.
-2. [CMake](https://cmake.org/download/): libopus is compiled from source by the `audiopus` crate.
-3. WebView2, which is already part of Windows 11 and up-to-date Windows 10.
-4. The Tauri CLI: `cargo install tauri-cli --version "^2"`
-
-If the build stops in `audiopus_sys` with "Compatibility with CMake < 3.5 has been removed", you have CMake 4: set `CMAKE_POLICY_VERSION_MINIMUM=3.5` (PowerShell: `$env:CMAKE_POLICY_VERSION_MINIMUM="3.5"`) and build again.
-
-Then:
-
-```
-cargo tauri dev       # run
-cargo tauri build     # make an installer (NSIS)
-```
-
-The icons in `src-tauri/icons` are placeholders. Replace them with `cargo tauri icon your-logo.png`.
 
 ## Tests
 
@@ -119,7 +171,7 @@ Open <http://localhost:8000>. With no Tauri around, the app loads `ui/dev/mock.j
 
 ## Not done yet
 
-- Running the UI inside the real Tauri window (it works in a browser against the mock; Windows-specific behaviour such as the `cover.localhost` image host is untested).
+- Wider testing on real Windows machines and sound hardware. The engine's tests use a simulated sound card, so device-specific bugs are likely to turn up.
 - Drag-and-drop of files onto the window.
 - Windows media keys and the system media overlay.
 - Restoring the queue and position after a restart.
