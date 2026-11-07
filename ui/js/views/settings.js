@@ -3,7 +3,6 @@
 
 import { api, pickFile, pickSave } from '../api.js';
 import { promptText } from '../ui/dialog.js';
-import { setEqDrawer } from '../ui/eqdrawer.js';
 import { on } from '../bus.js';
 import { act, refreshPlayer, refreshSettings, setView } from '../controller.js';
 import { ACTIONS, captureKeys, comboFor, comboFromEvent, prettyCombo, setCombo } from '../keys.js';
@@ -16,12 +15,13 @@ import { tokens } from '../theme.js';
 import { clear, clone, h, toast } from '../util.js';
 import { VIZ, getViz, vizOptions } from '../viz/index.js';
 import { mountViz } from '../viz/engine.js';
-import { button, colorInput, iconButton, segmented, select, slider, toggle } from '../ui/controls.js';
+import { button, colorInput, iconButton, segmented, select, slider as bareSlider, toggle } from '../ui/controls.js';
+import { mount as mountEq } from '../panels/eq.js';
 import { confirmDialog } from '../ui/dialog.js';
 
 // [id, label, icon]. The 'skin' entry only exists for skins that have options of their own.
 const TABS = [
-  ['appearance', 'Appearance', 'palette'], ['skin', '', 'record'], ['playback', 'Playback', 'play'], ['lyrics', 'Lyrics & info', 'lyrics'],
+  ['appearance', 'Appearance', 'palette'], ['skin', '', 'record'], ['playback', 'Playback', 'play'], ['eq', 'Equaliser', 'eq'], ['lyrics', 'Lyrics & info', 'lyrics'],
   ['visual', 'Visualisers', 'viz'], ['layout', 'Layout', 'layout'], ['keys', 'Shortcuts', 'keyboard'], ['data', 'Data & reset', 'database'],
 ];
 const HERO_MODES = [{ value: 'art', label: 'Cover art' }, { value: 'turntable', label: 'Turntable' }, { value: 'viz', label: 'Visualiser' }, { value: 'none', label: 'Nothing' }];
@@ -34,6 +34,16 @@ function row(label, control, { hint, path, redo } = {}) {
 }
 const group = (title, ...rows) => h('section', { class: 'set-group' }, h('h3', null, title), ...rows);
 const num = (v, d = 2) => +Number(v).toFixed(d);
+
+/** A slider with its current value written out beside it, so the number is never a guess. */
+function slider(opts) {
+  const fmt = opts.format ?? ((v) => String(num(v)));
+  const out = h('output', { class: 'set-val', 'aria-hidden': 'true' }, fmt(opts.value));
+  const s = bareSlider({ ...opts, onInput: (v) => { out.textContent = fmt(v); opts.onInput?.(v); } });
+  const move = s.set;
+  s.set = (v) => { move(v); out.textContent = fmt(v); };
+  return h('div', { class: 'set-slider' }, s, out);
+}
 
 export function mountSettings(root) {
   let tab = 'appearance';
@@ -172,7 +182,7 @@ export function mountSettings(root) {
         select({ label: `${p.name} position`, value: where, options: [...SLOTS.map((s) => ({ value: s, label: SLOT_NAMES[s] })), { value: 'hidden', label: 'Hidden' }], onChange: (v) => move(p.id, v) }),
         h('span', { class: 'pt-order' }, iconButton('chevronDown', `Move ${p.name} later`, () => nudge(p.id, 1), { size: 16, cls: 'down' }), iconButton('chevronDown', `Move ${p.name} earlier`, () => nudge(p.id, -1), { size: 16, cls: 'up' })));
     }));
-    const size = (key, label, max) => row(label, slider({ min: 0, max, step: 10, value: c.layout.sizes[key], label, onInput: (v) => set(`layout.sizes.${key}`, v), format: (v) => (v ? `${v}px` : 'Auto') }), { path: `layout.sizes.${key}`, redo: again });
+    const size = (key, label, max) => { const side = key === 'left' || key === 'right'; return row(label, slider({ min: side ? 180 : 0, max, step: 10, value: Math.max(side ? 180 : 0, c.layout.sizes[key] || 0), label, onInput: (v) => set(`layout.sizes.${key}`, v), format: (v) => (v ? `${v}px` : 'Auto') }), { path: `layout.sizes.${key}`, redo: again }); };
     return h('div', { class: 'set-page' },
       group('Panels', h('p', { class: 'hint' }, 'Put each panel where you want it, or hide it. A panel adapts its look to the slot it lands in.'), map, table,
         h('div', { class: 'set-row' }, button('Default layout for this skin', () => { set('layout.slots', undefined); render(); }))),
@@ -243,6 +253,15 @@ export function mountSettings(root) {
         row('Frame rate', segmented({ label: 'Visualiser frame rate', options: [{ value: 30, label: '30' }, { value: 60, label: '60' }, { value: 120, label: '120' }], value: c.viz.fps, onChange: (v) => set('viz.fps', v) }), { hint: 'Lower saves battery.', path: 'viz.fps', redo: again })));
   }
 
+  // ---------- Equaliser ----------
+  // The same equaliser panel as the Now Playing drawer, mounted here so it can be set without leaving Settings.
+  function eqTab() {
+    const host = h('div', { class: 'eq-host eq-inline' });
+    const panel = mountEq(host);
+    previews.push(panel);
+    return h('div', { class: 'set-page' }, group('Equaliser', h('p', { class: 'hint' }, 'Ten bands, a pre-amp, built-in presets and your own saved presets. Changes apply immediately. Press E on the Now Playing screen to open it as a drawer instead. Double-click a band to reset it.'), host));
+  }
+
   // ---------- Playback ----------
   function playback() {
     const p = state.player;
@@ -257,8 +276,6 @@ export function mountSettings(root) {
         row('ReplayGain', segmented({ label: 'ReplayGain', options: [{ value: 'off', label: 'Off' }, { value: 'track', label: 'Track' }, { value: 'album', label: 'Album' }], value: p.replaygain, onChange: (v) => act(api.setReplayGain(v, state.player.replaygain_preamp_db)).then(refreshPlayer) }), { hint: 'Evens out loudness using tags in the files. Never pushes a song past clipping.' }),
         row('Pre-amp', slider({ min: -12, max: 12, step: 0.5, value: p.replaygain_preamp_db, center: true, reset: 0, label: 'ReplayGain pre-amp', onChange: (v) => act(api.setReplayGain(state.player.replaygain, v)).then(refreshPlayer), format: (v) => `${v > 0 ? '+' : ''}${v} dB` }))),
       group('Output', row('Device', dev), h('p', { class: 'hint' }, p.sample_rate ? `Running at ${p.sample_rate / 1000} kHz. Songs at other rates are converted.` : '')),
-      group('Equaliser', h('p', { class: 'hint' }, 'Ten bands, a pre-amp, built-in presets and your own saved presets. The Now Playing screen has an Equaliser button in the top bar, or press E.'),
-        button('Open the equaliser', () => setEqDrawer(true), { iconName: 'eq' })),
       group('Library',
         row('Playing a track from a list', segmented({ label: 'Playing a track from a list', options: [{ value: 'single', label: 'Just that track' }, { value: 'list', label: 'Continue through the list' }], value: getPrefs().library.playMode ?? 'single', onChange: (v) => setPref('library.playMode', v) }),
           { hint: 'What double-clicking a track or pressing its play button does. The right-click menu always offers both.' })),
@@ -339,7 +356,7 @@ export function mountSettings(root) {
       group('Reset', row('Everything', button('Reset all appearance settings', async () => { if (await confirmDialog('Reset everything?', 'Every skin goes back to its defaults and shortcuts are restored. Your music, playlists and playback settings are untouched.', { ok: 'Reset all' })) { const { setPref } = await import('../prefs.js'); setPref('skins', {}); setPref('keys', {}); render(); } }, { cls: 'danger' }))));
   }
 
-  const TAB_BUILDERS = { appearance, skin: skinTab, layout, visual, playback, lyrics: lyricsTab, keys: keysTab, data };
+  const TAB_BUILDERS = { appearance, skin: skinTab, layout, visual, playback, eq: eqTab, lyrics: lyricsTab, keys: keysTab, data };
   on('ui', () => { if (state.view === 'settings' && getPrefs().skin !== renderedSkin) render(); });
   on('view', (v) => { if (v === 'settings') render(); else { previews.forEach((p) => p.destroy?.()); previews = []; } });
   render();

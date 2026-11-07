@@ -27,5 +27,20 @@
 [data-skin="wavelength"] .t-play { background: #fff; color: #000; box-shadow: none; width: 50px; height: 50px; }
 [data-skin="wavelength"] .sl-fill { background: #fff; } [data-skin="wavelength"] .sl-thumb { background: #fff; }
 [data-skin="wavelength"] .hero-canvas { filter: saturate(1.1); }
-[data-skin="wavelength"] .panel[data-panel="queue"], [data-skin="wavelength"] .panel[data-panel="lyrics"] { background: color-mix(in srgb, var(--bg) 55%, transparent); backdrop-filter: blur(20px); border: 0; color: var(--fg); border-radius: 0; box-shadow: none; }
+/* The queue is a frosted card in the same language as the pills (round, dark, blurred). */
+[data-skin="wavelength"] .panel[data-panel="queue"] { background: rgba(8, 10, 14, .55); backdrop-filter: blur(18px); border: 0; border-radius: 28px; box-shadow: none; color: #fff; --fg: #fff; --fg2: #e4e6eb; --fg3: #b9bdc7; --line: rgba(255, 255, 255, .22); }
+/* Lyrics are type, not a box: big grotesk laid straight over the waveform, inverted against whatever is behind it exactly like the title. */
+[data-skin="wavelength"] .panel[data-panel="lyrics"] { background: none; backdrop-filter: none; border: 0; border-radius: 0; box-shadow: none; overflow: visible; }
+[data-skin="wavelength"] .panel[data-panel="lyrics"] .lyrics .ly-scroll { mix-blend-mode: difference; padding: 30% 6px; mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent); -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent); }
+[data-skin="wavelength"] .panel[data-panel="lyrics"] .lyrics .ly-line { color: #fff; font-weight: 800; letter-spacing: -.04em; line-height: 1.02; margin-bottom: .42em; font-size: calc(clamp(1.7rem, 2.5vw, 2.7rem) * var(--ly-size)); opacity: calc(.5 - var(--ly-dim) * .5); transform-origin: left center; }
+[data-skin="wavelength"] .panel[data-panel="lyrics"] .lyrics[data-align="center"] .ly-line { transform-origin: center; } [data-skin="wavelength"] .panel[data-panel="lyrics"] .lyrics[data-align="right"] .ly-line { transform-origin: right center; }
+[data-skin="wavelength"] .panel[data-panel="lyrics"] .lyrics .ly-line.active { opacity: 1; transform: scale(1.04); }
+[data-skin="wavelength"] .panel[data-panel="lyrics"] .lyrics .ly-line.active .ly-w { color: rgba(255, 255, 255, .4); } [data-skin="wavelength"] .panel[data-panel="lyrics"] .lyrics .ly-line.active .ly-w.done { color: #fff; }
+[data-skin="wavelength"] .panel[data-panel="lyrics"] .lyrics .ly-badge { color: #fff; background: rgba(8, 10, 14, .55); backdrop-filter: blur(8px); padding: 2px 10px; border-radius: 99px; right: 6px; top: 4px; }
+[data-skin="wavelength"] .panel[data-panel="lyrics"] .lyrics .ly-empty { inset: 0; margin: auto 0; height: max-content; max-height: 100%; color: #fff; background: rgba(8, 10, 14, .55); backdrop-filter: blur(14px); border-radius: 28px; }
+[data-skin="wavelength"] .panel[data-panel="lyrics"] .lyrics .ly-empty-title { font-weight: 800; letter-spacing: -.03em; font-size: 1.25rem; color: #fff; } [data-skin="wavelength"] .panel[data-panel="lyrics"] .lyrics .ly-empty-hint { color: #d6d9e0; }
 [data-skin="wavelength"] .d-side { display: block; right: 14px; top: 80px; mix-blend-mode: difference; color: #fff; }
+/* With a column beside the stage the waveform fades out under it instead of ending on a hard edge. */
+[data-skin="wavelength"] .stage-grid:has(> .slot[data-slot="left"]:not([data-empty="true"])) .slot[data-slot="stage"] > .panel[data-panel="hero"] { -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%); mask-image: linear-gradient(90deg, transparent, #000 16%); }
+[data-skin="wavelength"] .stage-grid:has(> .slot[data-slot="right"]:not([data-empty="true"])) .slot[data-slot="stage"] > .panel[data-panel="hero"] { -webkit-mask-image: linear-gradient(270deg, transparent, #000 16%); mask-image: linear-gradient(270deg, transparent, #000 16%); }
+[data-skin="wavelength"] .stage-grid:has(> .slot[data-slot="left"]:not([data-empty="true"])):has(> .slot[data-slot="right"]:not([data-empty="true"])) .slot[data-slot="stage"] > .panel[data-panel="hero"] { -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent); mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent); }

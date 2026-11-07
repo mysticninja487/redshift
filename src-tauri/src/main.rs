@@ -14,7 +14,8 @@
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use redshift_core::app::{App, CustomPreset, EqSettings, PlayStat, Settings, TraySettings};
@@ -492,6 +493,31 @@ fn serve_font(app: &tauri::AppHandle, uri_path: &str) -> tauri::http::Response<C
     .expect("static headers are valid")
 }
 
+/// Answers cover and font requests on a few worker threads. Opening the library asks for dozens of
+/// covers at once; a thread per request would flood the machine (and the disk) every time.
+fn run_off_thread(job: impl FnOnce() + Send + 'static) {
+    type Job = Box<dyn FnOnce() + Send>;
+    static POOL: OnceLock<Sender<Job>> = OnceLock::new();
+    const WORKERS: usize = 4;
+    let tx = POOL.get_or_init(|| {
+        let (tx, rx) = channel::<Job>();
+        let rx: Arc<Mutex<Receiver<Job>>> = Arc::new(Mutex::new(rx));
+        for n in 0..WORKERS {
+            let rx = rx.clone();
+            let _ = std::thread::Builder::new().name(format!("redshift-protocol-{n}")).spawn(move || loop {
+                // Hold the lock only while waiting for the next job, never while running one.
+                let next = rx.lock().map(|r| r.recv());
+                match next {
+                    Ok(Ok(job)) => { let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)); }
+                    _ => break,
+                }
+            });
+        }
+        tx
+    });
+    let _ = tx.send(Box::new(job));
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -499,11 +525,11 @@ fn main() {
         // which would otherwise freeze the window while it happens.
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
             let (app, path) = (ctx.app_handle().clone(), request.uri().path().to_string());
-            std::thread::spawn(move || responder.respond(serve_cover(&app, &path)));
+            run_off_thread(move || responder.respond(serve_cover(&app, &path)));
         })
         .register_asynchronous_uri_scheme_protocol("font", |ctx, request, responder| {
             let (app, path) = (ctx.app_handle().clone(), request.uri().path().to_string());
-            std::thread::spawn(move || responder.respond(serve_font(&app, &path)));
+            run_off_thread(move || responder.respond(serve_font(&app, &path)));
         })
         .on_window_event(|window, event| {
             let Some(state) = window.app_handle().try_state::<AppState>() else { return };

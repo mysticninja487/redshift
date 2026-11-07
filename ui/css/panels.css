@@ -164,3 +164,25 @@
 .panel[data-panel="hero"]:has(> .hero[data-mode="none"]) { display: none; }
 .slot[data-slot="stage"]:has(> .panel[data-panel="hero"] > .hero[data-mode="none"]) { justify-content: center; }
 [data-skin="pixel"] .quiet-album { font-size: clamp(1.6rem, 4.2vw, 3.8rem); line-height: 1.2; letter-spacing: 0; }
+
+/* ---------- panels in any slot ----------
+   Every panel can go in every slot, so each needs a sensible size and shape wherever it lands. */
+/* The cover: a square in a side column, a short band in a strip. Without this it has no height of its own. */
+.slot[data-slot="left"] > .panel[data-panel="hero"], .slot[data-slot="right"] > .panel[data-panel="hero"] { flex: 0 1 auto; width: 100%; aspect-ratio: 1; }
+.slot[data-slot="top"] > .panel[data-panel="hero"], .slot[data-slot="bottom"] > .panel[data-panel="hero"] { flex: 1 1 0; height: 200px; }
+/* Tall panels in a strip get a height to work with. */
+.slot[data-slot="top"] > .panel[data-panel="queue"], .slot[data-slot="top"] > .panel[data-panel="eq"], .slot[data-slot="top"] > .panel[data-panel="meters"] { flex: 1 1 0; height: 170px; }
+.slot[data-slot="top"] > .panel[data-panel="meters"], .slot[data-slot="bottom"] > .panel[data-panel="meters"] { height: 110px; flex: 1 1 0; min-width: 120px; }
+/* The transport folds into rows when the column it sits in is narrow. */
+.slot[data-slot="left"] .transport, .slot[data-slot="right"] .transport { flex-wrap: wrap; justify-content: center; gap: 10px 14px; }
+.slot[data-slot="left"] .t-main, .slot[data-slot="right"] .t-main { flex-wrap: wrap; justify-content: center; }
+.slot[data-slot="left"] .t-volume, .slot[data-slot="right"] .t-volume { width: 100%; }
+/* A progress bar needs the full width of the column it is in. */
+.slot[data-slot="stage"] > .panel[data-panel="seek"], .slot[data-slot="left"] > .panel[data-panel="seek"], .slot[data-slot="right"] > .panel[data-panel="seek"] { align-self: stretch; }
+.slot[data-slot="stage"] > .panel[data-panel="queue"], .slot[data-slot="stage"] > .panel[data-panel="lyrics"], .slot[data-slot="stage"] > .panel[data-panel="eq"],
+.slot[data-slot="stage"] > .panel[data-panel="viz"], .slot[data-slot="stage"] > .panel[data-panel="meters"], .slot[data-slot="stage"] > .panel[data-panel="transport"] { align-self: stretch; }
+.ly-badge:empty { display: none; }
+.slot[data-slot="stage"] > .panel[data-panel="meters"] { flex: 0 0 auto; height: 120px; }
+.slot[data-slot="stage"] > .panel[data-panel="viz"] { flex: 1 1 0; min-height: 140px; }
+.slot[data-slot="left"] > .panel[data-panel="hero"], .slot[data-slot="right"] > .panel[data-panel="hero"] { min-height: 0; max-height: 46%; }
+.slot[data-slot="left"] > .panel[data-panel="queue"], .slot[data-slot="right"] > .panel[data-panel="queue"], .slot[data-slot="left"] > .panel[data-panel="lyrics"], .slot[data-slot="right"] > .panel[data-panel="lyrics"] { min-height: 150px; }

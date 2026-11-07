@@ -96,8 +96,8 @@ export function mount(el) {
     g.lineTo(w, y(0)); g.lineTo(0, y(0)); g.closePath();
     g.fillStyle = rgba(off ? tokens.fg : tokens.accent, 0.14); g.fill();
   }
-  new ResizeObserver(draw).observe(cv);
+  const ro = new ResizeObserver(draw); ro.observe(cv);
   L.on(['theme', 'settings'], () => { if (info && state.settings) { info.settings = state.settings.eq; info.custom_presets = state.settings.custom_eq_presets ?? info.custom_presets; readout(); refreshCurve(); } });
   build().catch((e) => console.error('equaliser failed to load', e));
-  return { destroy: () => L.destroy() };
+  return { destroy: () => { ro.disconnect(); L.destroy(); } };
 }

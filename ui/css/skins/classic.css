@@ -22,7 +22,7 @@
 [data-skin="classic"][data-view="now"] .brand-name { letter-spacing: .01em; }
 
 /* the pages */
-[data-skin="classic"] .stage-grid { padding: 22px 22px 18px; gap: 18px; grid-template-areas: "top top" "stage right" "bottom bottom"; grid-template-columns: minmax(0, 1fr) clamp(300px, 30vw, 400px); }
+[data-skin="classic"] .stage-grid { padding: 22px 22px 18px; gap: 18px; grid-template-areas: "top top top" "left stage right" "bottom bottom bottom"; grid-template-columns: auto minmax(0, 1fr) clamp(300px, 30vw, 400px); }
 [data-skin="classic"] .view:not(#now) { padding: 22px 26px 18px; }
 [data-skin="classic"] .slot[data-slot="right"] { width: auto; }
 [data-skin="classic"] .slot[data-slot="stage"] { justify-content: center; gap: 18px; align-items: center; }

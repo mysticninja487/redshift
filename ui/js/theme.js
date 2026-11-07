@@ -188,7 +188,7 @@ export function applyTheme() {
     '--type-scale': String(c.type.scale), '--tracking': `${c.type.tracking}em`,
     '--density': String(DENSITY[c.shape.density] ?? 1),
     '--bw': `${c.shape.border}px`, '--shadow-k': String(c.shape.shadow), '--glass': String(c.shape.glass), '--grain': String(c.shape.grain ?? 0),
-    '--size-left': `${c.layout.sizes.left}px`, '--size-right': `${c.layout.sizes.right}px`,
+    '--size-left': `${Math.max(180, c.layout.sizes.left || 0)}px`, '--size-right': `${Math.max(180, c.layout.sizes.right || 0)}px`, // a side column can't be narrower than a panel needs
     '--size-top': `${c.layout.sizes.top}px`, '--size-bottom': `${c.layout.sizes.bottom}px`,
   };
   if (c.shape.radius != null) { vars['--radius'] = `${c.shape.radius}px`; }

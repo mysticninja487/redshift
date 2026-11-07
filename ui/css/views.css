@@ -66,6 +66,12 @@
 .set-label { display: grid; gap: 2px; min-width: 200px; flex: 0 1 280px; } .set-label small { color: var(--fg3); font-size: .78rem; }
 .set-control { display: flex; align-items: center; gap: 12px; flex: 1 1 260px; justify-content: flex-end; min-width: 0; }
 .set-control .slider { flex: 1; max-width: 300px; }
+.set-slider { display: flex; align-items: center; gap: 14px; flex: 1; max-width: 400px; min-width: 0; }
+.set-slider .slider { flex: 1; max-width: none; }
+.set-val { flex: none; min-width: 5.5em; text-align: right; font-family: var(--font-mono); font-size: .8rem; font-variant-numeric: tabular-nums; color: var(--fg); }
+.eq-inline { max-width: 760px; border: var(--bw) solid var(--line); border-radius: var(--r-panel); background: color-mix(in srgb, var(--bg2) 92%, transparent); }
+.eq-inline .eq-grid { min-height: 280px; } .eq-inline .eq-curve { height: 100px; } .eq-inline .eq-head .q-title { display: none; }
+.eq-inline .eq-pre { flex: 0 0 64px; }
 .row-reset { border: 0; background: none; color: var(--accent-text); font-size: .74rem; padding: 4px 6px; border-radius: 4px; } .row-reset:hover { text-decoration: underline; }
 .skin-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin: 4px 0 10px; }
 .skin-card { display: grid; gap: 6px; text-align: left; padding: 12px; border-radius: var(--r-panel); border: var(--bw) solid var(--line); background: color-mix(in srgb, var(--bg2) 92%, transparent); color: var(--fg); transition: border-color .15s, transform .15s; align-content: start; }
