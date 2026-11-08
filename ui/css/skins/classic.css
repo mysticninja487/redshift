@@ -22,9 +22,10 @@
 [data-skin="classic"][data-view="now"] .brand-name { letter-spacing: .01em; }
 
 /* the pages */
-[data-skin="classic"] .stage-grid { padding: 22px 22px 18px; gap: 18px; grid-template-areas: "top top top" "left stage right" "bottom bottom bottom"; grid-template-columns: auto minmax(0, 1fr) clamp(300px, 30vw, 400px); }
+[data-skin="classic"] .stage-grid { padding: 22px 22px 18px; gap: 18px; grid-template-areas: "top top top" "left stage right" "bottom bottom bottom"; grid-template-columns: auto minmax(0, 1fr) auto; }
 [data-skin="classic"] .view:not(#now) { padding: 22px 26px 18px; }
-[data-skin="classic"] .slot[data-slot="right"] { width: auto; }
+/* The side column takes its width only while it has something in it, so an empty one leaves the cover centred. */
+[data-skin="classic"] .slot[data-slot="right"] { width: clamp(300px, 30vw, 400px); }
 [data-skin="classic"] .slot[data-slot="stage"] { justify-content: center; gap: 18px; align-items: center; }
 [data-skin="classic"] .slot[data-slot="stage"] > .panel[data-panel="hero"] { width: 100%; }
 [data-skin="classic"] .art-frame { width: 100%; box-shadow: 0 18px 50px rgba(0, 0, 0, calc(.35 * var(--shadow-k))); border-radius: calc(var(--r-panel) + 4px); }

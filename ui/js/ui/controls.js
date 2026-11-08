@@ -119,7 +119,7 @@ export function segmented({ options, value, label = '', onChange }) {
 
 export function select({ options, value, label = '', onChange }) {
   const el = h('select', { class: 'select', 'aria-label': label, onchange: (e) => onChange?.(e.target.value) },
-    options.map((o) => h('option', { value: o.value, selected: o.value === value }, o.label)));
+    options.map((o) => h('option', { value: o.value, selected: o.value === value, disabled: !!o.disabled }, o.label)));
   el.set = (v) => { el.value = v; };
   return el;
 }

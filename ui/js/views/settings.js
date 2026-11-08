@@ -8,7 +8,7 @@ import { act, refreshPlayer, refreshSettings, setView } from '../controller.js';
 import { ACTIONS, captureKeys, comboFor, comboFromEvent, prettyCombo, setCombo } from '../keys.js';
 import { importFontFile, importedFonts, removeImportedFont } from '../fonts.js';
 import { cfg, exportSkinOverrides, featureOn, getPrefs, importSkinOverrides, isOverridden, resetSkin, set, setPref, setSkin } from '../prefs.js';
-import { ACCENTS, FONTS, PANELS, SLOTS, cleanFontName, getSkin, skins } from '../skins.js';
+import { ACCENTS, FONTS, PANELS, SLOTS, cleanFontName, fitsSlot, getSkin, skins } from '../skins.js';
 import { icon } from '../ui/icons.js';
 import { state } from '../state.js';
 import { tokens } from '../theme.js';
@@ -171,7 +171,9 @@ export function mountSettings(root) {
     for (const s of SLOTS) slots[s] ??= [];
     const placement = (id) => SLOTS.find((s) => slots[s].includes(id)) ?? 'hidden';
     const commit = () => { set('layout.slots', slots); render(); };
-    const move = (id, to) => { for (const s of SLOTS) slots[s] = slots[s].filter((x) => x !== id); if (to !== 'hidden') slots[to].push(id); commit(); };
+    // A slot that is already full can't take another panel: it would run off the window.
+    const roomIn = (slot, id) => placement(id) === slot || fitsSlot(slot, [...slots[slot], id]);
+    const move = (id, to) => { if (to !== 'hidden' && !roomIn(to, id)) { toast(`The ${SLOT_NAMES[to].toLowerCase()} slot is full. Move or hide something there first.`); render(); return; } for (const s of SLOTS) slots[s] = slots[s].filter((x) => x !== id); if (to !== 'hidden') slots[to].push(id); commit(); };
     const nudge = (id, d) => { const s = placement(id); const a = slots[s]; const i = a.indexOf(id), j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; commit(); };
 
     const map = h('div', { class: 'layout-map', 'aria-label': 'Where each panel sits' }, SLOTS.map((s) => h('div', { class: `lm-slot lm-${s}` }, h('b', null, SLOT_NAMES[s]), slots[s].map((id) => h('span', { class: 'lm-chip' }, PANELS.find((p) => p.id === id)?.name ?? id)))));
@@ -179,12 +181,12 @@ export function mountSettings(root) {
       const where = placement(p.id);
       return h('div', { class: `pt-row${where === 'hidden' ? ' off' : ''}` },
         h('div', { class: 'pt-name' }, h('b', null, p.name), h('small', null, p.blurb)),
-        select({ label: `${p.name} position`, value: where, options: [...SLOTS.map((s) => ({ value: s, label: SLOT_NAMES[s] })), { value: 'hidden', label: 'Hidden' }], onChange: (v) => move(p.id, v) }),
+        select({ label: `${p.name} position`, value: where, options: [...SLOTS.map((s) => (roomIn(s, p.id) ? { value: s, label: SLOT_NAMES[s] } : { value: s, label: `${SLOT_NAMES[s]} (full)`, disabled: true })), { value: 'hidden', label: 'Hidden' }], onChange: (v) => move(p.id, v) }),
         h('span', { class: 'pt-order' }, iconButton('chevronDown', `Move ${p.name} later`, () => nudge(p.id, 1), { size: 16, cls: 'down' }), iconButton('chevronDown', `Move ${p.name} earlier`, () => nudge(p.id, -1), { size: 16, cls: 'up' })));
     }));
     const size = (key, label, max) => { const side = key === 'left' || key === 'right'; return row(label, slider({ min: side ? 180 : 0, max, step: 10, value: Math.max(side ? 180 : 0, c.layout.sizes[key] || 0), label, onInput: (v) => set(`layout.sizes.${key}`, v), format: (v) => (v ? `${v}px` : 'Auto') }), { path: `layout.sizes.${key}`, redo: again }); };
     return h('div', { class: 'set-page' },
-      group('Panels', h('p', { class: 'hint' }, 'Put each panel where you want it, or hide it. A panel adapts its look to the slot it lands in.'),
+      group('Panels', h('p', { class: 'hint' }, 'Put each panel where you want it, or hide it. A panel adapts its look to the slot it lands in. A column holds about three tall panels and a strip five, so a full slot is greyed out.'),
         row('Show queue', toggle({ label: 'Show queue', value: featureOn('queue'), onChange: (v) => setPref('features.queue', v) }), { hint: 'A quick switch for the queue panel in every skin. Also on the Now Playing tools (Shift+Q).' }), map, table,
         h('div', { class: 'set-row' }, button('Default layout for this skin', () => { set('layout.slots', undefined); render(); }))),
       group('Sizes', size('left', 'Left column', 560), size('right', 'Right column', 560), size('top', 'Top strip', 300), size('bottom', 'Bottom strip', 300),

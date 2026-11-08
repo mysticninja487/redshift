@@ -21,6 +21,13 @@ export const PANELS = [
   { id: 'meters', name: 'Level meters', blurb: 'Left and right level with peak hold.' },
 ];
 
+/** How much room each panel wants, and how much a slot has. A column holds about three tall panels and a strip five;
+    Settings greys out a slot that is full, so a layout can't be built that runs off the window. */
+export const PANEL_WEIGHT = { hero: 2, info: 2, transport: 1, seek: 1, queue: 2, lyrics: 2, viz: 2, meters: 1, eq: 2 };
+export const SLOT_CAPACITY = { left: 6, right: 6, stage: 9, top: 5, bottom: 5 };
+export const slotLoad = (ids, strip) => ids.reduce((n, id) => n + (strip ? 1 : (PANEL_WEIGHT[id] ?? 2)), 0);
+export const fitsSlot = (slot, ids) => slotLoad(ids, slot === 'top' || slot === 'bottom') <= SLOT_CAPACITY[slot];
+
 export const FONTS = [
   { id: 'Inter', label: 'Inter', stack: '"Inter", "Segoe UI", system-ui, sans-serif' },
   { id: 'Space Grotesk', label: 'Space Grotesk', stack: '"Space Grotesk", "Segoe UI", system-ui, sans-serif' },

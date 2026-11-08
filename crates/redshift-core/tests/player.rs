@@ -255,6 +255,25 @@ fn next_previous_and_the_end_of_the_queue() {
 }
 
 #[test]
+fn the_queue_view_lists_tracks_in_the_order_they_will_play() {
+    let mut r = rig(6.0);
+    r.player.set_queue(paths(&["chirp_44k_stereo.flac", "chirp_48k_stereo.opus", "chirp_44k_stereo.mp3"]), 0, true);
+    r.wait_event("start", |e| matches!(e, PlayerEvent::TrackChanged { entry_id: Some(_) }));
+    r.player.set_shuffle(true);
+    let deadline = Instant::now() + WAIT;
+    while !r.player.queue().shuffle {
+        assert!(Instant::now() < deadline, "shuffle never applied");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    let view = r.player.queue();
+    assert_eq!(view.entries.len(), 3);
+    assert_eq!(Some(view.entries[0].id), view.current_entry, "shuffle puts the playing track first");
+    let second = view.entries[1].id;
+    r.player.next();
+    r.wait_event("the track the queue listed second", |e| *e == PlayerEvent::TrackChanged { entry_id: Some(second) });
+}
+
+#[test]
 fn repeat_one_loops_the_same_track() {
     let mut r = rig(6.0);
     r.player.set_repeat(RepeatMode::One);

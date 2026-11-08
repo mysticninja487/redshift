@@ -20,7 +20,13 @@ function fit() {
   for (const id of ['seek', 'transport']) {
     const el = document.querySelector(`.slot:not([data-empty="true"]) > .panel[data-panel="${id}"]`);
     if (!el || el.offsetParent === null) continue;
-    const r = el.getBoundingClientRect();
+    // Skins draw the bar as a card around its panels (the strip itself), so the strip is what to clear.
+    const b = el.getBoundingClientRect(), strip = el.parentElement;
+    let r = { left: b.left, right: b.right, top: b.top, bottom: b.bottom, width: b.width, height: b.height };
+    if (strip && (strip.dataset.slot === 'bottom' || strip.dataset.slot === 'top')) {
+      const s = strip.getBoundingClientRect();
+      r = { ...r, left: Math.min(r.left, s.left), right: Math.max(r.right, s.right), top: Math.min(r.top, s.top), bottom: Math.max(r.bottom, s.bottom) };
+    }
     if (!r.width || !r.height || r.right <= left || r.left >= innerWidth) continue; // not under the drawer
     if (r.top > innerHeight / 2) bottom = Math.max(bottom, innerHeight - r.top + 12);
     else top = Math.max(top, r.bottom + 12);

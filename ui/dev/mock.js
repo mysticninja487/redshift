@@ -128,6 +128,20 @@ const STATS = new Map(); // path -> { plays, last_played }
 const PRESETS = [['Flat', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], ['Bass Boost', [6, 5, 4, 2, 0.5, 0, 0, 0, 0, 0]], ['Bass Reducer', [-6, -5, -4, -2, -0.5, 0, 0, 0, 0, 0]], ['Treble Boost', [0, 0, 0, 0, 0, 0.5, 2, 4, 5, 6]], ['Vocal', [-2, -2, -1, 1, 3, 3.5, 3, 1.5, 0, -1]], ['Rock', [4.5, 3.5, 2, -1, -2, -0.5, 2, 3.5, 4.5, 4.5]], ['Pop', [-1.5, 1, 3, 4, 3, 0.5, -1, -1.5, -1.5, -1.5]], ['Jazz', [3, 2, 1, 2, -1.5, -1.5, 0, 1, 2, 3]], ['Classical', [3.5, 2.5, 2, 1.5, -1, -1, 0, 2, 2.5, 3]], ['Electronic', [5, 4, 1, 0, -2, 2, 1, 1.5, 4, 5]], ['Loudness', [6, 4, 0, 0, -1, 0, -0.5, 1, 4, 5]], ['Acoustic', [3, 3, 2, 0.5, 1, 1, 2, 2.5, 3, 2]], ['Hip-Hop', [5, 4.5, 2, 3, -1, -0.5, 1.5, -0.5, 2, 3]], ['R&B', [2.5, 6, 5, 1.5, -2, -1.5, 2, 2.5, 2.5, 3]], ['Dance', [6, 4.5, 2.5, 0, 0, -2.5, -3, -3, 0, 0]], ['Metal', [4, 3, 0, -2, -1, 1, 3.5, 4, 3, 2]], ['Piano', [1.5, 0.5, 0, 1.5, 2.5, 2.5, 3, 2.5, 3, 2.5]], ['Lounge', [-3, -1.5, 0, 1.5, 3, 2, 0, -1.5, 2, 1]], ['Live', [-2.5, 0, 2, 2.5, 3, 3, 3, 2, 1.5, 1.5]], ['Small Speakers', [6, 5, 4, 3, 2, 0, -1, -2, -2.5, -3]], ['Late Night', [4, 3, 0, 0, 1, 2, 1.5, -1, -2, -3]], ['Headphones', [4, 3, 1.5, -1, -1, 0.5, 1.5, 3, 3.5, 3]], ['Spoken Word', [-5, -4, -2, 1, 3, 4, 4, 3, 1, -2]]];
 
 const position = () => (S.status === 'playing' ? S.pos + (performance.now() - S.t0) / 1000 : S.pos);
+// The queue as the player plays it: the list order, or the shuffled order when shuffle is on.
+const shown = () => {
+  if (!S.shuffle) return S.entries;
+  const have = new Map(S.entries.map((e) => [e.id, e]));
+  S.order = (S.order ?? []).filter((id) => have.has(id));
+  const seen = new Set(S.order);
+  for (const e of S.entries) if (!seen.has(e.id)) S.order.push(e.id);
+  return S.order.map((id) => have.get(id));
+};
+const reshuffle = () => {
+  const ids = S.entries.map((e) => e.id).filter((id) => id !== S.cur);
+  for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+  S.order = S.cur != null ? [S.cur, ...ids] : ids;
+};
 const curEntry = () => S.entries.find((e) => e.id === S.cur) ?? null;
 const curTrack = () => { const e = curEntry(); return e ? find(e.path) : null; };
 function tick() {
@@ -150,19 +164,18 @@ setInterval(() => { if (S.status === 'playing' && position() > 5) { const e = cu
 
 function go(dir, auto = false) {
   if (!S.entries.length) return;
-  let i = S.entries.findIndex((e) => e.id === S.cur);
-  if (S.shuffle && dir > 0) i = Math.floor(Math.random() * S.entries.length);
-  else i += dir;
-  if (i >= S.entries.length) { if (S.repeat === 'all') i = 0; else if (auto) { S.status = 'stopped'; S.pos = 0; emit('player-event', { type: 'ended' }); return; } else return; }
+  const list = shown();
+  let i = list.findIndex((e) => e.id === S.cur) + dir;
+  if (i >= list.length) { if (S.repeat === 'all') i = 0; else if (auto) { S.status = 'stopped'; S.pos = 0; emit('player-event', { type: 'ended' }); return; } else return; }
   if (i < 0) { if (position() > 3) { S.pos = 0; S.t0 = performance.now(); return; } i = 0; }
-  S.cur = S.entries[i].id; S.pos = 0; S.t0 = performance.now(); S.status = 'playing';
+  S.cur = list[i].id; S.pos = 0; S.t0 = performance.now(); S.status = 'playing';
   noteStart(curEntry()?.path);
   emit('player-event', { type: 'track_changed', entry_id: S.cur });
 }
 const queueView = () => {
   const t = curTrack();
   return {
-    entries: S.entries.map((e) => ({ id: e.id, path: e.path })), current_entry: S.cur, shuffle: S.shuffle, repeat: S.repeat,
+    entries: shown().map((e) => ({ id: e.id, path: e.path })), current_entry: S.cur, shuffle: S.shuffle, repeat: S.repeat,
     current: t ? { entry_id: S.cur, path: t.path, codec: t.format, source_rate: t.sample_rate, source_channels: 2, bits_per_sample: t.bit_depth, duration_secs: t.duration_secs } : null,
   };
 };
@@ -236,18 +249,18 @@ const cmds = {
   set_queue: ({ paths, start, autoplay }) => { S.entries = []; addEntries(paths); S.cur = S.entries[start]?.id ?? null; S.pos = 0; S.t0 = performance.now(); S.status = autoplay && S.cur ? 'playing' : 'stopped'; if (S.status === 'playing') noteStart(curEntry()?.path); emit('player-event', { type: 'queue_changed' }); emit('player-event', { type: 'track_changed', entry_id: S.cur }); },
   play_entry: ({ id }) => { S.cur = id; noteStart(curEntry()?.path); S.pos = 0; S.t0 = performance.now(); S.status = 'playing'; emit('player-event', { type: 'track_changed', entry_id: id }); },
   pause: () => { S.pos = position(); S.status = 'paused'; }, resume: () => { S.t0 = performance.now(); S.status = 'playing'; },
-  toggle_mini_player: () => true,
+  toggle_mini_player: () => true, mini_size: () => {},
   toggle_pause: () => { if (S.status === 'playing') cmds.pause(); else if (S.status === 'paused') cmds.resume(); else if (S.entries.length) { S.cur ??= S.entries[0].id; S.pos = 0; S.t0 = performance.now(); S.status = 'playing'; emit('player-event', { type: 'track_changed', entry_id: S.cur }); } },
   stop: () => { S.status = 'stopped'; S.pos = 0; }, next: () => go(1), previous: () => go(-1),
   seek: ({ secs }) => { S.pos = secs; S.t0 = performance.now(); },
   queue_append: ({ paths }) => { addEntries(paths); S.cur ??= S.entries[0]?.id ?? null; emit('player-event', { type: 'queue_changed' }); },
   queue_play_next: ({ paths }) => { const i = S.entries.findIndex((e) => e.id === S.cur); addEntries(paths, i + 1); emit('player-event', { type: 'queue_changed' }); },
   queue_remove: ({ id }) => { const i = S.entries.findIndex((e) => e.id === id); if (i < 0) return; S.entries.splice(i, 1); if (S.cur === id) { S.cur = S.entries[i]?.id ?? S.entries[i - 1]?.id ?? null; S.pos = 0; S.t0 = performance.now(); if (!S.cur) S.status = 'stopped'; emit('player-event', { type: 'track_changed', entry_id: S.cur }); } emit('player-event', { type: 'queue_changed' }); },
-  queue_move: ({ from, to }) => { const [e] = S.entries.splice(from, 1); S.entries.splice(to, 0, e); emit('player-event', { type: 'queue_changed' }); },
+  queue_move: ({ from, to }) => { if (S.shuffle) { shown(); const [id] = S.order.splice(from, 1); S.order.splice(to, 0, id); } else { const [e] = S.entries.splice(from, 1); S.entries.splice(to, 0, e); } emit('player-event', { type: 'queue_changed' }); },
   queue_clear: () => { S.entries = []; S.cur = null; S.status = 'stopped'; S.pos = 0; emit('player-event', { type: 'queue_changed' }); emit('player-event', { type: 'track_changed', entry_id: null }); },
   player_state: playerState, queue_view: queueView, get_settings: settings,
   set_volume: ({ volume }) => { S.volume = volume; }, set_muted: ({ muted }) => { S.muted = muted; },
-  set_shuffle: ({ on }) => { S.shuffle = on; }, set_repeat: ({ mode }) => { S.repeat = mode; },
+  set_shuffle: ({ on }) => { S.shuffle = on; if (on) reshuffle(); emit('player-event', { type: 'queue_changed' }); }, set_repeat: ({ mode }) => { S.repeat = mode; },
   set_crossfade_secs: ({ secs }) => { S.crossfade = secs; }, set_replaygain: ({ mode, preampDb }) => { S.rg = mode; S.rgPre = preampDb; },
   output_devices: () => [{ id: 'spk', name: 'Speakers (Mock Audio)', is_default: true }, { id: 'hp', name: 'Headphones (Mock USB DAC)', is_default: false }],
   set_output_device: ({ id }) => { S.device = id; },

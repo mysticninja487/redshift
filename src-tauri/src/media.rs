@@ -7,8 +7,39 @@
 #[cfg(not(windows))]
 pub fn start(_app: &tauri::AppHandle, _core: std::sync::Arc<redshift_core::app::App>) {}
 
+/// The cover location in the form souvlaki wants on Windows: `file://` followed by a plain path with
+/// backslashes. It hands everything after `file://` to `StorageFile::GetFileFromPathAsync`, which
+/// rejects `/C:/...` and forward slashes, and a failure there drops the title and artist too.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn cover_url(path: &std::path::Path) -> String {
+    format!("file://{}", path.to_string_lossy().replace('/', "\\"))
+}
+
+/// A 1x1 transparent PNG, shown for tracks without a cover so the previous track's cover can't
+/// stay up (the media API can set a thumbnail but not clear one).
+#[cfg_attr(not(windows), allow(dead_code))]
+const BLANK_COVER: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01,
+    0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41,
+    0x54, 0x78, 0x9C, 0x63, 0x60, 0x60, 0x60, 0x60, 0x00, 0x00, 0x00, 0x05, 0x00, 0x01, 0x5A, 0xB1, 0x5C, 0x38, 0x00, 0x00,
+    0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+];
+
 #[cfg(windows)]
 pub use imp::start;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn cover_url_is_a_backslash_path_after_file_scheme() {
+        let url = cover_url(std::path::Path::new("C:/Users/me/AppData/Local/Temp/redshift-cover-1.jpg"));
+        assert_eq!(url, "file://C:\\Users\\me\\AppData\\Local\\Temp\\redshift-cover-1.jpg");
+        assert!(!url.starts_with("file:///"));
+    }
+    #[test]
+    fn blank_cover_is_a_png() { assert_eq!(&BLANK_COVER[1..4], b"PNG"); }
+}
 
 #[cfg(windows)]
 mod imp {
@@ -21,18 +52,6 @@ mod imp {
     use redshift_core::engine::Status;
     use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig, SeekDirection};
     use tauri::{AppHandle, Manager};
-
-    /// `file:///C:/Users/me/AppData/.../cover.jpg`, which is what the media flyout can load.
-    fn file_uri(path: &Path) -> String {
-        let mut out = String::from("file:///");
-        for b in path.to_string_lossy().replace('\\', "/").bytes() {
-            match b {
-                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b':' | b'.' | b'_' | b'-' | b'~' => out.push(b as char),
-                _ => out.push_str(&format!("%{b:02X}")),
-            }
-        }
-        out
-    }
 
     fn handle(core: &App, event: MediaControlEvent) {
         let p = &core.player;
@@ -59,11 +78,14 @@ mod imp {
     /// Writes the track's cover where the media flyout can read it; two file names alternate so a
     /// new cover never has to replace one the system still has open.
     fn cover_file(core: &App, track: &Path, flip: &mut bool) -> Option<PathBuf> {
-        let cover = core.cover(track)?;
-        let ext = if cover.mime.contains("png") { "png" } else { "jpg" };
+        let cover = core.cover(track);
+        let (ext, data): (&str, &[u8]) = match &cover {
+            Some(c) => (if c.mime.contains("png") { "png" } else { "jpg" }, &c.data),
+            None => ("png", super::BLANK_COVER),
+        };
         *flip = !*flip;
         let file = std::env::temp_dir().join(format!("redshift-cover-{}.{ext}", u8::from(*flip)));
-        std::fs::write(&file, &cover.data).ok()?;
+        std::fs::write(&file, data).ok()?;
         Some(file)
     }
 
@@ -94,18 +116,21 @@ mod imp {
                     match &current {
                         Some(c) => {
                             let meta = core.track_meta(&c.path).ok();
-                            let cover = cover_file(&core, &c.path, &mut flip).map(|f| file_uri(&f));
+                            let cover = cover_file(&core, &c.path, &mut flip).map(|f| super::cover_url(&f));
                             let (title, artist, album) = match &meta {
                                 Some(m) => (m.title.clone(), m.artist.clone(), m.album.clone()),
                                 None => (c.path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(), String::new(), String::new()),
                             };
-                            let _ = controls.set_metadata(MediaMetadata {
-                                title: Some(&title),
-                                artist: Some(&artist),
-                                album: Some(&album),
-                                cover_url: cover.as_deref(),
-                                duration: c.duration_secs.map(Duration::from_secs_f64),
-                            });
+                            let duration = c.duration_secs.map(Duration::from_secs_f64);
+                            // Text first: it is committed even if the cover can't be loaded.
+                            if let Err(e) = controls.set_metadata(MediaMetadata { title: Some(&title), artist: Some(&artist), album: Some(&album), cover_url: None, duration }) {
+                                eprintln!("media flyout text: {e}");
+                            }
+                            if let Some(url) = cover.as_deref() {
+                                if let Err(e) = controls.set_metadata(MediaMetadata { title: Some(&title), artist: Some(&artist), album: Some(&album), cover_url: Some(url), duration }) {
+                                    eprintln!("media flyout cover ({url}): {e}");
+                                }
+                            }
                         }
                         None => { let _ = controls.set_metadata(MediaMetadata::default()); }
                     }

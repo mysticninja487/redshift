@@ -24,6 +24,7 @@ const P = {
   trash: '<path d="M5 7h14M10 7V4.5h4V7M7 7l1 12.5h8L17 7"/>',
   pip: '<rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor" stroke="none"/>',
   fullscreen: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  expand: '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>', collapse: '<path d="M20 10h-6V4M4 14h6v6M14 10l7-7M10 14l-7 7"/>',
   chevronLeft: '<path d="m14.5 5-7 7 7 7"/>', chevronRight: '<path d="m9.5 5 7 7-7 7"/>',
   chevronDown: '<path d="m5 9.5 7 7 7-7"/>', arrowLeft: '<path d="M20 12H5M11 6l-6 6 6 6"/>',
   refresh: '<path d="M20 11a8 8 0 0 0-14.5-4M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.5 4M20 20v-4h-4"/>',

@@ -414,6 +414,19 @@ fn paths_from_args(args: impl IntoIterator<Item = String>) -> Vec<PathBuf> {
 }
 
 const MINI_LABEL: &str = "mini";
+/// The mini player's two sizes (logical pixels): the compact strip and the expanded card.
+const MINI_COMPACT: (f64, f64) = (404.0, 108.0);
+const MINI_EXPANDED: (f64, f64) = (720.0, 252.0);
+
+/// Switches the mini player between its compact and expanded size.
+#[tauri::command(async)]
+fn mini_size(app: AppHandle, expanded: bool) -> CmdResult<()> {
+    if let Some(mini) = app.get_webview_window(MINI_LABEL) {
+        let (w, h) = if expanded { MINI_EXPANDED } else { MINI_COMPACT };
+        mini.set_size(tauri::LogicalSize::new(w, h)).map_err(err)?;
+    }
+    Ok(())
+}
 
 /// Opens the small always-on-top player, tucking the main window away (or closes it and brings
 /// the main window back). Returns whether the mini player is now showing.
@@ -426,10 +439,13 @@ fn toggle_mini_player(app: AppHandle) -> CmdResult<bool> {
     }
     WebviewWindowBuilder::new(&app, MINI_LABEL, WebviewUrl::App("index.html?mini=1".into()))
         .title("Redshift mini player")
-        .inner_size(400.0, 128.0)
+        .inner_size(MINI_COMPACT.0, MINI_COMPACT.1)
         .resizable(false)
         .maximizable(false)
         .decorations(false)
+        // Transparent and shadowless: the page draws its own rounded card, so the system adds no border.
+        .transparent(true)
+        .shadow(false)
         .always_on_top(true)
         .build()
         .map_err(err)?;
@@ -661,7 +677,7 @@ fn main() {
             get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_replaygain,
             output_devices, set_output_device,
             eq_info, set_eq_enabled, set_eq_preamp_db, set_eq_band_db, set_eq_gains_db, apply_eq_preset, eq_curve,
-            save_eq_preset, delete_eq_preset, set_tray, toggle_mini_player, favourite_paths, favourites, set_favourite, play_stats,
+            save_eq_preset, delete_eq_preset, set_tray, toggle_mini_player, mini_size, favourite_paths, favourites, set_favourite, play_stats,
             reset_play_stats, fonts, import_font, remove_font, relink_playlist, paths_exist,
             viz_frame, configure_viz, ui_state, set_ui_state,
             library_folders, add_library_folder, remove_library_folder, scan_library, is_scanning,

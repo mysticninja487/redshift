@@ -70,10 +70,10 @@
 @keyframes eqbar { to { height: 100%; } }
 
 /* ---------- lyrics ---------- */
-.lyrics { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.lyrics { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; container-type: size; } /* size container: the padding below follows the panel's height, not its width */
 /* Defaults live on the root: the panel sets the real values, and a default set on .lyrics itself would override them. */
 :root { --ly-size: 1; --ly-dim: .4; --ly-blur: 0px; }
-.ly-scroll { flex: 1; overflow-y: auto; padding: 38% var(--pad); scrollbar-width: none; mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); }
+.ly-scroll { flex: 1; overflow-y: auto; padding: 45cqh var(--pad); scrollbar-width: none; mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); }
 .ly-scroll::-webkit-scrollbar { display: none; }
 .lyrics[data-align="center"] .ly-scroll { text-align: center; } .lyrics[data-align="right"] .ly-scroll { text-align: right; }
 .ly-line { margin: 0 0 .55em; font-family: var(--font-display); font-weight: 600; font-size: calc(1.35rem * var(--ly-size)); line-height: 1.25; letter-spacing: -.005em; color: var(--fg); opacity: calc(1 - var(--ly-dim)); filter: blur(0); transition: opacity .35s, filter .35s, transform .35s var(--ease); transform-origin: left center; cursor: default; }
@@ -187,6 +187,12 @@
 .slot[data-slot="stage"] > .panel[data-panel="meters"] { flex: 0 0 auto; height: 120px; }
 .slot[data-slot="stage"] > .panel[data-panel="viz"] { flex: 1 1 0; min-height: 140px; }
 .slot[data-slot="left"] > .panel[data-panel="hero"], .slot[data-slot="right"] > .panel[data-panel="hero"] { min-height: 0; max-height: 46%; }
-.slot[data-slot="left"] > .panel[data-panel="queue"], .slot[data-slot="right"] > .panel[data-panel="queue"], .slot[data-slot="left"] > .panel[data-panel="lyrics"], .slot[data-slot="right"] > .panel[data-panel="lyrics"] { min-height: 150px; }
+.slot[data-slot="left"] > .panel[data-panel="queue"], .slot[data-slot="right"] > .panel[data-panel="queue"], .slot[data-slot="left"] > .panel[data-panel="lyrics"], .slot[data-slot="right"] > .panel[data-panel="lyrics"] { min-height: 120px; }
+/* Crowded columns: panels give way to each other down to a floor, rather than pushing the rest out of the window. */
+.slot[data-slot="left"] > .panel[data-panel="hero"], .slot[data-slot="right"] > .panel[data-panel="hero"] { min-height: 96px; }
+.slot[data-slot="left"] > .panel[data-panel="info"], .slot[data-slot="right"] > .panel[data-panel="info"] { min-height: 96px; overflow: hidden; }
+.slot[data-slot="left"] .vizpanel, .slot[data-slot="right"] .vizpanel { min-height: 70px; }
+.slot[data-slot="left"] .meters, .slot[data-slot="right"] .meters { min-height: 56px; }
+.slot[data-slot="left"] > .panel[data-panel="transport"], .slot[data-slot="right"] > .panel[data-panel="transport"], .slot[data-slot="left"] > .panel[data-panel="seek"], .slot[data-slot="right"] > .panel[data-panel="seek"] { flex-shrink: 0; }
 /* Lyrics without timing have no current line, so none of them is faded or blurred. */
 .panel[data-synced="false"] .ly-line { opacity: 1; filter: none; }

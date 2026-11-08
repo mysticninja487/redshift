@@ -65,7 +65,7 @@ This is an early version. If something breaks, please [open an issue](https://gi
 
 - Media keys (play/pause, next, previous) and the track, cover and controls in the Windows volume flyout and lock screen.
 - Open songs, folders or playlists with Redshift (right-click, "Open with", or drag them onto the exe or the window). A second launch hands its files to the player that's already running.
-- A mini player: a small always-on-top window with the cover, the track, the current lyric line and the controls. Open it from the top bar or with `Ctrl+M`; double-click it to go back to the full player.
+- A mini player: a small always-on-top window with two sizes. The compact strip has the cover, the track, the controls and a progress line; the arrow in its corner expands it into a card with the queue (click a track to jump to it) or the lyrics beside the cover. Open it from the top bar or with `Ctrl+M`, drag it anywhere, and double-click it to go back to the full player.
 
 ## Getting started
 

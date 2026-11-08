@@ -327,6 +327,26 @@ impl Queue {
         true
     }
 
+    /// Moves the entry at play position `from` to play position `to`; what the queue shows is the
+    /// play order, so that is what a drag in it means. With shuffle off the play order is the list.
+    /// The current entry stays current.
+    pub fn move_in_play_order(&mut self, from: usize, to: usize) -> bool {
+        if !self.shuffle {
+            return self.move_entry(from, to);
+        }
+        let n = self.order.len();
+        if from >= n || to >= n {
+            return false;
+        }
+        if from != to {
+            let cur = self.current_index();
+            let moved = self.order.remove(from);
+            self.order.insert(to, moved);
+            self.pos = cur.map(|c| self.order.iter().position(|&i| i == c).unwrap());
+        }
+        true
+    }
+
     pub fn clear(&mut self) {
         self.entries.clear();
         self.order.clear();
@@ -624,6 +644,25 @@ mod tests {
         assert_eq!(upcoming(&q), ["c", "d", "a"]);
         assert!(!q.move_entry(0, 9));
         assert!(q.move_entry(2, 2));
+    }
+
+    #[test]
+    fn moving_in_play_order_reorders_what_plays_next() {
+        let mut q = queue(&["a", "b", "c", "d", "e", "f"], 2);
+        q.set_shuffle(true);
+        let before: Vec<_> = q.play_order().map(|e| e.id).collect();
+        let now = cur(&q);
+        assert!(q.move_in_play_order(5, 1));
+        let after: Vec<_> = q.play_order().map(|e| e.id).collect();
+        assert_eq!(after[1], before[5], "dropped where it was put");
+        assert_eq!(after.len(), before.len());
+        assert_eq!(cur(&q), now, "the current entry stays current");
+        assert_eq!(q.entries().len(), 6, "the list itself is untouched");
+        assert!(!q.move_in_play_order(0, 9));
+        // Shuffle off: the play order is the list, so it is the same move.
+        let mut q = queue(&["a", "b", "c"], 0);
+        assert!(q.move_in_play_order(0, 2));
+        assert_eq!(q.entries().iter().map(|e| e.path.to_string_lossy().into_owned()).collect::<Vec<_>>(), ["b", "c", "a"]);
     }
 
     #[test]

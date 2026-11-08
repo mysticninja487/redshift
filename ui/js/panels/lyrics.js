@@ -42,6 +42,14 @@ export function mount(el) {
     update(true);
   }
 
+  /** Scrolls the current line to the middle. Instant when asked to (a rebuild, a resize), smooth for the next line. */
+  function center(instant) {
+    const p = lines[active];
+    if (!p || !scroller.clientHeight) return;
+    const top = p.offsetTop - scroller.clientHeight / 2 + p.offsetHeight / 2;
+    scroller.scrollTo({ top, behavior: document.documentElement.dataset.motion === 'reduced' || instant ? 'auto' : 'smooth' });
+  }
+
   function update(force = false) {
     const ly = state.lyrics;
     if (!ly?.synced) return;
@@ -55,11 +63,7 @@ export function mount(el) {
         p.classList.toggle('active', i === idx); p.classList.toggle('past', i < idx);
         p.dataset.d = String(Math.min(4, Math.abs(i - idx)));
       });
-      if (idx >= 0 && performance.now() > userScrollUntil) {
-        const p = lines[idx];
-        const top = p.offsetTop - scroller.clientHeight / 2 + p.offsetHeight / 2;
-        scroller.scrollTo({ top, behavior: document.documentElement.dataset.motion === 'reduced' || force ? 'auto' : 'smooth' });
-      }
+      if (idx >= 0 && performance.now() > userScrollUntil) center(force);
     }
     const words = wordEls[idx];
     if (words) { const wl = ly.lines[idx].words; words.forEach((w, k) => w.classList.toggle('done', wl[k].time_ms <= t)); }
@@ -70,8 +74,15 @@ export function mount(el) {
   L.frame(() => update(), { whenPlaying: true });
   L.on('lyrics', build);
   L.on('player', () => { if (!isPlaying()) update(); });
-  L.on('ui', () => { sizeVars(); if (get('lyrics.words') !== wordsOn) build(); }); // the word highlight is baked into the lines, so changing it rebuilds them
+  // The panel is built before it is in the page and moves when the skin or layout changes, so its size is
+  // not known at first: re-centre whenever it changes, or the line sits off-screen until the next one.
+  const ro = new ResizeObserver(() => { if (active >= 0 && performance.now() > userScrollUntil) center(true); });
+  ro.observe(scroller);
+  // A skin's font arriving later changes the line heights without changing the panel's size.
+  const refit = () => { if (active >= 0 && performance.now() > userScrollUntil) center(true); };
+  document.fonts?.addEventListener?.('loadingdone', refit);
+  L.on('ui', () => { sizeVars(); if (get('lyrics.words') !== wordsOn) build(); else requestAnimationFrame(() => { if (active >= 0 && performance.now() > userScrollUntil) center(true); }); }); // the word highlight is baked into the lines, so changing it rebuilds them
   sizeVars();
   build();
-  return { destroy: () => L.destroy() };
+  return { destroy: () => { ro.disconnect(); document.fonts?.removeEventListener?.('loadingdone', refit); L.destroy(); } };
 }

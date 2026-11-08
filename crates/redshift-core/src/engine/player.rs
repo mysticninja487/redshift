@@ -147,7 +147,8 @@ pub struct CurrentTrack {
     pub duration_secs: Option<f64>,
 }
 
-/// A copy of the queue state, for the UI.
+/// A copy of the queue state, for the UI. `entries` are in the order they will play (the list order
+/// when shuffle is off), so what the UI shows is what is coming.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct QueueView {
     pub entries: Vec<QueueEntry>,
@@ -657,7 +658,7 @@ impl Core {
             })
         });
         *self.view.write() = QueueView {
-            entries: self.queue.entries().to_vec(),
+            entries: self.queue.play_order().cloned().collect(),
             current_entry: self.queue.current().map(|e| e.id),
             current,
             shuffle: self.queue.shuffle(),
@@ -695,7 +696,7 @@ impl Core {
                 self.queue_changed();
             }
             Msg::Move { from, to } => {
-                self.queue.move_entry(from, to);
+                self.queue.move_in_play_order(from, to);
                 self.queue_changed();
             }
             Msg::ClearQueue => {

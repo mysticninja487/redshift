@@ -50,7 +50,15 @@ export function mountLayout(root) {
       p.wrap.remove(); live.delete(id);
     }
   }
-  on('ui', apply);
+  // A slot holding more than fits scrolls rather than pushing panels out of the window.
+  const crowded = () => { for (const id of SLOTS) { const el = slotEls[id]; el.dataset.crowded = String(el.dataset.empty !== 'true' && el.scrollHeight > el.clientHeight + 1); } };
+  let queued = 0;
+  const checkSoon = () => { if (!queued) queued = requestAnimationFrame(() => { queued = 0; crowded(); }); };
+  addEventListener('resize', checkSoon);
+  const ro = new ResizeObserver(checkSoon);
+  for (const id of SLOTS) ro.observe(slotEls[id]);
+  on('ui', () => { apply(); checkSoon(); });
   apply();
+  checkSoon();
   return { apply };
 }

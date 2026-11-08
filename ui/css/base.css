@@ -85,7 +85,7 @@ img { display: block; }
 
 .panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .panel > * { min-width: 0; }
-.slot[data-slot="left"] > .panel, .slot[data-slot="right"] > .panel { flex: 0 0 auto; }
+.slot[data-slot="left"] > .panel, .slot[data-slot="right"] > .panel { flex: 0 1 auto; }
 .slot[data-slot="left"] > .panel[data-panel="queue"], .slot[data-slot="right"] > .panel[data-panel="queue"],
 .slot[data-slot="left"] > .panel[data-panel="lyrics"], .slot[data-slot="right"] > .panel[data-panel="lyrics"] { flex: 1 1 0; min-height: 0; }
 .slot[data-slot="left"] > .panel[data-panel="info"]:last-child, .slot[data-slot="right"] > .panel[data-panel="info"]:last-child { flex: 1 1 0; }
@@ -139,3 +139,7 @@ img { display: block; }
 
 /* decorative headings only belong behind the Now playing page */
 :root:not([data-view="now"]) .d-title, :root:not([data-view="now"]) .d-side, :root:not([data-view="now"]) .d-ring, :root:not([data-view="now"]) .d-ticks { display: none !important; }
+
+/* A column or strip with more in it than the window can show scrolls, instead of letting panels run off the edge.
+   layout.js sets data-crowded; panels give way first (see the floors in panels.css). */
+.slot[data-crowded="true"] { overflow-y: auto; scrollbar-width: thin; }
