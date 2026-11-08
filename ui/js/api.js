@@ -85,5 +85,6 @@ export const api = {
   playStats: () => invoke('play_stats'), resetPlayStats: (path = null) => invoke('reset_play_stats', { path }),
   // fonts and tray
   fonts: () => invoke('fonts'), importFont: (path) => invoke('import_font', { path }), removeFont: (file) => invoke('remove_font', { file }),
+  toggleMiniPlayer: () => invoke('toggle_mini_player'),
   setTray: (minimizeToTray, closeToTray) => invoke('set_tray', { minimizeToTray, closeToTray }),
 };

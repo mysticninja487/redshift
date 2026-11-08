@@ -8,7 +8,7 @@ import { h } from './util.js';
 import { on } from './bus.js';
 
 /** Panels that disappear when a feature is switched off. */
-const OFF_WITH = { lyrics: 'lyrics', viz: 'viz', meters: 'viz' };
+const OFF_WITH = { lyrics: 'lyrics', viz: 'viz', meters: 'viz', queue: 'queue' };
 
 export function mountLayout(root) {
   const slotEls = {};

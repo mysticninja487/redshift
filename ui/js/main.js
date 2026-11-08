@@ -1,6 +1,7 @@
 // Starts the app: loads saved settings, builds the page, wires the views.
 
 import { on } from './bus.js';
+import { api, listen } from './api.js';
 import { initController, setView } from './controller.js';
 import { loadImportedFonts } from './fonts.js';
 import { eqDrawerOpen, onEqDrawer, toggleEqDrawer } from './ui/eqdrawer.js';
@@ -37,19 +38,22 @@ function buildChrome() {
   // Quick switches for the Now Playing screen: lyrics, visualisers and the equaliser drawer.
   const lyricsBtn = iconButton('lyrics', 'Lyrics', () => setPref('features.lyrics', !featureOn('lyrics')), { cls: 'tool-btn tool-lyrics' });
   const vizBtn = iconButton('viz', 'Visualisers', () => setPref('features.viz', !featureOn('viz')), { cls: 'tool-btn tool-viz' });
+  const queueBtn = iconButton('queue', 'Queue', () => setPref('features.queue', !featureOn('queue')), { cls: 'tool-btn tool-queue' });
   const eqBtn = iconButton('eq', 'Equaliser', (e) => toggleEqDrawer(e.currentTarget), { cls: 'tool-btn tool-eq' });
   const paintTools = () => {
-    const l = featureOn('lyrics'), v = featureOn('viz');
+    const l = featureOn('lyrics'), v = featureOn('viz'), q = featureOn('queue');
     lyricsBtn.setAttribute('aria-pressed', String(l)); lyricsBtn.title = lyricsBtn.ariaLabel = l ? 'Lyrics: on (click to hide)' : 'Lyrics: off (click to show)';
     vizBtn.setAttribute('aria-pressed', String(v)); vizBtn.title = vizBtn.ariaLabel = v ? 'Visualisers: on (click to hide)' : 'Visualisers: off (click to show)';
+    queueBtn.setAttribute('aria-pressed', String(q)); queueBtn.title = queueBtn.ariaLabel = q ? 'Queue: on (click to hide)' : 'Queue: off (click to show)';
     eqBtn.setAttribute('aria-pressed', String(eqDrawerOpen()));
-    lyricsBtn.classList.toggle('is-off', !l); vizBtn.classList.toggle('is-off', !v);
+    lyricsBtn.classList.toggle('is-off', !l); vizBtn.classList.toggle('is-off', !v); queueBtn.classList.toggle('is-off', !q);
   };
   on('ui', paintTools);
   onEqDrawer(paintTools);
   paintTools();
-  const nowTools = h('div', { class: 'now-tools', role: 'group', 'aria-label': 'Now playing tools' }, lyricsBtn, vizBtn, eqBtn);
+  const nowTools = h('div', { class: 'now-tools', role: 'group', 'aria-label': 'Now playing tools' }, lyricsBtn, vizBtn, queueBtn, eqBtn);
   // Always visible whatever the skin does with the navigation links: settings are one click away.
+  const mini = iconButton('pip', 'Mini player (Ctrl+M)', () => api.toggleMiniPlayer(), { cls: 'mini-btn-open' });
   const gear = iconButton('settings', 'Settings (Ctrl+,)', () => setView('settings'), { cls: 'settings-btn' });
   on('view', (v) => gear.setAttribute('aria-pressed', String(v === 'settings')));
   const full = iconButton('fullscreen', 'Fullscreen', () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => {})), { cls: 'full-btn' });
@@ -58,7 +62,7 @@ function buildChrome() {
   nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === state.view)));
   return h('header', { class: 'chrome' },
     h('div', { class: 'brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }), h('span', { class: 'brand-name' }, 'Redshift')),
-    nav, h('div', { class: 'chrome-tools' }, nowTools, skinSel, scheme, gear, full));
+    nav, h('div', { class: 'chrome-tools' }, nowTools, skinSel, scheme, gear, mini, full));
 }
 
 /** Background layers that skins show or hide with CSS: ghost type, sun, rings, side labels. */
@@ -100,12 +104,24 @@ function buildViews(app) {
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.view !== 'now' && !document.querySelector('.dialog-back,.popover,.menu')) setView('now'); });
 }
 
+async function bootMini() {
+  document.documentElement.dataset.mini = 'true';
+  const app = document.getElementById('app');
+  const { mountMini } = await import('./mini.js');
+  mountMini(app);
+  document.documentElement.dataset.ready = 'true';
+}
+
 async function boot() {
   if (!window.__TAURI__) await import('../dev/mock.js');
   await loadPrefs();
   await loadImportedFonts();
   applyTheme();
   const app = document.getElementById('app');
+  if (new URLSearchParams(location.search).has('mini')) {
+    try { await initController(); } catch (e) { console.error(e); }
+    return bootMini();
+  }
   app.replaceChildren(h('div', { class: 'bg' }), buildDecor(), buildChrome());
   buildViews(app);
   app.append(h('div', { class: 'grain' }));
@@ -113,6 +129,10 @@ async function boot() {
   if (takeMigrated()) setTimeout(() => toast('Redshift now opens in the new Classic layout. Your other skins are still in the skin menu and Settings.'), 800);
   try { await initController(); } catch (e) { console.error(e); toast('Could not reach the audio engine', 'error'); }
   document.documentElement.dataset.ready = 'true';
+  // Files opened with the player, or dropped on it, start playing; a hint shows while they hover.
+  const drop = h('div', { class: 'drop-hint', hidden: true, 'aria-hidden': 'true' }, h('div', {}, icon('play', 28), h('b', {}, 'Drop to play'), h('span', {}, 'Songs, folders and playlists')));
+  app.append(drop);
+  try { listen('drop-hover', (on) => { drop.hidden = !on; }); listen('files-opened', (n) => { setView('now'); toast(n === 1 ? 'Playing 1 song' : `Playing ${n} songs`); }); } catch (e) { console.warn(e); }
   addEventListener('pagehide', flushPrefs);
   addEventListener('beforeunload', flushPrefs);
   // Pointer-down on a bare panel area drops focus from buttons so Space always means play/pause.

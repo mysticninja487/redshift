@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the main window may do: call Redshift's own commands, receive events, and show file/folder pickers.",
-  "windows": ["main"],
-  "permissions": ["core:default", "dialog:default"]
+  "description": "What the main and mini player windows may do: call Redshift's own commands, receive events, and show file/folder pickers.",
+  "windows": ["main", "mini"],
+  "permissions": ["core:default", "core:window:allow-start-dragging", "dialog:default"]
 }

@@ -12,6 +12,23 @@ let drawer = null;
 let opener = null;
 const listeners = new Set();
 
+/** Keeps the drawer off the progress bar and the controls, wherever the skin and the layout put them. */
+function fit() {
+  if (!drawer) return;
+  const width = Math.min(560, innerWidth - 24), left = innerWidth - 12 - width;
+  let top = 64, bottom = 12;
+  for (const id of ['seek', 'transport']) {
+    const el = document.querySelector(`.slot:not([data-empty="true"]) > .panel[data-panel="${id}"]`);
+    if (!el || el.offsetParent === null) continue;
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height || r.right <= left || r.left >= innerWidth) continue; // not under the drawer
+    if (r.top > innerHeight / 2) bottom = Math.max(bottom, innerHeight - r.top + 12);
+    else top = Math.max(top, r.bottom + 12);
+  }
+  // Leave room to be useful: if the bars squeeze it too far, it still never covers them.
+  drawer.style.top = `${top}px`; drawer.style.bottom = `${bottom}px`;
+}
+
 export const eqDrawerOpen = () => !!drawer?.classList.contains('open');
 export const onEqDrawer = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 
@@ -25,12 +42,15 @@ function build() {
     if (e.key === 'Escape' && eqDrawerOpen() && !document.querySelector('.dialog-back,.menu')) { e.stopPropagation(); setEqDrawer(false); opener?.focus?.(); }
   }, true);
   on('view', (v) => { if (v !== 'now') setEqDrawer(false); });
+  addEventListener('resize', () => { if (eqDrawerOpen()) fit(); });
+  on('ui', () => { if (eqDrawerOpen()) requestAnimationFrame(fit); });
 }
 
 export function setEqDrawer(open, from) {
   if (open && !drawer) build();
   if (!drawer) return;
   if (open) opener = from ?? document.activeElement;
+  if (open) fit();
   drawer.classList.toggle('open', open);
   drawer.setAttribute('aria-hidden', String(!open));
   drawer.inert = !open;

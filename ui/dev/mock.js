@@ -236,6 +236,7 @@ const cmds = {
   set_queue: ({ paths, start, autoplay }) => { S.entries = []; addEntries(paths); S.cur = S.entries[start]?.id ?? null; S.pos = 0; S.t0 = performance.now(); S.status = autoplay && S.cur ? 'playing' : 'stopped'; if (S.status === 'playing') noteStart(curEntry()?.path); emit('player-event', { type: 'queue_changed' }); emit('player-event', { type: 'track_changed', entry_id: S.cur }); },
   play_entry: ({ id }) => { S.cur = id; noteStart(curEntry()?.path); S.pos = 0; S.t0 = performance.now(); S.status = 'playing'; emit('player-event', { type: 'track_changed', entry_id: id }); },
   pause: () => { S.pos = position(); S.status = 'paused'; }, resume: () => { S.t0 = performance.now(); S.status = 'playing'; },
+  toggle_mini_player: () => true,
   toggle_pause: () => { if (S.status === 'playing') cmds.pause(); else if (S.status === 'paused') cmds.resume(); else if (S.entries.length) { S.cur ??= S.entries[0].id; S.pos = 0; S.t0 = performance.now(); S.status = 'playing'; emit('player-event', { type: 'track_changed', entry_id: S.cur }); } },
   stop: () => { S.status = 'stopped'; S.pos = 0; }, next: () => go(1), previous: () => go(-1),
   seek: ({ secs }) => { S.pos = secs; S.t0 = performance.now(); },

@@ -1,0 +1,27 @@
+/* The mini player window: it borrows the current skin's colours and fonts. */
+html[data-mini] body { overflow: hidden; background: var(--bg); }
+html[data-mini] #app { height: 100vh; display: block; }
+.mini { display: flex; height: 100vh; background: var(--bg); color: var(--fg); border: var(--bw) solid var(--line); user-select: none; -webkit-user-select: none; cursor: default; }
+.mini-art { flex: 0 0 auto; aspect-ratio: 1; height: 100%; background: var(--bg3) center / cover no-repeat; }
+.mini-art.empty { background-image: none; display: grid; place-items: center; }
+.mini-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 12px 14px 10px; }
+.mini-meta { min-width: 0; }
+.mini-title { font-family: var(--font-display); font-weight: 700; font-size: 1rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-artist { margin-top: 2px; font-size: .78rem; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-lyric { font-size: .82rem; color: var(--accent-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.mini-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.mini-btn { all: unset; box-sizing: border-box; flex: none; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 99px; color: var(--fg2); cursor: pointer; }
+.mini-btn:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.mini-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.mini-play { width: 34px; height: 34px; background: var(--accent); color: var(--accent-ink, #fff); }
+.mini-play:hover { background: var(--accent); color: var(--accent-ink, #fff); filter: brightness(1.1); }
+.mini-seek { flex: 1; min-width: 30px; height: 14px; margin: 0 4px; position: relative; cursor: pointer; }
+.mini-seek::before { content: ""; position: absolute; left: 0; right: 0; top: 6px; height: 3px; border-radius: 3px; background: color-mix(in srgb, var(--fg) 18%, transparent); }
+.mini-seek > i { position: absolute; left: 0; top: 6px; height: 3px; border-radius: 3px; background: var(--accent); }
+.mini-time { flex: none; font-family: var(--font-mono); font-size: .66rem; color: var(--fg3); font-variant-numeric: tabular-nums; }
+
+/* "Drop to play" while files hover over the window */
+.drop-hint { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 78%, transparent); backdrop-filter: blur(6px); pointer-events: none; }
+.drop-hint[hidden] { display: none; }
+.drop-hint > div { display: grid; justify-items: center; gap: 6px; padding: 36px 56px; border: 2px dashed var(--accent); border-radius: var(--r-panel, 14px); color: var(--accent-text, var(--accent)); }
+.drop-hint b { font-family: var(--font-display); font-size: 1.4rem; color: var(--fg); } .drop-hint span { color: var(--fg2); font-size: .85rem; }

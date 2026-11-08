@@ -84,8 +84,10 @@ export function knob({ min = 0, max = 1, step = 0.01, value = 0, label = '', onI
   });
   el.addEventListener('wheel', (ev) => { ev.preventDefault(); apply(snap(v - Math.sign(ev.deltaY) * step * 3)); onChange?.(v); }, { passive: false });
   el.addEventListener('keydown', (ev) => {
-    const d = { ArrowRight: step, ArrowUp: step, ArrowLeft: -step, ArrowDown: -step }[ev.key];
+    const d = { ArrowRight: step, ArrowUp: step, ArrowLeft: -step, ArrowDown: -step, PageUp: step * 10, PageDown: -step * 10 }[ev.key];
+    const to = { Home: min, End: max }[ev.key];
     if (d !== undefined) { ev.preventDefault(); apply(snap(v + d)); onChange?.(v); }
+    else if (to !== undefined) { ev.preventDefault(); apply(to); onChange?.(v); }
   });
   if (reset !== undefined) el.addEventListener('dblclick', () => { apply(snap(reset)); onChange?.(v); });
   el.set = (nv) => { if (!el.classList.contains('dragging') && nv !== v) { v = clamp(nv, min, max); paint(); } };

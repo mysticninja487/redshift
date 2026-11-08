@@ -51,7 +51,7 @@ export function mount(el) {
     heart.setAttribute('aria-pressed', String(fav));
     heart.title = heart.ariaLabel = fav ? 'Remove from favourites' : 'Add to favourites';
     artist.textContent = idle ? '' : t.artist || '';
-    album.replaceChildren(...(idle ? [] : [h('span', { class: 'i-album-name' }, t.album || ''), t.year ? h('span', { class: 'i-year' }, String(t.year)) : null]));
+    album.replaceChildren(...(idle ? [] : [h('span', { class: 'i-album-name' }, t.album || ''), t.year ? h('span', { class: 'i-year' }, String(t.year)) : null].filter(Boolean)));
     const idx = state.queue.entries.findIndex((e) => e.id === state.queue.current_entry);
     pos.textContent = idle || idx < 0 ? '' : `${String(idx + 1).padStart(2, '0')} / ${String(state.queue.entries.length).padStart(2, '0')}`;
     empty.hidden = !(idle && state.queue.entries.length === 0);

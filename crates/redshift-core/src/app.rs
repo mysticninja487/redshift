@@ -551,6 +551,17 @@ impl App {
     pub fn import_font(&self, src: &Path) -> Result<crate::fonts::FontEntry> {
         crate::fonts::import(&self.fonts_dir(), src)
     }
+    /// Plays what the user opened the player with: files, folders or playlists (see [`crate::open::expand`]).
+    /// Returns how many songs were queued; nothing changes if there were none.
+    pub fn open_paths(&self, inputs: &[PathBuf]) -> usize {
+        let songs = crate::open::expand(inputs);
+        let n = songs.len();
+        if n > 0 {
+            self.player.set_queue(songs, 0, true);
+        }
+        n
+    }
+
     pub fn remove_font(&self, file: &str) -> bool {
         crate::fonts::remove(&self.fonts_dir(), file)
     }

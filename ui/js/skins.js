@@ -143,6 +143,7 @@ const SKINS = [
       viz: { main: 'blur', side: 'bars' },
       seek: { style: 'line' },
       shape: { radius: 0 },
+      lyrics: { dim: 0.65 },
       layout: { slots: { stage: ['hero', 'info'], bottom: ['transport', 'seek'], left: [], right: [], top: [] } },
     },
   },

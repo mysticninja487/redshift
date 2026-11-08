@@ -22,6 +22,7 @@ const P = {
   close: '<path d="m6 6 12 12M18 6 6 18"/>',
   grip: '<circle cx="9" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.4" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.4" fill="currentColor" stroke="none"/>',
   trash: '<path d="M5 7h14M10 7V4.5h4V7M7 7l1 12.5h8L17 7"/>',
+  pip: '<rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor" stroke="none"/>',
   fullscreen: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   chevronLeft: '<path d="m14.5 5-7 7 7 7"/>', chevronRight: '<path d="m9.5 5 7 7-7 7"/>',
   chevronDown: '<path d="m5 9.5 7 7 7-7"/>', arrowLeft: '<path d="M20 12H5M11 6l-6 6 6 6"/>',

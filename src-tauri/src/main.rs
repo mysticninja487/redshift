@@ -12,6 +12,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod media;
+
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -32,7 +34,7 @@ use redshift_core::queue::{EntryId, RepeatMode};
 use redshift_core::util::percent_decode;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
+use tauri::{AppHandle, DragDropEvent, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 struct AppState(Arc<App>);
 
@@ -394,6 +396,49 @@ fn remove_font(state: State<AppState>, file: String) -> bool {
     state.0.remove_font(&file)
 }
 
+// ---- opening files, and the mini player ----
+
+/// Plays what the player was opened with (files, folders or playlists) and tells the UI.
+fn open_files(app: &AppHandle, inputs: &[PathBuf]) {
+    let Some(state) = app.try_state::<AppState>() else { return };
+    let n = state.0.open_paths(inputs);
+    if n > 0 {
+        let _ = app.emit("files-opened", n);
+    }
+}
+
+/// Paths from a command line: everything that isn't a flag, so `Redshift.exe song.flac` and
+/// "Open with Redshift" both work.
+fn paths_from_args(args: impl IntoIterator<Item = String>) -> Vec<PathBuf> {
+    args.into_iter().filter(|a| !a.starts_with('-')).map(PathBuf::from).collect()
+}
+
+const MINI_LABEL: &str = "mini";
+
+/// Opens the small always-on-top player, tucking the main window away (or closes it and brings
+/// the main window back). Returns whether the mini player is now showing.
+#[tauri::command(async)]
+fn toggle_mini_player(app: AppHandle) -> CmdResult<bool> {
+    if let Some(mini) = app.get_webview_window(MINI_LABEL) {
+        let _ = mini.close();
+        show_main_window(&app);
+        return Ok(false);
+    }
+    WebviewWindowBuilder::new(&app, MINI_LABEL, WebviewUrl::App("index.html?mini=1".into()))
+        .title("Redshift mini player")
+        .inner_size(400.0, 128.0)
+        .resizable(false)
+        .maximizable(false)
+        .decorations(false)
+        .always_on_top(true)
+        .build()
+        .map_err(err)?;
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.minimize();
+    }
+    Ok(true)
+}
+
 // ---- tray ----
 
 const TRAY_ID: &str = "redshift";
@@ -531,15 +576,43 @@ fn main() {
             let (app, path) = (ctx.app_handle().clone(), request.uri().path().to_string());
             run_off_thread(move || responder.respond(serve_font(&app, &path)));
         })
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // A second launch ("Open with Redshift", a double-click) hands its files to this one.
+            open_files(app, &paths_from_args(argv.into_iter().skip(1)));
+            show_main_window(app);
+        }))
         .on_window_event(|window, event| {
-            let Some(state) = window.app_handle().try_state::<AppState>() else { return };
+            if window.label() != "main" {
+                return;
+            }
+            let app = window.app_handle();
+            // Files dropped on the window play; the UI shows a hint while they hover.
+            if let WindowEvent::DragDrop(drag) = event {
+                match drag {
+                    DragDropEvent::Enter { .. } => { let _ = app.emit("drop-hover", true); }
+                    DragDropEvent::Leave => { let _ = app.emit("drop-hover", false); }
+                    DragDropEvent::Drop { paths, .. } => {
+                        let _ = app.emit("drop-hover", false);
+                        open_files(app, paths);
+                    }
+                    _ => {}
+                }
+                return;
+            }
+            let Some(state) = app.try_state::<AppState>() else { return };
             let tray = state.0.settings().tray;
             match event {
                 WindowEvent::CloseRequested { api, .. } if tray.close_to_tray => {
                     api.prevent_close();
                     let _ = window.hide();
                 }
-                WindowEvent::Resized(_) if tray.minimize_to_tray && window.is_minimized().unwrap_or(false) => {
+                WindowEvent::CloseRequested { .. } => {
+                    // Quitting for real: don't leave the mini player running on its own.
+                    if let Some(mini) = app.get_webview_window(MINI_LABEL) {
+                        let _ = mini.close();
+                    }
+                }
+                WindowEvent::Resized(_) if tray.minimize_to_tray && window.is_minimized().unwrap_or(false) && app.get_webview_window(MINI_LABEL).is_none() => {
                     let _ = window.hide();
                 }
                 _ => {}
@@ -572,8 +645,14 @@ fn main() {
             })?;
 
             let tray = core.settings().tray;
-            app.manage(AppState(core));
+            app.manage(AppState(core.clone()));
             sync_tray(app.handle(), tray)?;
+            media::start(app.handle(), core);
+            // Started with files ("Open with Redshift", or dragged onto the exe)?
+            let opened = paths_from_args(std::env::args().skip(1));
+            if !opened.is_empty() {
+                open_files(app.handle(), &opened);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -582,7 +661,7 @@ fn main() {
             get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_replaygain,
             output_devices, set_output_device,
             eq_info, set_eq_enabled, set_eq_preamp_db, set_eq_band_db, set_eq_gains_db, apply_eq_preset, eq_curve,
-            save_eq_preset, delete_eq_preset, set_tray, favourite_paths, favourites, set_favourite, play_stats,
+            save_eq_preset, delete_eq_preset, set_tray, toggle_mini_player, favourite_paths, favourites, set_favourite, play_stats,
             reset_play_stats, fonts, import_font, remove_font, relink_playlist, paths_exist,
             viz_frame, configure_viz, ui_state, set_ui_state,
             library_folders, add_library_folder, remove_library_folder, scan_library, is_scanning,

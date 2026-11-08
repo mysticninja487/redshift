@@ -33,7 +33,7 @@ export const DEFAULT_PREFS = {
   keys: {},
   library: { tab: 'albums', sort: 'default', albumSize: 190, playMode: 'single' },
   // On/off switches that apply to every skin.
-  features: { lyrics: true, viz: true },
+  features: { lyrics: true, viz: true, queue: true },
   introSeen: false,
 };
 

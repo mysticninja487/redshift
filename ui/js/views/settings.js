@@ -184,7 +184,8 @@ export function mountSettings(root) {
     }));
     const size = (key, label, max) => { const side = key === 'left' || key === 'right'; return row(label, slider({ min: side ? 180 : 0, max, step: 10, value: Math.max(side ? 180 : 0, c.layout.sizes[key] || 0), label, onInput: (v) => set(`layout.sizes.${key}`, v), format: (v) => (v ? `${v}px` : 'Auto') }), { path: `layout.sizes.${key}`, redo: again }); };
     return h('div', { class: 'set-page' },
-      group('Panels', h('p', { class: 'hint' }, 'Put each panel where you want it, or hide it. A panel adapts its look to the slot it lands in.'), map, table,
+      group('Panels', h('p', { class: 'hint' }, 'Put each panel where you want it, or hide it. A panel adapts its look to the slot it lands in.'),
+        row('Show queue', toggle({ label: 'Show queue', value: featureOn('queue'), onChange: (v) => setPref('features.queue', v) }), { hint: 'A quick switch for the queue panel in every skin. Also on the Now Playing tools (Shift+Q).' }), map, table,
         h('div', { class: 'set-row' }, button('Default layout for this skin', () => { set('layout.slots', undefined); render(); }))),
       group('Sizes', size('left', 'Left column', 560), size('right', 'Right column', 560), size('top', 'Top strip', 300), size('bottom', 'Bottom strip', 300),
         row('Mirror left and right', toggle({ label: 'Mirror left and right', value: c.layout.flip, onChange: (v) => set('layout.flip', v) }), { path: 'layout.flip', redo: again })));
@@ -297,9 +298,33 @@ export function mountSettings(root) {
   }
 
   // ---------- Lyrics & info ----------
+  /** The real lyrics styling (this skin's own CSS included) on made-up lines, stepping along like a song. */
+  function lyricsPreview() {
+    const text = ['Streetlights hum along the shore', 'I counted every passing car', 'Your name was written in the rain', 'Now the colours start to bend', 'Everything is moving slow', 'Hold me where the signal fades', 'Let the static carry on'];
+    const lines = text.map((t) => h('p', { class: 'ly-line' }, t));
+    const scroller = h('div', { class: 'ly-scroll' }, lines);
+    const inner = h('div', { class: 'lyrics' }, scroller);
+    const wrap = h('div', { class: 'panel ly-preview', dataset: { panel: 'lyrics', slot: 'right', synced: 'true' } }, inner);
+    let at = 2;
+    const paint = (jump = false) => {
+      wrap.style.setProperty('--ly-size', String(cfg().lyrics.size));
+      wrap.style.setProperty('--ly-dim', String(cfg().lyrics.dim));
+      wrap.style.setProperty('--ly-blur', `${cfg().lyrics.blur}px`);
+      wrap.dataset.align = inner.dataset.align = cfg().lyrics.align;
+      lines.forEach((p, i) => { p.classList.toggle('active', i === at); p.classList.toggle('past', i < at); p.dataset.d = String(Math.min(4, Math.abs(i - at))); });
+      const p = lines[at];
+      scroller.scrollTo({ top: p.offsetTop - scroller.clientHeight / 2 + p.offsetHeight / 2, behavior: jump ? 'auto' : 'smooth' });
+    };
+    const off = on('ui', () => paint(true));
+    const timer = setInterval(() => { at = (at + 1) % lines.length; paint(); }, 2600);
+    previews.push({ destroy: () => { clearInterval(timer); off(); } });
+    requestAnimationFrame(() => paint(true));
+    return wrap;
+  }
+
   function lyricsTab() {
     const c = cfg();
-    const sample = h('div', { class: 'lyrics ly-sample' }, h('div', { class: 'ly-scroll' }, ['A line that already passed', 'The line being sung right now', 'And the next one coming up', 'Then the one after that'].map((t, i) => h('div', { class: `ly-line${i === 0 ? ' past' : i === 1 ? ' active' : ''}`, dataset: { d: String(Math.abs(i - 1)) } }, t))));
+    const sample = lyricsPreview();
     return h('div', { class: 'set-page' },
       group('Lyrics', row('Show lyrics', toggle({ label: 'Show lyrics', value: featureOn('lyrics'), onChange: (v) => setPref('features.lyrics', v) }), { hint: 'Switch off to hide the lyrics panel in all skins. Also on the Now Playing top bar (L).' }), sample,
         row('Text size', slider({ min: 0.7, max: 1.8, step: 0.05, value: c.lyrics.size, label: 'Lyrics size', reset: 1, onInput: (v) => set('lyrics.size', v), format: (v) => `${Math.round(v * 100)}%` }), { path: 'lyrics.size', redo: again }),

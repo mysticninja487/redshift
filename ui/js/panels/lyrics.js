@@ -15,19 +15,21 @@ export function mount(el) {
   const empty = h('div', { class: 'empty ly-empty' }, icon('lyrics', 28), h('p', { class: 'ly-empty-title' }, 'No lyrics for this track'),
     h('p', { class: 'ly-empty-hint' }, 'Put a .lrc file with the same name next to the song, or embed lyrics in its tags.'));
   const badge = h('div', { class: 'ly-badge' });
-  el.append(h('div', { class: 'lyrics' }, badge, scroller, empty));
-  let lines = [], active = -1, userScrollUntil = 0, wordEls = [];
+  const root = h('div', { class: 'lyrics' }, badge, scroller, empty);
+  el.append(root);
+  let lines = [], active = -1, userScrollUntil = 0, wordEls = [], wordsOn = get('lyrics.words');
 
   const sizeVars = () => {
     el.style.setProperty('--ly-size', String(get('lyrics.size')));
     el.style.setProperty('--ly-dim', String(get('lyrics.dim')));
     el.style.setProperty('--ly-blur', `${get('lyrics.blur')}px`);
-    el.dataset.align = get('lyrics.align');
+    el.dataset.align = root.dataset.align = get('lyrics.align'); // the styles key off .lyrics[data-align]
   };
 
   function build() {
     const ly = state.lyrics;
-    scroller.replaceChildren(); lines = []; wordEls = []; active = -1;
+    scroller.replaceChildren(); lines = []; wordEls = []; active = -1; wordsOn = get('lyrics.words');
+    el.dataset.synced = String(!!ly?.synced);
     empty.hidden = !!ly; scroller.hidden = !ly;
     badge.textContent = ly ? (ly.synced ? '' : 'Not synced') : '';
     if (!ly) return;
@@ -68,7 +70,7 @@ export function mount(el) {
   L.frame(() => update(), { whenPlaying: true });
   L.on('lyrics', build);
   L.on('player', () => { if (!isPlaying()) update(); });
-  L.on('ui', () => { sizeVars(); });
+  L.on('ui', () => { sizeVars(); if (get('lyrics.words') !== wordsOn) build(); }); // the word highlight is baked into the lines, so changing it rebuilds them
   sizeVars();
   build();
   return { destroy: () => L.destroy() };

@@ -38,7 +38,7 @@ This is an early version. If something breaks, please [open an issue](https://gi
 **Lyrics and visualisers**
 
 - Synced lyrics from `.lrc` files next to the song or from the file's tags, with line and word timing.
-- Twelve visualisers: bars, hairlines, oscilloscope, ring, wavelength blur, orb, particles, spectrogram, vectorscope, dot matrix, ridges and level meters. Lyrics and visualisers each switch off for every skin with one button.
+- Twelve visualisers: bars, hairlines, oscilloscope, ring, wavelength blur, orb, particles, spectrogram, vectorscope, dot matrix, ridges and level meters. Lyrics, visualisers and the queue each switch off for every skin with one button, and Settings shows a live example of the lyrics as you change their size, fade and blur.
 
 **Looks like you chose it**
 
@@ -60,6 +60,12 @@ This is an early version. If something breaks, please [open an issue](https://gi
 - Favourites, recently played, most played (tracks, albums, artists), recently added and not played.
 - Playlists with M3U/M3U8 import and export. Playlists made on another device are matched to your library by file name, folders and track title; anything that can't be found is kept, dimmed and skipped, and can be relinked later.
 - Minimise to the system tray, with play/pause/next/previous in the tray menu.
+
+**Fits into Windows**
+
+- Media keys (play/pause, next, previous) and the track, cover and controls in the Windows volume flyout and lock screen.
+- Open songs, folders or playlists with Redshift (right-click, "Open with", or drag them onto the exe or the window). A second launch hands its files to the player that's already running.
+- A mini player: a small always-on-top window with the cover, the track, the current lyric line and the controls. Open it from the top bar or with `Ctrl+M`; double-click it to go back to the full player.
 
 ## Getting started
 
@@ -172,8 +178,6 @@ Open <http://localhost:8000>. With no Tauri around, the app loads `ui/dev/mock.j
 ## Not done yet
 
 - Wider testing on real Windows machines and sound hardware. The engine's tests use a simulated sound card, so device-specific bugs are likely to turn up.
-- Drag-and-drop of files onto the window.
-- Windows media keys and the system media overlay.
 - Restoring the queue and position after a restart.
 - Opus files with more than two channels (they're reported as unsupported).
 - Watching library folders for changes (rescan is manual).

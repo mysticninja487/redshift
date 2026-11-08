@@ -12,6 +12,7 @@ pub mod fonts;
 pub mod library;
 pub mod lyrics;
 pub mod meta;
+pub mod open;
 pub mod playlists;
 pub mod queue;
 pub mod resolve;
