@@ -66,6 +66,8 @@ This is an early version. If something breaks, please [open an issue](https://gi
 - Media keys (play/pause, next, previous) and the track, cover and controls in the Windows volume flyout and lock screen.
 - Open songs, folders or playlists with Redshift (right-click, "Open with", or drag them onto the exe or the window). A second launch hands its files to the player that's already running.
 - A mini player: a small always-on-top window with two sizes. The compact strip has the cover, the track, the controls and a progress line; the arrow in its corner expands it into a card with the queue (click a track to jump to it) or the lyrics beside the cover. Open it from the top bar or with `Ctrl+M`, drag it anywhere, resize it from the bottom-right corner (each size is remembered), pin it above other windows or let it sit among them, and double-click it to go back to the full player. Settings > Mini player sets whether it opens compact or expanded, its background, opacity and corner radius, and what it shows.
+- Ambient mode: the whole window becomes the visualiser, the lyrics, or the lyrics over the visualiser, full screen. Open it from the top bar or with `A`; the controls fade away when the mouse is still, `1`, `2` and `3` switch views, `V` changes the visualiser, `Esc` leaves. The screen stays awake while it is open. Settings > Ambient mode sets the background, visualiser, how soon the controls hide and more.
+- Settings shows what you changed: rows that differ from their default get a dot and a Reset button, a **Changes** tab lists every changed setting with what it was and what it is now (with Reset and Show for each), and a chip with Undo appears after each change.
 
 ## Getting started
 

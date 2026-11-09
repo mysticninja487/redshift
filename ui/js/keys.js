@@ -4,6 +4,7 @@
 import { api } from './api.js';
 import { act, setView } from './controller.js';
 import { featureOn, get, getPrefs, set, setPref, setSkin } from './prefs.js';
+import { toggleAmbient } from './ambient.js';
 import { toggleEqDrawer } from './ui/eqdrawer.js';
 import { skins } from './skins.js';
 import { VIZ } from './viz/index.js';
@@ -38,6 +39,7 @@ export const ACTIONS = [
   { id: 'mini', label: 'Mini player', key: 'Ctrl+M', run: () => api.toggleMiniPlayer() },
   { id: 'eqdrawer', label: 'Equaliser', key: 'E', run: () => toggleEqDrawer() },
   { id: 'scheme', label: 'Light / dark', key: 'D', run: () => { const cur = document.documentElement.dataset.scheme; set('color.scheme', cur === 'dark' ? 'light' : 'dark'); } },
+  { id: 'ambient', label: 'Ambient mode', key: 'A', run: () => toggleAmbient() },
   { id: 'fullscreen', label: 'Fullscreen', key: 'F', run: () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.().catch(() => {}); } },
 ];
 

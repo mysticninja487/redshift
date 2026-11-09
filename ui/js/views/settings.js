@@ -7,12 +7,13 @@ import { on } from '../bus.js';
 import { act, refreshPlayer, refreshSettings, setView } from '../controller.js';
 import { ACTIONS, captureKeys, comboFor, comboFromEvent, prettyCombo, setCombo } from '../keys.js';
 import { importFontFile, importedFonts, removeImportedFont } from '../fonts.js';
-import { DEFAULT_MINI, cfg, exportSkinOverrides, featureOn, getPrefs, importSkinOverrides, isOverridden, resetSkin, set, setPref, setSkin } from '../prefs.js';
+import { DEFAULT_AMBIENT, DEFAULT_MINI, DEFAULT_PREFS, cfg, exportSkinOverrides, featureOn, getPrefs, importSkinOverrides, isOverridden, resetSkin, set, setPref, setSkin } from '../prefs.js';
 import { ACCENTS, FONTS, PANELS, SLOTS, cleanFontName, fitsSlot, getSkin, skins } from '../skins.js';
 import { icon } from '../ui/icons.js';
 import { state } from '../state.js';
 import { tokens } from '../theme.js';
-import { clear, clone, h, toast } from '../util.js';
+import { clear, clone, getPath, h, toast } from '../util.js';
+import { SECTION_ORDER, changesIn, defaultValue, describe, diff, nameOf, otherSkins, tabOf } from './changes.js';
 import { VIZ, getViz, vizOptions } from '../viz/index.js';
 import { mountViz } from '../viz/engine.js';
 import { button, colorInput, iconButton, segmented, select, slider as bareSlider, toggle } from '../ui/controls.js';
@@ -22,15 +23,31 @@ import { confirmDialog } from '../ui/dialog.js';
 // [id, label, icon]. The 'skin' entry only exists for skins that have options of their own.
 const TABS = [
   ['appearance', 'Appearance', 'palette'], ['skin', '', 'record'], ['playback', 'Playback', 'play'], ['eq', 'Equaliser', 'eq'], ['lyrics', 'Lyrics & info', 'lyrics'],
-  ['visual', 'Visualisers', 'viz'], ['layout', 'Layout', 'layout'], ['mini', 'Mini player', 'pip'], ['keys', 'Shortcuts', 'keyboard'], ['data', 'Data & reset', 'database'],
+  ['visual', 'Visualisers', 'viz'], ['layout', 'Layout', 'layout'], ['ambient', 'Ambient mode', 'ambient'], ['mini', 'Mini player', 'pip'], ['keys', 'Shortcuts', 'keyboard'], ['changes', 'Changes', 'changes'], ['data', 'Data & reset', 'database'],
 ];
 const HERO_MODES = [{ value: 'art', label: 'Cover art' }, { value: 'turntable', label: 'Turntable' }, { value: 'viz', label: 'Visualiser' }, { value: 'none', label: 'Nothing' }];
 const SLOT_NAMES = { top: 'Top', left: 'Left', stage: 'Centre', right: 'Right', bottom: 'Bottom' };
 
-/** A labelled settings row. `path` adds a "back to default" button while the value is overridden. */
-function row(label, control, { hint, path, redo } = {}) {
-  const reset = path ? h('button', { class: 'row-reset', type: 'button', title: 'Back to this skin\'s default', 'aria-label': `Reset ${label}`, hidden: !isOverridden(path), onclick: () => { set(path, undefined); redo?.(); } }, 'Reset') : null;
-  return h('div', { class: 'set-row' }, h('div', { class: 'set-label' }, h('span', null, label), hint && h('small', null, hint)), h('div', { class: 'set-control' }, control, reset));
+// Rows that can be changed, so they can show it as it happens. Emptied each time a tab is drawn.
+let liveRows = [];
+
+/**
+ * A labelled settings row. `path` (a setting of the current skin) or `gpath` (one every skin shares)
+ * marks the row and adds a "back to default" button while the value differs from its default.
+ */
+function row(label, control, { hint, path, gpath, redo } = {}) {
+  const key = path ? `skin:${path}` : gpath ? `shared:${gpath}` : null;
+  const reset = key ? h('button', { class: 'row-reset', type: 'button', title: path ? 'Back to this skin\'s default' : 'Back to the default', 'aria-label': `Reset ${label}`, hidden: true,
+    onclick: () => { if (path) set(path, undefined); else setPref(gpath, getPath(DEFAULT_PREFS, gpath)); (redo ?? (() => liveRender?.()))(); } }, 'Reset') : null;
+  const el = h('div', { class: 'set-row' }, h('div', { class: 'set-label' }, h('span', null, label), hint && h('small', null, hint)), h('div', { class: 'set-control' }, control, reset));
+  if (key) { liveRows.push({ key, el, reset }); markRow({ key, el, reset }, new Set(changesIn(getPrefs()).map((c) => c.key))); }
+  return el;
+}
+let liveRender = null;
+function markRow({ key, el, reset }, changed) {
+  const on = changed.has(key);
+  el.dataset.changed = String(on);
+  if (reset) reset.hidden = !on;
 }
 const group = (title, ...rows) => h('section', { class: 'set-group' }, h('h3', null, title), ...rows);
 const num = (v, d = 2) => +Number(v).toFixed(d);
@@ -58,6 +75,7 @@ export function mountSettings(root) {
   /** Rebuilds the current tab. Controls don't rebuild themselves while being dragged. */
   function render() {
     previews.forEach((p) => p.destroy?.()); previews = [];
+    liveRows = [];
     captureKeys(false);
     renderedSkin = getPrefs().skin;
     const mine = getSkin(getPrefs().skin);
@@ -73,6 +91,65 @@ export function mountSettings(root) {
     body.scrollTop = st;
   }
   const again = () => render();
+  liveRender = render;
+
+  // ---------- what has changed ----------
+  const goTo = (t) => { tab = t; render(); };
+  const rawDefault = (c) => (c.scope === 'skin' ? c.from : c.from);
+  const undoChange = (c) => { if (c.scope === 'skin') set(c.path, undefined); else if (c.path.startsWith('keys.')) setCombo(c.path.slice(5), c.from); else setPref(c.path, getPath(DEFAULT_PREFS, c.path)); };
+  function changesTab() {
+    const prefs = getPrefs(), skin = getSkin(prefs.skin);
+    const all = changesIn(prefs), mine = all.filter((c) => c.scope === 'skin'), shared = all.filter((c) => c.scope === 'shared');
+    const others = otherSkins(prefs);
+    const item = (c) => h('div', { class: 'set-row chg-row' },
+      h('div', { class: 'set-label' }, h('span', null, c.name), h('small', { class: 'chg-vals' }, h('s', null, describe(c.path, rawDefault(c))), ' → ', h('b', null, describe(c.path, c.to)))),
+      h('div', { class: 'set-control' }, h('button', { class: 'row-reset chg-show', type: 'button', onclick: () => goTo(tabOf(c.path)) }, 'Show'), button('Reset', () => { undoChange(c); render(); })));
+    const section = (title, items) => items.length && group(title, ...SECTION_ORDER.map((s) => [s, items.filter((c) => c.section === s)]).filter(([, l]) => l.length).flatMap(([s, l]) => [h('h4', { class: 'chg-sec' }, s), ...l.map(item)]));
+    if (!all.length && !others.length) return h('div', { class: 'set-page' }, group('Changes', h('p', { class: 'hint' }, `Nothing is changed. ${skin.name} and everything else is at its defaults. Once you change a setting it shows up here, with what it was and what it is now.`)));
+    return h('div', { class: 'set-page' },
+      group('Changes', h('p', { class: 'hint' }, `Every setting that differs from its default. ${mine.length ? `${mine.length} for ${skin.name}` : `None for ${skin.name}`}${shared.length ? `, ${shared.length} that apply to every skin` : ''}.`),
+        mine.length ? h('div', { class: 'set-row' }, button(`Reset all ${skin.name} changes`, async () => { if (await confirmDialog('Reset skin?', `All your changes to ${skin.name} will be forgotten.`, { ok: 'Reset' })) { resetSkin(); render(); } })) : null),
+      section(`${skin.name}`, mine), section('Every skin', shared),
+      others.length ? group('Other skins', h('p', { class: 'hint' }, 'Changes you made while using these skins. Switch to one to see them.'), ...others.map((o) => h('div', { class: 'set-row' }, h('div', { class: 'set-label' }, h('span', null, o.name), h('small', null, `${o.count} ${o.count === 1 ? 'change' : 'changes'}`)),
+        h('div', { class: 'set-control' }, button('Switch to it', () => { setSkin(o.id); render(); }))))) : null);
+  }
+
+  // The chip that says what you just changed, with an undo.
+  const chipText = h('span', { class: 'chip-text' });
+  const chipUndo = button('Undo', () => undoLast());
+  const chip = h('div', { class: 'set-chip', role: 'status', 'aria-live': 'polite', hidden: true }, h('i', { class: 'chip-dot' }), chipText, chipUndo);
+  root.append(chip);
+  let snapshot = clone(getPrefs()), chipFor = null, chipTimer = 0, flashTimer = 0;
+  const badge = () => { const n = changesIn(getPrefs()).length; const t = tabs.querySelector('[data-tab="changes"]'); if (t) { t.dataset.count = String(n); t.title = n ? `${n} changed` : 'Nothing changed'; } };
+  function undoLast() {
+    if (!chipFor) return;
+    for (const c of chipFor.items) { if (c.scope === 'skin') set(c.path, c.from); else if (c.path === 'skin') setSkin(c.from); else setPref(c.path, c.from); }
+    chip.hidden = true; chipFor = null; snapshot = clone(getPrefs()); render(); badge();
+  }
+  function onChange() {
+    if (state.view !== 'settings') { snapshot = clone(getPrefs()); return; }
+    const now = getPrefs(), moved = diff(snapshot, now);
+    snapshot = clone(now);
+    // Rows and the tab badge follow along.
+    const keys = new Set(changesIn(now).map((c) => c.key));
+    liveRows = liveRows.filter((r) => r.el.isConnected);
+    liveRows.forEach((r) => markRow(r, keys));
+    badge();
+    if (!moved.length || moved.length > 4 || moved.some((m) => m.path === 'skin')) return;
+    // A slider drag is many changes to one setting; keep the first "from" so Undo goes back to before the drag.
+    const same = chipFor && !chip.hidden && moved.every((m) => chipFor.items.some((i) => i.path === m.path && i.scope === m.scope));
+    const items = moved.map((m) => ({ ...m, from: same ? chipFor.items.find((i) => i.path === m.path && i.scope === m.scope).from : m.from }));
+    chipFor = { items };
+    const first = items[0], [name] = nameOf(first.path);
+    chipText.replaceChildren(h('b', null, name), ` ${describe(first.path, first.from ?? defaultValue(first.scope, first.path, now))} → ${describe(first.path, first.to ?? defaultValue(first.scope, first.path, now))}`, items.length > 1 ? ` and ${items.length - 1} more` : '');
+    chip.hidden = false;
+    clearTimeout(chipTimer); chipTimer = setTimeout(() => { chip.hidden = true; }, 7000);
+    // And the row itself blinks, so you can see which control it was.
+    for (const m of moved) liveRows.filter((r) => r.key === `${m.scope}:${m.path}`).forEach((r) => { r.el.classList.remove('just-changed'); void r.el.offsetWidth; r.el.classList.add('just-changed'); });
+    clearTimeout(flashTimer);
+  }
+  on('ui', onChange);
+  on('view', () => { chip.hidden = true; });
 
   // ---------- Appearance ----------
   function appearance() {
@@ -187,7 +264,7 @@ export function mountSettings(root) {
     const size = (key, label, max) => { const side = key === 'left' || key === 'right'; return row(label, slider({ min: side ? 180 : 0, max, step: 10, value: Math.max(side ? 180 : 0, c.layout.sizes[key] || 0), label, onInput: (v) => set(`layout.sizes.${key}`, v), format: (v) => (v ? `${v}px` : 'Auto') }), { path: `layout.sizes.${key}`, redo: again }); };
     return h('div', { class: 'set-page' },
       group('Panels', h('p', { class: 'hint' }, 'Put each panel where you want it, or hide it. A panel adapts its look to the slot it lands in. A column holds about three tall panels and a strip five, so a full slot is greyed out.'),
-        row('Show queue', toggle({ label: 'Show queue', value: featureOn('queue'), onChange: (v) => setPref('features.queue', v) }), { hint: 'A quick switch for the queue panel in every skin. Also on the Now Playing tools (Shift+Q).' }), map, table,
+        row('Show queue', toggle({ label: 'Show queue', value: featureOn('queue'), onChange: (v) => setPref('features.queue', v) }), { hint: 'A quick switch for the queue panel in every skin. Also on the Now Playing tools (Shift+Q).', gpath: 'features.queue' }), map, table,
         h('div', { class: 'set-row' }, button('Default layout for this skin', () => { set('layout.slots', undefined); render(); }))),
       group('Sizes', size('left', 'Left column', 560), size('right', 'Right column', 560), size('top', 'Top strip', 300), size('bottom', 'Bottom strip', 300),
         row('Mirror left and right', toggle({ label: 'Mirror left and right', value: c.layout.flip, onChange: (v) => set('layout.flip', v) }), { path: 'layout.flip', redo: again })));
@@ -223,6 +300,25 @@ export function mountSettings(root) {
   }
 
 
+  // ---------- Ambient mode ----------
+  function ambientPage() {
+    const a = { ...DEFAULT_AMBIENT, ...(getPrefs().ambient ?? {}) };
+    const put = (k) => (v) => setPref(`ambient.${k}`, v);
+    const vizOpts = [{ value: 'auto', label: 'Same as the skin' }, ...VIZ.map((v) => ({ value: v.id, label: v.name }))];
+    return h('div', { class: 'set-page' },
+      group('Ambient mode', h('p', { class: 'hint' }, 'Turns the whole window into one thing to look at: the visualiser, the lyrics, or both. Open it with the top-bar button or A, leave with Esc. Inside it, 1, 2 and 3 switch views and V changes the visualiser.'),
+        row('Opens as', segmented({ label: 'Ambient mode opens as', options: [{ value: 'viz', label: 'Visualiser' }, { value: 'lyrics', label: 'Lyrics' }, { value: 'both', label: 'Both' }], value: a.mode, onChange: put('mode') }), { hint: 'It also remembers the last view you used.', gpath: 'ambient.mode' }),
+        row('Fullscreen', toggle({ label: 'Go fullscreen', value: a.fullscreen, onChange: put('fullscreen') }), { hint: 'Fills the screen. Off keeps it inside the window. The screen is kept awake either way while ambient mode is open.', gpath: 'ambient.fullscreen' })),
+      group('Look',
+        row('Visualiser', select({ label: 'Ambient visualiser', value: a.viz, options: vizOpts, onChange: put('viz') }), { hint: 'Its own options are under Visualisers.', gpath: 'ambient.viz' }),
+        row('Background', segmented({ label: 'Ambient background', options: [{ value: 'cover', label: 'Blurred cover' }, { value: 'theme', label: 'Skin colour' }, { value: 'black', label: 'Black' }], value: a.bg, onChange: put('bg') }), { hint: 'Blurred cover is the heaviest on the graphics card. Reduce effects softens it.', gpath: 'ambient.bg' }),
+        row('Lyrics size', slider({ min: 0.6, max: 1.6, step: 0.05, value: a.lyricsSize, label: 'Ambient lyrics size', onInput: put('lyricsSize'), format: (v) => `${Math.round(v * 100)}%` }), { gpath: 'ambient.lyricsSize' })),
+      group('Controls',
+        row('Hide controls after', segmented({ label: 'Hide controls after', options: [{ value: 2, label: '2 s' }, { value: 3, label: '3 s' }, { value: 5, label: '5 s' }, { value: 0, label: 'Never' }], value: a.hideAfter, onChange: put('hideAfter') }), { hint: 'Move the mouse to bring them back.', gpath: 'ambient.hideAfter' }),
+        row('Track title', segmented({ label: 'Track title', options: [{ value: 'controls', label: 'With controls' }, { value: 'always', label: 'Always' }, { value: 'never', label: 'Never' }], value: a.title, onChange: put('title') }), { hint: 'With controls also shows it for a few seconds when a new song starts.', gpath: 'ambient.title' })),
+      group('Reset', h('div', { class: 'set-row' }, button('Back to the defaults', () => { setPref('ambient', { ...DEFAULT_AMBIENT }); render(); }))));
+  }
+
   // ---------- Mini player ----------
   function miniPage() {
     const m = { ...DEFAULT_MINI, ...(getPrefs().mini ?? {}) };
@@ -230,18 +326,18 @@ export function mountSettings(root) {
     const pct = (v) => `${Math.round(v)}%`;
     return h('div', { class: 'set-page' },
       group('Window',
-        row('Keep on top', toggle({ label: 'Keep the mini player on top', value: m.onTop, onChange: put('onTop') }), { hint: 'It stays above other windows. Also the pin button on the mini player itself.' }),
-        row('Opens as', segmented({ label: 'Mini player opens as', options: [{ value: 'last', label: 'Last used' }, { value: 'compact', label: 'Compact' }, { value: 'expanded', label: 'Expanded' }], value: m.open, onChange: put('open') }), { hint: 'Drag the bottom-right corner of the mini player to resize it. Each size is remembered.' }),
-        row('Expanded list', segmented({ label: 'Expanded list', options: [{ value: 'queue', label: 'Up next' }, { value: 'lyrics', label: 'Lyrics' }], value: m.list, onChange: put('list') }), { hint: 'What the expanded player shows beside the cover.' })),
+        row('Keep on top', toggle({ label: 'Keep the mini player on top', value: m.onTop, onChange: put('onTop') }), { hint: 'It stays above other windows. Also the pin button on the mini player itself.', gpath: 'mini.onTop' }),
+        row('Opens as', segmented({ label: 'Mini player opens as', options: [{ value: 'last', label: 'Last used' }, { value: 'compact', label: 'Compact' }, { value: 'expanded', label: 'Expanded' }], value: m.open, onChange: put('open') }), { hint: 'Drag the bottom-right corner of the mini player to resize it. Each size is remembered.', gpath: 'mini.open' }),
+        row('Expanded list', segmented({ label: 'Expanded list', options: [{ value: 'queue', label: 'Up next' }, { value: 'lyrics', label: 'Lyrics' }], value: m.list, onChange: put('list') }), { hint: 'What the expanded player shows beside the cover.', gpath: 'mini.list' })),
       group('Look',
-        row('Background', segmented({ label: 'Mini player background', options: [{ value: 'cover', label: 'Blurred cover' }, { value: 'theme', label: 'Skin colour' }, { value: 'accent', label: 'Accent tint' }], value: m.bg, onChange: put('bg') })),
-        row('Opacity', slider({ min: 40, max: 100, step: 5, value: m.opacity, label: 'Mini player opacity', onInput: put('opacity'), format: pct }), { hint: 'Lower lets what is behind it show through.' }),
-        row('Corner radius', slider({ min: 0, max: 32, step: 2, value: m.radius, label: 'Mini player corner radius', onInput: put('radius'), format: (v) => `${v} px` })),
+        row('Background', segmented({ label: 'Mini player background', options: [{ value: 'cover', label: 'Blurred cover' }, { value: 'theme', label: 'Skin colour' }, { value: 'accent', label: 'Accent tint' }], value: m.bg, onChange: put('bg') }), { gpath: 'mini.bg' }),
+        row('Opacity', slider({ min: 40, max: 100, step: 5, value: m.opacity, label: 'Mini player opacity', onInput: put('opacity'), format: pct }), { hint: 'Lower lets what is behind it show through.', gpath: 'mini.opacity' }),
+        row('Corner radius', slider({ min: 0, max: 32, step: 2, value: m.radius, label: 'Mini player corner radius', onInput: put('radius'), format: (v) => `${v} px` }), { gpath: 'mini.radius' }),
         h('p', { class: 'hint' }, 'The mini player takes its colours and fonts from the current skin.')),
       group('Show',
-        row('Cover in the compact player', toggle({ label: 'Cover in the compact player', value: m.cover, onChange: put('cover') })),
-        row('Artist and album', toggle({ label: 'Artist and album', value: m.artist, onChange: put('artist') })),
-        row('Progress line in the compact player', toggle({ label: 'Progress line in the compact player', value: m.progress, onChange: put('progress') }))),
+        row('Cover in the compact player', toggle({ label: 'Cover in the compact player', value: m.cover, onChange: put('cover') }), { gpath: 'mini.cover' }),
+        row('Artist and album', toggle({ label: 'Artist and album', value: m.artist, onChange: put('artist') }), { gpath: 'mini.artist' }),
+        row('Progress line in the compact player', toggle({ label: 'Progress line in the compact player', value: m.progress, onChange: put('progress') }), { gpath: 'mini.progress' })),
       group('Reset', h('div', { class: 'set-row' }, button('Back to the defaults', () => { setPref('mini', { ...DEFAULT_MINI }); render(); }))));
   }
 
@@ -268,7 +364,7 @@ export function mountSettings(root) {
     };
     const cur = c.hero.mode === 'viz' ? c.hero.viz : c.viz.main;
     return h('div', { class: 'set-page' },
-      group('Visualisers', row('Show visualisers', toggle({ label: 'Show visualisers', value: featureOn('viz'), onChange: (v) => setPref('features.viz', v) }), { hint: 'Switch off to hide every visualiser and the level meters in all skins. Also on the Now Playing top bar (Shift+V).' })),
+      group('Visualisers', row('Show visualisers', toggle({ label: 'Show visualisers', value: featureOn('viz'), onChange: (v) => setPref('features.viz', v) }), { hint: 'Switch off to hide every visualiser and the level meters in all skins. Also on the Now Playing top bar (Shift+V).', gpath: 'features.viz' })),
       group('Centrepiece', row('Shows', segmented({ label: 'Centrepiece', options: HERO_MODES, value: c.hero.mode, onChange: (v) => { set('hero.mode', v); render(); } }), { path: 'hero.mode', redo: again }),
         // A skin that owns these shows them under its own heading instead (see skinTab).
         c.hero.mode === 'turntable' && !getSkin(getPrefs().skin).options?.includes('tonearm') ? h('div', null, ...turntableRows()) : null),
@@ -278,8 +374,8 @@ export function mountSettings(root) {
         row('Colour', select({ label: 'Visualiser colour', value: c.viz.color, options: [{ value: 'accent', label: 'Accent' }, { value: 'fg', label: 'Text colour' }, { value: 'gradient', label: 'Accent gradient' }, { value: 'art', label: 'Cover colours' }, { value: 'rainbow', label: 'Rainbow' }], onChange: (v) => set('viz.color', v) }), { path: 'viz.color', redo: again }),
         row('Frame rate', segmented({ label: 'Visualiser frame rate', options: [{ value: 30, label: '30' }, { value: 60, label: '60' }, { value: 120, label: '120' }], value: c.viz.fps, onChange: (v) => set('viz.fps', v) }), { hint: 'Lower saves battery.', path: 'viz.fps', redo: again })),
       group('Performance', h('p', { class: 'hint' }, 'Redshift stops animating when nothing is moving, so a paused player is nearly idle. These two cut the cost while music plays.'),
-        row('Reduce effects', toggle({ label: 'Reduce effects', value: !!getPrefs().perf?.lite, onChange: (v) => setPref('perf.lite', v) }), { hint: 'Drops the blur behind panels, blend modes and film grain, and caps the visualiser at 30 fps. Looks a little flatter; uses much less GPU.' }),
-        row('Slow down in the background', toggle({ label: 'Slow down in the background', value: getPrefs().perf?.background !== false, onChange: (v) => setPref('perf.background', v) }), { hint: 'Caps the visualiser at 20 fps while the window is not focused.' })));
+        row('Reduce effects', toggle({ label: 'Reduce effects', value: !!getPrefs().perf?.lite, onChange: (v) => setPref('perf.lite', v) }), { hint: 'Drops the blur behind panels, blend modes and film grain, and caps the visualiser at 30 fps. Looks a little flatter; uses much less GPU.', gpath: 'perf.lite' }),
+        row('Slow down in the background', toggle({ label: 'Slow down in the background', value: getPrefs().perf?.background !== false, onChange: (v) => setPref('perf.background', v) }), { hint: 'Caps the visualiser at 20 fps while the window is not focused.', gpath: 'perf.background' })));
   }
 
   // ---------- Equaliser ----------
@@ -354,7 +450,7 @@ export function mountSettings(root) {
     const c = cfg();
     const sample = lyricsPreview();
     return h('div', { class: 'set-page' },
-      group('Lyrics', row('Show lyrics', toggle({ label: 'Show lyrics', value: featureOn('lyrics'), onChange: (v) => setPref('features.lyrics', v) }), { hint: 'Switch off to hide the lyrics panel in all skins. Also on the Now Playing top bar (L).' }), sample,
+      group('Lyrics', row('Show lyrics', toggle({ label: 'Show lyrics', value: featureOn('lyrics'), onChange: (v) => setPref('features.lyrics', v) }), { hint: 'Switch off to hide the lyrics panel in all skins. Also on the Now Playing top bar (L).', gpath: 'features.lyrics' }), sample,
         row('Text size', slider({ min: 0.7, max: 1.8, step: 0.05, value: c.lyrics.size, label: 'Lyrics size', reset: 1, onInput: (v) => set('lyrics.size', v), format: (v) => `${Math.round(v * 100)}%` }), { path: 'lyrics.size', redo: again }),
         row('Alignment', segmented({ label: 'Lyrics alignment', options: [{ value: 'left', label: 'Left' }, { value: 'center', label: 'Centre' }, { value: 'right', label: 'Right' }], value: c.lyrics.align, onChange: (v) => set('lyrics.align', v) }), { path: 'lyrics.align', redo: again }),
         row('Fade other lines', slider({ min: 0, max: 0.9, step: 0.05, value: c.lyrics.dim, label: 'Fade other lines', onInput: (v) => set('lyrics.dim', v), format: (v) => `${Math.round(v * 100)}%` }), { path: 'lyrics.dim', redo: again }),
@@ -409,7 +505,7 @@ export function mountSettings(root) {
       group('Reset', row('Everything', button('Reset all appearance settings', async () => { if (await confirmDialog('Reset everything?', 'Every skin goes back to its defaults and shortcuts are restored. Your music, playlists and playback settings are untouched.', { ok: 'Reset all' })) { const { setPref } = await import('../prefs.js'); setPref('skins', {}); setPref('keys', {}); render(); } }, { cls: 'danger' }))));
   }
 
-  const TAB_BUILDERS = { appearance, skin: skinTab, layout, visual, playback, eq: eqTab, lyrics: lyricsTab, mini: miniPage, keys: keysTab, data };
+  const TAB_BUILDERS = { changes: changesTab, appearance, skin: skinTab, layout, visual, playback, eq: eqTab, lyrics: lyricsTab, ambient: ambientPage, mini: miniPage, keys: keysTab, data };
   on('ui', () => { if (state.view === 'settings' && getPrefs().skin !== renderedSkin) render(); });
   on('view', (v) => { if (v === 'settings') render(); else { previews.forEach((p) => p.destroy?.()); previews = []; } });
   render();

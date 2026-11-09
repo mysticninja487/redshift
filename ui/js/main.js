@@ -7,6 +7,7 @@ import { loadImportedFonts } from './fonts.js';
 import { eqDrawerOpen, onEqDrawer, toggleEqDrawer } from './ui/eqdrawer.js';
 import { initKeys } from './keys.js';
 import { mountLayout } from './layout.js';
+import { toggleAmbient } from './ambient.js';
 import { cfg, featureOn, flushPrefs, followOtherWindows, getPrefs, loadPrefs, set, setPref, setSkin, takeMigrated } from './prefs.js';
 import { skins } from './skins.js';
 import { state } from './state.js';
@@ -56,13 +57,14 @@ function buildChrome() {
   const mini = iconButton('pip', 'Mini player (Ctrl+M)', () => api.toggleMiniPlayer(), { cls: 'mini-btn-open' });
   const gear = iconButton('settings', 'Settings (Ctrl+,)', () => setView('settings'), { cls: 'settings-btn' });
   on('view', (v) => gear.setAttribute('aria-pressed', String(v === 'settings')));
+  const ambient = iconButton('ambient', 'Ambient mode (A)', () => toggleAmbient(), { cls: 'ambient-btn' });
   const full = iconButton('fullscreen', 'Fullscreen', () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => {})), { cls: 'full-btn' });
   on('ui', () => skinSel.set(getPrefs().skin));
   on('view', (v) => nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === v))));
   nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === state.view)));
   return h('header', { class: 'chrome' },
     h('div', { class: 'brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }), h('span', { class: 'brand-name' }, 'Redshift')),
-    nav, h('div', { class: 'chrome-tools' }, nowTools, skinSel, scheme, gear, mini, full));
+    nav, h('div', { class: 'chrome-tools' }, nowTools, skinSel, scheme, gear, ambient, mini, full));
 }
 
 /** Background layers that skins show or hide with CSS: ghost type, sun, rings, side labels. */

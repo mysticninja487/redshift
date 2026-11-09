@@ -27,6 +27,9 @@ export const BASE = {
 
 export const DEFAULT_MINI = { onTop: true, open: 'last', bg: 'cover', opacity: 100, radius: 16, cover: true, artist: true, progress: true, list: 'queue' };
 
+// Ambient mode. `viz` is 'auto' (what the skin shows) or a visualiser id; `title` is 'always', 'controls' (with the controls and for a few seconds when a track starts) or 'never'.
+export const DEFAULT_AMBIENT = { mode: 'viz', viz: 'auto', bg: 'cover', fullscreen: true, hideAfter: 3, title: 'controls', lyricsSize: 1 };
+
 export const DEFAULT_PREFS = {
   v: 1,
   skin: 'classic',
@@ -40,6 +43,7 @@ export const DEFAULT_PREFS = {
   perf: { lite: false, background: true },
   // The mini player. `open` is which size it starts at ('last' remembers the one you used); `list` what the expanded card shows beside the cover.
   mini: { ...DEFAULT_MINI },
+  ambient: { ...DEFAULT_AMBIENT },
   introSeen: false,
 };
 
