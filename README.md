@@ -65,7 +65,7 @@ This is an early version. If something breaks, please [open an issue](https://gi
 
 - Media keys (play/pause, next, previous) and the track, cover and controls in the Windows volume flyout and lock screen.
 - Open songs, folders or playlists with Redshift (right-click, "Open with", or drag them onto the exe or the window). A second launch hands its files to the player that's already running.
-- A mini player: a small always-on-top window with two sizes. The compact strip has the cover, the track, the controls and a progress line; the arrow in its corner expands it into a card with the queue (click a track to jump to it) or the lyrics beside the cover. Open it from the top bar or with `Ctrl+M`, drag it anywhere, and double-click it to go back to the full player.
+- A mini player: a small always-on-top window with two sizes. The compact strip has the cover, the track, the controls and a progress line; the arrow in its corner expands it into a card with the queue (click a track to jump to it) or the lyrics beside the cover. Open it from the top bar or with `Ctrl+M`, drag it anywhere, resize it from the bottom-right corner (each size is remembered), pin it above other windows or let it sit among them, and double-click it to go back to the full player. Settings > Mini player sets whether it opens compact or expanded, its background, opacity and corner radius, and what it shows.
 
 ## Getting started
 
@@ -185,3 +185,7 @@ Open <http://localhost:8000>. With no Tauri around, the app loads `ui/dev/mock.j
 ## Licence
 
 MIT
+
+## Performance
+
+Redshift stops animating when nothing is moving: a paused player redraws almost nothing, and the visualiser, record and lyrics loops go back to sleep. While music plays, the visualiser slows down when the window isn't focused. Cover art in lists and the library is served as small copies instead of full-size images. Settings > Visualisers > Performance has **Reduce effects**, which drops the blur behind panels, blend modes and film grain and caps the visualiser at 30 fps, for older graphics hardware or laptops on battery.

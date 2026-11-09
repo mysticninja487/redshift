@@ -1,7 +1,7 @@
 // Connects the backend to `state`: initial load, the player's events, position polling, and
 // loading the details (tags, cover, lyrics, waveform) of whatever starts playing.
 
-import { api, coverUrl, listen } from './api.js';
+import { api, COVER, coverUrl, listen } from './api.js';
 import { emit } from './bus.js';
 import { state } from './state.js';
 import { updateArt } from './theme.js';
@@ -34,7 +34,7 @@ async function loadTrack(entryId) {
   }
   state.trackPath = path;
   state.lyrics = null; state.waveform = null;
-  state.coverUrl = coverUrl(path);
+  state.coverUrl = coverUrl(path, COVER.big);
   state.track = (await getMeta(path)) ?? { path, title: path.split(/[\\/]/).pop(), artist: '', album: '' };
   if (mine !== loadToken) return;
   emit('track'); emit('lyrics'); emit('waveform');
@@ -97,12 +97,17 @@ export async function initController() {
   });
   await listen('scan-progress', (p) => { state.scan = { ...p, running: true }; emit('scan'); });
   // Position and volume come from a light poll; the interpolation in position() fills the gaps.
+  // It slows down while paused or hidden, when nothing on screen is moving.
   let busy = false;
-  setInterval(async () => {
-    if (busy) return;
-    busy = true;
-    try { await refreshPlayer(); } catch { /* the backend may be busy; try again next tick */ } finally { busy = false; }
-  }, 200);
+  const poll = async () => {
+    if (!busy) {
+      busy = true;
+      try { await refreshPlayer(); } catch { /* the backend may be busy; try again next tick */ } finally { busy = false; }
+    }
+    setTimeout(poll, document.hidden ? 1500 : state.player.status === 'playing' ? 250 : 600);
+  };
+  setTimeout(poll, 250);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPlayer().catch(() => {}); });
 }
 
 // A queue with many missing files would otherwise raise one error per file; gather those that

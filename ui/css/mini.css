@@ -2,17 +2,20 @@
    around it. Colours and fonts come from the current skin. */
 html[data-mini], html[data-mini] body { background: transparent; overflow: hidden; }
 html[data-mini] #app { height: 100vh; display: block; background: transparent; }
-.mini { position: relative; height: 100vh; border-radius: 16px; overflow: hidden; color: var(--fg); background: var(--bg); user-select: none; -webkit-user-select: none; cursor: default; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 8%, transparent); isolation: isolate; }
-.mini-bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; background: var(--bg); }
+.mini { --mini-alpha: 1; position: relative; height: 100vh; container: mini / size; border-radius: var(--mini-radius, 16px); overflow: hidden; color: var(--fg); user-select: none; -webkit-user-select: none; cursor: default; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 8%, transparent); isolation: isolate; }
+.mini-bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; background: var(--bg); opacity: var(--mini-alpha); }
 .mini-bg::before { content: ""; position: absolute; inset: -30%; background: var(--cover, none) center / cover; filter: blur(34px) saturate(1.35); opacity: .9; }
 .mini-bg::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--bg) 74%, transparent); }
-.mini.no-cover .mini-bg::before { display: none; }
+.mini.no-cover .mini-bg::before, .mini[data-bg="theme"] .mini-bg::before, .mini[data-bg="accent"] .mini-bg::before { display: none; }
+.mini[data-bg="accent"] .mini-bg { background: color-mix(in srgb, var(--accent) 24%, var(--bg)); }
+.mini[data-bg="accent"] .mini-bg::after, .mini[data-bg="theme"] .mini-bg::after { display: none; }
 .mini-compact, .mini-full { display: none; height: 100%; }
 .mini[data-mode="compact"] .mini-compact { display: grid; }
 .mini[data-mode="full"] .mini-full { display: grid; }
 
 .mini-cover { background: var(--cover, none) center / cover no-repeat, color-mix(in srgb, var(--fg) 8%, var(--bg)); }
 .mini-title { font-family: var(--font-display); font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini[data-artist="off"] .mini-artist { display: none; }
 .mini-artist { margin-top: 2px; font-size: .8rem; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mini-meta { min-width: 0; }
 .mini-btn { all: unset; box-sizing: border-box; flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 99px; color: var(--fg2); cursor: pointer; transition: color .15s, background-color .15s; }
@@ -33,28 +36,34 @@ html[data-mini] #app { height: 100vh; display: block; background: transparent; }
 .mini-seek:focus-visible { outline: none; }
 
 /* ---------- compact ---------- */
-.mini-compact { grid-template-columns: 112px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); position: relative; }
+.mini-compact { grid-template-columns: min(100cqh, 45cqw) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); position: relative; }
 .mini-compact .mini-cover { -webkit-mask-image: linear-gradient(90deg, #000 55%, transparent); mask-image: linear-gradient(90deg, #000 55%, transparent); }
-.mini-compact .mini-info { display: flex; flex-direction: column; justify-content: space-between; min-width: 0; padding: 14px 40px 14px 2px; }
-.mini-compact .mini-title { font-size: 1.05rem; }
+.mini-compact .mini-info { display: flex; flex-direction: column; justify-content: space-between; min-width: 0; padding: clamp(10px, 13cqh, 24px) 68px clamp(10px, 13cqh, 24px) 2px; }
+.mini-compact .mini-title { font-size: clamp(1.02rem, 16cqh, 1.7rem); }
+.mini-compact .mini-artist { font-size: clamp(.8rem, 10.5cqh, 1.1rem); }
+.mini[data-cover="off"] .mini-compact { grid-template-columns: minmax(0, 1fr); }
+.mini[data-cover="off"] .mini-compact .mini-cover { display: none; }
+.mini[data-cover="off"] .mini-compact .mini-info { padding-left: 18px; }
+.mini[data-progress="off"] .mini-progress { display: none; }
 .mini-controls { display: flex; align-items: center; gap: 4px; margin-left: -6px; }
-.mini-corner { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; }
+.mini-corner { position: absolute; top: 6px; right: 6px; display: flex; gap: 0; }
+.mini-corner .mini-btn { width: 28px; height: 28px; }
 .mini-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 10px; }
 .mini-progress::before, .mini-progress > i { top: auto; bottom: 0; margin-top: 0; border-radius: 0; }
 .mini-progress::before { height: var(--h, 3px); } .mini-progress > i { height: var(--h, 3px); }
 
 /* ---------- expanded ---------- */
 .mini-full { grid-template-columns: minmax(0, 11fr) minmax(0, 10fr); grid-template-rows: minmax(0, 1fr); }
-.mini-left { position: relative; min-width: 0; overflow: hidden; border-radius: 16px 0 0 16px; }
+.mini-left { position: relative; min-width: 0; overflow: hidden; }
 .mini-left .mini-cover { position: absolute; inset: 0; }
 .mini-left::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0, 0, 0, .28) 0%, transparent 28%, transparent 40%, rgba(0, 0, 0, .78) 100%); pointer-events: none; }
 .mini-tools { position: absolute; top: 8px; right: 8px; z-index: 2; display: flex; gap: 2px; }
 .mini-over { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; padding: 0 12px 10px 16px; color: #fff; }
-.mini-over .mini-title { font-size: 1.3rem; text-shadow: 0 1px 8px rgba(0, 0, 0, .5); }
+.mini-over .mini-title { font-size: clamp(1.2rem, 2.9cqw, 2rem); text-shadow: 0 1px 8px rgba(0, 0, 0, .5); }
 .mini-over .mini-artist { color: rgba(255, 255, 255, .78); }
 .mini-line { display: flex; align-items: center; gap: 2px; margin: 8px 0 0 -8px; }
 .mini-bar { flex: 1; min-width: 20px; height: 20px; margin: 0 4px; }
-.mini-right { position: relative; min-width: 0; display: flex; flex-direction: column; padding: 12px 8px 8px 10px; }
+.mini-right { position: relative; min-width: 0; display: flex; flex-direction: column; padding: 12px 14px 8px 10px; }
 .mini-list { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(180deg, #000 78%, transparent); mask-image: linear-gradient(180deg, #000 78%, transparent); padding-bottom: 20px; }
 .mini-list::-webkit-scrollbar { display: none; }
 .mini-row { all: unset; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 10px; padding: 4px 6px; border-radius: 10px; cursor: pointer; }
@@ -67,12 +76,18 @@ html[data-mini] #app { height: 100vh; display: block; background: transparent; }
 .mini-row-artist:empty { display: none; }
 .mini-empty { padding: 18px 8px; color: var(--fg3); font-size: .85rem; }
 .mini-list.is-lyrics { padding: 70px 10px; }
-.mini-ly { font-family: var(--font-display); font-weight: 700; font-size: 1.02rem; line-height: 1.25; margin: 0 0 .5em; padding: 0 2px; opacity: .38; transition: opacity .3s, transform .3s; transform-origin: left center; cursor: pointer; }
+.mini-ly { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.02rem, 2.3cqw, 1.5rem); line-height: 1.25; margin: 0 0 .5em; padding: 0 2px; opacity: .38; transition: opacity .3s, transform .3s; transform-origin: left center; cursor: pointer; }
 .mini-ly.gap { height: .8em; cursor: default; }
 .mini-ly.active { opacity: 1; transform: scale(1.03); }
 .mini-ly[data-d="1"] { opacity: .55; }
 .mini-foot { display: flex; align-items: center; gap: 6px; padding: 4px 4px 0; }
 .mini-spacer { flex: 1; }
+
+/* the corner you drag to resize */
+.mini-grip { position: absolute; right: 0; bottom: 0; z-index: 5; width: 16px; height: 16px; cursor: nwse-resize; opacity: 0; transition: opacity .15s;
+  background: linear-gradient(135deg, transparent 52%, currentColor 52% 58%, transparent 58% 72%, currentColor 72% 78%, transparent 78%); color: color-mix(in srgb, var(--fg) 55%, transparent); }
+.mini:hover .mini-grip, .mini-grip:hover { opacity: 1; }
+.mini[data-mode="full"] .mini-grip { color: color-mix(in srgb, var(--fg) 70%, transparent); }
 
 /* "Drop to play" while files hover over the window */
 .drop-hint { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 78%, transparent); backdrop-filter: blur(6px); pointer-events: none; }

@@ -1,17 +1,24 @@
 // The mini player: a small always-on-top window, started with `?mini=1`. It has two sizes: a compact
 // strip (cover, track, controls, progress) and an expanded card (the queue or the lyrics beside it).
 
-import { api, coverUrl } from './api.js';
+import { api, COVER, coverUrl } from './api.js';
 import { on } from './bus.js';
+import { flushPrefs, getPrefs, setPref } from './prefs.js';
 import { act, getMeta } from './controller.js';
 import { duration, isPlaying, position, state } from './state.js';
-import { fmtTime, h } from './util.js';
+import { debounce, fmtTime, h } from './util.js';
 import { icon } from './ui/icons.js';
 
 const win = () => window.__TAURI__?.window?.getCurrentWindow?.();
 const KEY = 'redshift-mini-expanded';
 const savedExpanded = () => { try { return localStorage.getItem(KEY) === '1'; } catch { return false; } };
 const saveExpanded = (v) => { try { localStorage.setItem(KEY, v ? '1' : '0'); } catch { /* private window: it just starts compact next time */ } };
+
+// The size the person gave each layout by dragging the corner, so it comes back at that size.
+const SIZES = 'redshift-mini-sizes';
+const savedSize = (expanded) => { try { const v = JSON.parse(localStorage.getItem(SIZES))?.[expanded ? 'full' : 'compact']; return Array.isArray(v) && v.every(Number.isFinite) ? v : null; } catch { return null; } };
+const saveSize = (expanded, size) => { try { const all = JSON.parse(localStorage.getItem(SIZES)) ?? {}; localStorage.setItem(SIZES, JSON.stringify({ ...all, [expanded ? 'full' : 'compact']: size })); } catch { /* it just opens at the default size */ } };
+const miniPrefs = () => getPrefs().mini ?? {};
 
 const UP_NEXT = 40;
 const REPEAT_NEXT = { off: 'all', all: 'one', one: 'off' };
@@ -44,6 +51,9 @@ function seekBar(cls) {
 export function mountMini(root) {
   const btn = (name, label, fn, cls = '', size = 18) => h('button', { class: `mini-btn ${cls}`, type: 'button', title: label, 'aria-label': label, onclick: fn }, icon(name, size));
 
+  const togglePin = () => setPref('mini.onTop', !(miniPrefs().onTop !== false));
+  const cPin = btn('pin', 'Keep on top', togglePin, 'mini-pin', 16), fPin = btn('pin', 'Keep on top', togglePin, 'mini-ghost mini-pin', 16);
+
   // ---- compact strip ----
   const cTitle = h('div', { class: 'mini-title' }), cArtist = h('div', { class: 'mini-artist' });
   const cPlay = btn('play', 'Play', () => act(api.togglePause()), 'mini-play', 20);
@@ -52,7 +62,7 @@ export function mountMini(root) {
     h('div', { class: 'mini-cover' }),
     h('div', { class: 'mini-info' }, h('div', { class: 'mini-meta' }, cTitle, cArtist),
       h('div', { class: 'mini-controls' }, btn('prev', 'Previous', () => act(api.previous())), cPlay, btn('next', 'Next', () => act(api.next())))),
-    btn('expand', 'Expand', () => setExpanded(true), 'mini-corner'),
+    h('div', { class: 'mini-corner' }, cPin, btn('expand', 'Expand', () => setExpanded(true))),
     cSeek);
 
   // ---- expanded card ----
@@ -67,13 +77,14 @@ export function mountMini(root) {
   const full = h('div', { class: 'mini-full' },
     h('div', { class: 'mini-left' },
       h('div', { class: 'mini-cover' }),
-      h('div', { class: 'mini-tools' }, mute, btn('pip', 'Back to the full player', () => api.toggleMiniPlayer(), 'mini-ghost'), btn('collapse', 'Collapse', () => setExpanded(false), 'mini-ghost')),
+      h('div', { class: 'mini-tools' }, fPin, mute, btn('pip', 'Back to the full player', () => api.toggleMiniPlayer(), 'mini-ghost'), btn('collapse', 'Collapse', () => setExpanded(false), 'mini-ghost')),
       h('div', { class: 'mini-over' }, h('div', { class: 'mini-meta' }, fTitle, fArtist),
         h('div', { class: 'mini-line' }, btn('prev', 'Previous', () => act(api.previous()), 'mini-ghost'), fSeek, btn('next', 'Next', () => act(api.next()), 'mini-ghost')))),
     h('div', { class: 'mini-right' }, listEl,
       h('div', { class: 'mini-foot' }, shuffle, fPlay, repeat, h('span', { class: 'mini-spacer' }), lyricsBtn)));
 
-  const mini = h('div', { class: 'mini', dataset: { mode: 'compact' } }, h('div', { class: 'mini-bg' }), compact, full);
+  const grip = h('div', { class: 'mini-grip', title: 'Drag to resize', 'aria-hidden': 'true', onpointerdown: (e) => { if (e.button !== 0) return; e.preventDefault(); win()?.startResizeDragging?.('SouthEast'); } });
+  const mini = h('div', { class: 'mini', dataset: { mode: 'compact' } }, h('div', { class: 'mini-bg' }), compact, full, grip);
   root.append(mini);
 
   let expanded = false, list = 'queue', listKey = '', lyricIdx = -2;
@@ -82,7 +93,7 @@ export function mountMini(root) {
     expanded = v;
     mini.dataset.mode = v ? 'full' : 'compact';
     if (remember) saveExpanded(v);
-    act(api.miniSize(v));
+    act(api.miniSize(v, savedSize(v)));
     if (v) { listKey = ''; paintList(true); }
   }
   function setList(which) {
@@ -90,6 +101,21 @@ export function mountMini(root) {
     lyricsBtn.setAttribute('aria-pressed', String(which === 'lyrics'));
     lyricsBtn.title = lyricsBtn.ariaLabel = which === 'lyrics' ? 'Show the queue' : 'Show lyrics';
     paintList(true);
+  }
+
+  // ---- the person's choices (Settings > Mini player) ----
+  let lastTop = null, lastList = null;
+  function applyPrefs() {
+    const m = miniPrefs();
+    const d = mini.dataset;
+    d.bg = m.bg ?? 'cover'; d.cover = m.cover === false ? 'off' : 'on'; d.artist = m.artist === false ? 'off' : 'on'; d.progress = m.progress === false ? 'off' : 'on';
+    mini.style.setProperty('--mini-alpha', String(Math.max(0.3, Math.min(1, (m.opacity ?? 100) / 100))));
+    mini.style.setProperty('--mini-radius', `${Math.max(0, Math.min(32, m.radius ?? 16))}px`);
+    const top = m.onTop !== false;
+    for (const b of [cPin, fPin]) { b.setAttribute('aria-pressed', String(top)); b.title = b.ariaLabel = top ? 'Stop keeping on top' : 'Keep on top'; }
+    if (top !== lastTop) { lastTop = top; act(api.miniOnTop(top)); }
+    const want = m.list === 'lyrics' ? 'lyrics' : 'queue';
+    if (want !== lastList) { lastList = want; if (want !== list) setList(want); }
   }
 
   // ---- painting ----
@@ -133,7 +159,7 @@ export function mountMini(root) {
       const sub = h('span', { class: 'mini-row-artist' });
       getMeta(e.path).then((m) => { if (m?.title) name.textContent = m.title; if (m?.artist) sub.textContent = m.artist; });
       return h('button', { class: 'mini-row', type: 'button', role: 'listitem', onclick: () => act(api.playEntry(e.id)) },
-        h('span', { class: 'mini-thumb', style: { backgroundImage: `url("${coverUrl(e.path)}")` } }), h('span', { class: 'mini-row-text' }, name, sub));
+        h('span', { class: 'mini-thumb', style: { backgroundImage: `url("${coverUrl(e.path, COVER.row)}")` } }), h('span', { class: 'mini-row-text' }, name, sub));
     }));
     listEl.scrollTop = 0;
   }
@@ -165,16 +191,23 @@ export function mountMini(root) {
   on('queue', () => { paintModes(); paintList(); });
   on('player', () => { paintModes(); tick(); });
   on('status', paintPlay);
+  on('ui', applyPrefs);
+  applyPrefs();
   paintTrack(); paintPlay(); paintModes(); tick();
   setInterval(tick, 250);
-  if (savedExpanded()) setExpanded(true, false);
+  const open = miniPrefs().open ?? 'last';
+  if (open === 'expanded' || (open === 'last' && savedExpanded())) setExpanded(true, false);
+  else if (savedSize(false)) act(api.miniSize(false, savedSize(false)));
+  // Remember the size the corner drag leaves it at.
+  addEventListener('resize', debounce(() => { if (innerWidth > 100 && innerHeight > 60) saveSize(expanded, [Math.round(innerWidth), Math.round(innerHeight)]); }, 400));
+  addEventListener('pagehide', flushPrefs);
 
   addEventListener('keydown', (e) => {
     if (e.code === 'Space' && !e.target.closest?.('button')) { e.preventDefault(); act(api.togglePause()); }
     else if (e.key === 'Escape' && expanded) setExpanded(false);
   });
   // Drag the window by any part that isn't a control.
-  const interactive = 'button, .mini-seek, .mini-ly';
+  const interactive = 'button, .mini-seek, .mini-ly, .mini-grip';
   root.addEventListener('pointerdown', (e) => { if (e.button === 0 && !e.target.closest(interactive)) win()?.startDragging?.(); });
   root.addEventListener('dblclick', (e) => { if (!e.target.closest(interactive)) api.toggleMiniPlayer(); });
 }

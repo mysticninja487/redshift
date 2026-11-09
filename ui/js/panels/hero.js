@@ -38,20 +38,32 @@ function turntable(host, c) {
   const armEl = arm?.querySelector('.arm');
   let angle = 0, omega = 0, theta = armAngle(R_REST, -1), first = true;
 
-  L.frame((dt) => {
+  const armTarget = () => {
+    const dur = duration(), p = dur > 0 ? clamp(position() / dur, 0, 1) : 0;
+    const on = state.player.status !== 'stopped' && !!state.track;
+    return on ? armAngle(R_OUT + (R_IN - R_OUT) * p) : armAngle(R_REST, -1);
+  };
+  const stopFrames = L.frame((dt) => {
     const playing = isPlaying(), calm = document.documentElement.dataset.motion === 'reduced' || !get('motion.spin');
     omega += ((playing && !calm ? 200 : 0) - omega) * (1 - Math.exp(-(playing ? 1.4 : 0.9) * dt)); // 33 1/3 rpm
+    if (omega < 0.05 && !playing) omega = 0;
     angle = (angle + omega * dt) % 360;
     spin.style.transform = `rotate(${angle}deg)`;
+    let settled = omega === 0;
     if (armEl) {
-      const dur = duration(), p = dur > 0 ? clamp(position() / dur, 0, 1) : 0;
-      const on = state.player.status !== 'stopped' && !!state.track;
-      const target = on ? armAngle(R_OUT + (R_IN - R_OUT) * p) : armAngle(R_REST, -1);
+      const target = armTarget();
       if (first) { theta = target; first = false; }
       theta += (target - theta) * (1 - Math.exp(-3.2 * dt));
+      if (Math.abs(target - theta) < 0.02) theta = target; else settled = false;
       armEl.setAttribute('transform', `translate(${PIVOT[0]} ${PIVOT[1]}) rotate(${theta.toFixed(2)})`);
     }
+    // Stopped and still: nothing to draw until playback or the position changes.
+    return settled && !playing ? 'sleep' : undefined;
   });
+  // Seeking while paused moves the arm, and settings (spin on/off) can change what the platter does.
+  let lastPos = position();
+  L.on('player', () => { const p = position(); if (Math.abs(p - lastPos) > 0.5) { lastPos = p; stopFrames.wake(); } });
+  L.on(['ui', 'track'], () => stopFrames.wake());
   const setCover = () => label.set(state.coverUrl);
   L.on('track', setCover); setCover();
   return { destroy: () => L.destroy() };

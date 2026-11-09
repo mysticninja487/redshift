@@ -7,7 +7,7 @@ import { loadImportedFonts } from './fonts.js';
 import { eqDrawerOpen, onEqDrawer, toggleEqDrawer } from './ui/eqdrawer.js';
 import { initKeys } from './keys.js';
 import { mountLayout } from './layout.js';
-import { cfg, featureOn, flushPrefs, getPrefs, loadPrefs, set, setPref, setSkin, takeMigrated } from './prefs.js';
+import { cfg, featureOn, flushPrefs, followOtherWindows, getPrefs, loadPrefs, set, setPref, setSkin, takeMigrated } from './prefs.js';
 import { skins } from './skins.js';
 import { state } from './state.js';
 import { applyTheme } from './theme.js';
@@ -115,6 +115,7 @@ async function bootMini() {
 async function boot() {
   if (!window.__TAURI__) await import('../dev/mock.js');
   await loadPrefs();
+  try { followOtherWindows(listen); } catch { /* plain browser: there is no other window */ }
   await loadImportedFonts();
   applyTheme();
   const app = document.getElementById('app');

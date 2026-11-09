@@ -217,8 +217,11 @@ fn ui_state(state: State<AppState>) -> serde_json::Value {
     state.0.ui_state()
 }
 #[tauri::command(async)]
-fn set_ui_state(state: State<AppState>, value: serde_json::Value) -> CmdResult<()> {
-    state.0.set_ui_state(value).map_err(err)
+fn set_ui_state(app: AppHandle, state: State<AppState>, value: serde_json::Value) -> CmdResult<()> {
+    state.0.set_ui_state(value.clone()).map_err(err)?;
+    // The main and mini windows each keep their own copy of the settings; this lets the other one catch up.
+    let _ = app.emit("ui-state-changed", value);
+    Ok(())
 }
 
 // ---- library ----
@@ -414,22 +417,56 @@ fn paths_from_args(args: impl IntoIterator<Item = String>) -> Vec<PathBuf> {
 }
 
 const MINI_LABEL: &str = "mini";
-/// The mini player's two sizes (logical pixels): the compact strip and the expanded card.
-const MINI_COMPACT: (f64, f64) = (404.0, 108.0);
-const MINI_EXPANDED: (f64, f64) = (720.0, 252.0);
 
-/// Switches the mini player between its compact and expanded size.
+/// The mini player's two layouts, in logical pixels: the size it opens at and how far it may be
+/// resized by its corner. The compact strip stays a strip; the expanded card can grow into a small player.
+struct MiniLayout { open: (f64, f64), min: (f64, f64), max: (f64, f64) }
+const MINI_COMPACT: MiniLayout = MiniLayout { open: (404.0, 108.0), min: (320.0, 92.0), max: (720.0, 180.0) };
+const MINI_EXPANDED: MiniLayout = MiniLayout { open: (720.0, 252.0), min: (520.0, 220.0), max: (1100.0, 700.0) };
+
+fn mini_layout(expanded: bool) -> &'static MiniLayout { if expanded { &MINI_EXPANDED } else { &MINI_COMPACT } }
+
+/// Applies a layout's limits to the mini window and sets its size: `size` if given (kept inside the
+/// limits), otherwise the layout's own default.
+fn fit_mini(mini: &tauri::WebviewWindow, expanded: bool, size: Option<(f64, f64)>) -> CmdResult<()> {
+    let l = mini_layout(expanded);
+    let (w, h) = size.unwrap_or(l.open);
+    let (w, h) = (w.clamp(l.min.0, l.max.0), h.clamp(l.min.1, l.max.1));
+    // Widen the limits first so the new size is never refused by the old ones.
+    mini.set_min_size(Some(tauri::LogicalSize::new(l.min.0.min(MINI_COMPACT.min.0), l.min.1.min(MINI_COMPACT.min.1)))).map_err(err)?;
+    mini.set_max_size(Some(tauri::LogicalSize::new(l.max.0.max(MINI_EXPANDED.max.0), l.max.1.max(MINI_EXPANDED.max.1)))).map_err(err)?;
+    mini.set_size(tauri::LogicalSize::new(w, h)).map_err(err)?;
+    mini.set_min_size(Some(tauri::LogicalSize::new(l.min.0, l.min.1))).map_err(err)?;
+    mini.set_max_size(Some(tauri::LogicalSize::new(l.max.0, l.max.1))).map_err(err)?;
+    Ok(())
+}
+
+/// Switches the mini player between its compact and expanded layout, at `width` by `height` (what the
+/// person last chose for that layout) or the default size.
 #[tauri::command(async)]
-fn mini_size(app: AppHandle, expanded: bool) -> CmdResult<()> {
+fn mini_size(app: AppHandle, expanded: bool, width: Option<f64>, height: Option<f64>) -> CmdResult<()> {
     if let Some(mini) = app.get_webview_window(MINI_LABEL) {
-        let (w, h) = if expanded { MINI_EXPANDED } else { MINI_COMPACT };
-        mini.set_size(tauri::LogicalSize::new(w, h)).map_err(err)?;
+        fit_mini(&mini, expanded, width.zip(height))?;
     }
     Ok(())
 }
 
-/// Opens the small always-on-top player, tucking the main window away (or closes it and brings
-/// the main window back). Returns whether the mini player is now showing.
+/// Keeps the mini player above other windows, or lets it sit among them.
+#[tauri::command(async)]
+fn mini_on_top(app: AppHandle, on: bool) -> CmdResult<()> {
+    if let Some(mini) = app.get_webview_window(MINI_LABEL) {
+        mini.set_always_on_top(on).map_err(err)?;
+    }
+    Ok(())
+}
+
+/// Whether the mini player starts above other windows: the saved setting, on unless switched off.
+fn mini_starts_on_top(app: &AppHandle) -> bool {
+    app.try_state::<AppState>().and_then(|s| s.0.ui_state().pointer("/mini/onTop").and_then(serde_json::Value::as_bool)).unwrap_or(true)
+}
+
+/// Opens the small player, tucking the main window away (or closes it and brings the main window
+/// back). Returns whether the mini player is now showing.
 #[tauri::command(async)]
 fn toggle_mini_player(app: AppHandle) -> CmdResult<bool> {
     if let Some(mini) = app.get_webview_window(MINI_LABEL) {
@@ -437,18 +474,21 @@ fn toggle_mini_player(app: AppHandle) -> CmdResult<bool> {
         show_main_window(&app);
         return Ok(false);
     }
-    WebviewWindowBuilder::new(&app, MINI_LABEL, WebviewUrl::App("index.html?mini=1".into()))
+    let mini = WebviewWindowBuilder::new(&app, MINI_LABEL, WebviewUrl::App("index.html?mini=1".into()))
         .title("Redshift mini player")
-        .inner_size(MINI_COMPACT.0, MINI_COMPACT.1)
-        .resizable(false)
+        .inner_size(MINI_COMPACT.open.0, MINI_COMPACT.open.1)
+        .min_inner_size(MINI_COMPACT.min.0, MINI_COMPACT.min.1)
+        .max_inner_size(MINI_COMPACT.max.0, MINI_COMPACT.max.1)
+        .resizable(true)
         .maximizable(false)
         .decorations(false)
         // Transparent and shadowless: the page draws its own rounded card, so the system adds no border.
         .transparent(true)
         .shadow(false)
-        .always_on_top(true)
+        .always_on_top(mini_starts_on_top(&app))
         .build()
         .map_err(err)?;
+    let _ = mini.set_focus();
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.minimize();
     }
@@ -523,10 +563,18 @@ fn set_tray(app: AppHandle, state: State<AppState>, minimize_to_tray: bool, clos
     sync_tray(&app, tray).map_err(err)
 }
 
-/// Serves cover art for `cover://localhost/<percent-encoded audio file path>`.
-fn serve_cover(app: &tauri::AppHandle, uri_path: &str) -> tauri::http::Response<Cow<'static, [u8]>> {
+/// Serves cover art for `cover://localhost/<percent-encoded audio file path>`. `?s=<pixels>` asks for a
+/// copy no bigger than that (lists and grids use it; the full picture is only for the big views).
+fn serve_cover(app: &tauri::AppHandle, uri_path: &str, query: Option<&str>) -> tauri::http::Response<Cow<'static, [u8]>> {
     let path = percent_decode(uri_path.trim_start_matches('/'));
-    let cover = app.try_state::<AppState>().and_then(|s| s.0.cover(Path::new(&path)));
+    let size = query
+        .and_then(|q| q.split('&').find_map(|kv| kv.strip_prefix("s=")))
+        .and_then(|v| v.parse::<u32>().ok())
+        .map(|px| px.clamp(16, 2048));
+    let cover = app.try_state::<AppState>().and_then(|s| match size {
+        Some(px) => s.0.cover_sized(Path::new(&path), px),
+        None => s.0.cover(Path::new(&path)),
+    });
     match cover {
         Some(c) => tauri::http::Response::builder()
             .header("Content-Type", c.mime.clone())
@@ -585,8 +633,8 @@ fn main() {
         // These answer on a worker thread: reading a cover means parsing a whole audio file's tags,
         // which would otherwise freeze the window while it happens.
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
-            let (app, path) = (ctx.app_handle().clone(), request.uri().path().to_string());
-            run_off_thread(move || responder.respond(serve_cover(&app, &path)));
+            let (app, path, query) = (ctx.app_handle().clone(), request.uri().path().to_string(), request.uri().query().map(str::to_string));
+            run_off_thread(move || responder.respond(serve_cover(&app, &path, query.as_deref())));
         })
         .register_asynchronous_uri_scheme_protocol("font", |ctx, request, responder| {
             let (app, path) = (ctx.app_handle().clone(), request.uri().path().to_string());
@@ -677,7 +725,7 @@ fn main() {
             get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_replaygain,
             output_devices, set_output_device,
             eq_info, set_eq_enabled, set_eq_preamp_db, set_eq_band_db, set_eq_gains_db, apply_eq_preset, eq_curve,
-            save_eq_preset, delete_eq_preset, set_tray, toggle_mini_player, mini_size, favourite_paths, favourites, set_favourite, play_stats,
+            save_eq_preset, delete_eq_preset, set_tray, toggle_mini_player, mini_size, mini_on_top, favourite_paths, favourites, set_favourite, play_stats,
             reset_play_stats, fonts, import_font, remove_font, relink_playlist, paths_exist,
             viz_frame, configure_viz, ui_state, set_ui_state,
             library_folders, add_library_folder, remove_library_folder, scan_library, is_scanning,

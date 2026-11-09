@@ -25,6 +25,8 @@ export const BASE = {
   layout: { slots: { top: [], left: [], stage: ['hero'], right: [], bottom: [] }, sizes: { left: 320, right: 340, top: 0, bottom: 0 }, flip: false },
 };
 
+export const DEFAULT_MINI = { onTop: true, open: 'last', bg: 'cover', opacity: 100, radius: 16, cover: true, artist: true, progress: true, list: 'queue' };
+
 export const DEFAULT_PREFS = {
   v: 1,
   skin: 'classic',
@@ -34,6 +36,10 @@ export const DEFAULT_PREFS = {
   library: { tab: 'albums', sort: 'default', albumSize: 190, playMode: 'single' },
   // On/off switches that apply to every skin.
   features: { lyrics: true, viz: true, queue: true },
+  // Cost of looks: `lite` drops blur, blend and grain effects; `background` slows animation while the window isn't focused.
+  perf: { lite: false, background: true },
+  // The mini player. `open` is which size it starts at ('last' remembers the one you used); `list` what the expanded card shows beside the cover.
+  mini: { ...DEFAULT_MINI },
   introSeen: false,
 };
 
@@ -41,7 +47,8 @@ let prefs = clone(DEFAULT_PREFS);
 let migrated = false;
 /** True once, right after an older install was moved to the Classic layout. */
 export const takeMigrated = () => { const m = migrated; migrated = false; return m; };
-const save = debounce(() => api.setUiState(prefs).catch((e) => console.warn('saving UI settings failed', e)), 500);
+let unsaved = false;
+const save = debounce(() => { unsaved = false; return api.setUiState(prefs).catch((e) => console.warn('saving UI settings failed', e)); }, 500);
 
 export async function loadPrefs() {
   let saved = null;
@@ -93,7 +100,18 @@ export function importSkinOverrides(obj) {
 }
 export const exportSkinOverrides = () => clone(prefs.skins[prefs.skin] ?? {});
 
+/** Follows changes saved by the other window (main or mini), so a switch in Settings reaches an open mini player. */
+export function followOtherWindows(listen) {
+  listen('ui-state-changed', (v) => {
+    if (unsaved || !v || typeof v !== 'object' || v.v !== 1) return;
+    if (JSON.stringify(v) === JSON.stringify(prefs)) return; // our own save coming back
+    prefs = deepMerge(clone(DEFAULT_PREFS), v);
+    emit('ui');
+  });
+}
+
 function changed() {
+  unsaved = true;
   save();
   emit('ui');
 }

@@ -17,6 +17,7 @@ pub mod playlists;
 pub mod queue;
 pub mod resolve;
 pub mod stats;
+pub mod thumb;
 pub mod util;
 pub mod waveform;
 

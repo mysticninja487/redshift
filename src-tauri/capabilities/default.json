@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "What the main and mini player windows may do: call Redshift's own commands, receive events, and show file/folder pickers.",
   "windows": ["main", "mini"],
-  "permissions": ["core:default", "core:window:allow-start-dragging", "dialog:default"]
+  "permissions": ["core:default", "core:window:allow-start-dragging", "core:window:allow-start-resize-dragging", "dialog:default"]
 }

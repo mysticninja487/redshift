@@ -29,6 +29,7 @@ use crate::lyrics::{self, Lyrics};
 use crate::meta::{self, Cover, TrackMeta};
 use crate::playlists::{ImportReport, Playlist, PlaylistId, PlaylistStore, PlaylistSummary, RelinkReport};
 use crate::queue::RepeatMode;
+use crate::thumb;
 use crate::resolve::Resolver;
 use crate::stats::{now_secs, PlayCounter, Stats};
 use crate::waveform::{self, Overview};
@@ -38,7 +39,9 @@ const WAVEFORM_CACHE_SIZE: usize = 48;
 /// How many covers (or "no cover" answers) are kept. The window asks for the playing track's
 /// cover several times, and a library view asks for one per album; parsing a file's tags each
 /// time is slow for large FLAC files.
-const COVER_CACHE_SIZE: usize = 40;
+const COVER_CACHE_SIZE: usize = 8;
+/// How many bytes of small covers (list and grid tiles) are kept.
+const THUMB_CACHE_BYTES: usize = 24 * 1024 * 1024;
 
 pub const SETTINGS_FILE: &str = "settings.json";
 pub const LIBRARY_FILE: &str = "library.json";
@@ -224,6 +227,8 @@ pub struct App {
     waveforms: Mutex<VecDeque<(WaveformKey, Arc<Overview>)>>,
     /// Recent covers, keyed by file, size and modified time. `None` remembers a file with no cover.
     covers: Mutex<VecDeque<(CoverKey, Option<Arc<Cover>>)>>,
+    /// Small covers for lists and grids, by file, modified time and size, kept up to a byte budget.
+    thumbs: Mutex<VecDeque<(CoverKey, u32, Option<Arc<Cover>>)>>,
 }
 
 type CoverKey = (PathBuf, u64, u64);
@@ -277,6 +282,7 @@ impl App {
             scanning: AtomicBool::new(false),
             waveforms: Mutex::new(VecDeque::new()),
             covers: Mutex::new(VecDeque::new()),
+            thumbs: Mutex::new(VecDeque::new()),
         };
         Ok((app, events))
     }
@@ -692,6 +698,39 @@ impl App {
         found
     }
 
+    /// Cover art no bigger than `max_px` on its longer side: lists and grids ask for these instead of
+    /// the full picture. A cover that is already small enough is returned as it is.
+    pub fn cover_sized(&self, path: &Path, max_px: u32) -> Option<Arc<Cover>> {
+        if !meta::is_audio_file(path) {
+            return None;
+        }
+        let key = fs::metadata(path).ok().map(|m| {
+            let mtime = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
+            (path.to_path_buf(), m.len(), mtime)
+        });
+        if let Some(key) = &key {
+            if let Some((_, _, hit)) = self.thumbs.lock().iter().find(|(k, px, _)| k == key && *px == max_px) {
+                return hit.clone();
+            }
+        }
+        // Read and shrink outside the lock: decoding a big picture takes a moment.
+        let found = meta::read_cover(path).map(|full| match thumb::shrink(&full, max_px) {
+            Some(small) => Arc::new(small),
+            None => Arc::new(full),
+        });
+        if let Some(key) = key {
+            let mut cache = self.thumbs.lock();
+            cache.push_back((key, max_px, found.clone()));
+            let mut bytes: usize = cache.iter().map(|(_, _, c)| c.as_ref().map_or(0, |c| c.data.len())).sum();
+            while bytes > THUMB_CACHE_BYTES && cache.len() > 1 {
+                if let Some((_, _, old)) = cache.pop_front() {
+                    bytes -= old.map_or(0, |c| c.data.len());
+                }
+            }
+        }
+        found
+    }
+
     // ---- playlists (each change is saved straight away) ----
 
     fn with_playlists<T>(&self, f: impl FnOnce(&mut PlaylistStore) -> Result<T>) -> Result<T> {
@@ -1042,6 +1081,19 @@ mod tests {
         assert!(app.cover(&fixture("chirp_44k_stereo.flac")).is_none());
         assert!(app.cover(&fixture("chirp_44k_stereo.flac")).is_none(), "a miss is remembered too");
         assert!(app.covers.lock().len() <= COVER_CACHE_SIZE);
+    }
+
+    #[test]
+    fn small_covers_are_cached_per_size_and_never_bigger_than_the_original() {
+        let state = tempfile::tempdir().unwrap();
+        let app = open(state.path());
+        let full = app.cover(&fixture("tagged.flac")).expect("has a cover");
+        let a = app.cover_sized(&fixture("tagged.flac"), 32).expect("has a cover");
+        let b = app.cover_sized(&fixture("tagged.flac"), 32).expect("still has one");
+        assert!(Arc::ptr_eq(&a, &b), "the second ask is served from the cache");
+        assert!(a.data.len() <= full.data.len());
+        assert!(app.cover_sized(&fixture("chirp_44k_stereo.flac"), 32).is_none());
+        assert!(app.cover_sized(Path::new("notes.txt"), 32).is_none(), "only audio files");
     }
 
     #[test]

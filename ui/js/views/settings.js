@@ -7,7 +7,7 @@ import { on } from '../bus.js';
 import { act, refreshPlayer, refreshSettings, setView } from '../controller.js';
 import { ACTIONS, captureKeys, comboFor, comboFromEvent, prettyCombo, setCombo } from '../keys.js';
 import { importFontFile, importedFonts, removeImportedFont } from '../fonts.js';
-import { cfg, exportSkinOverrides, featureOn, getPrefs, importSkinOverrides, isOverridden, resetSkin, set, setPref, setSkin } from '../prefs.js';
+import { DEFAULT_MINI, cfg, exportSkinOverrides, featureOn, getPrefs, importSkinOverrides, isOverridden, resetSkin, set, setPref, setSkin } from '../prefs.js';
 import { ACCENTS, FONTS, PANELS, SLOTS, cleanFontName, fitsSlot, getSkin, skins } from '../skins.js';
 import { icon } from '../ui/icons.js';
 import { state } from '../state.js';
@@ -22,7 +22,7 @@ import { confirmDialog } from '../ui/dialog.js';
 // [id, label, icon]. The 'skin' entry only exists for skins that have options of their own.
 const TABS = [
   ['appearance', 'Appearance', 'palette'], ['skin', '', 'record'], ['playback', 'Playback', 'play'], ['eq', 'Equaliser', 'eq'], ['lyrics', 'Lyrics & info', 'lyrics'],
-  ['visual', 'Visualisers', 'viz'], ['layout', 'Layout', 'layout'], ['keys', 'Shortcuts', 'keyboard'], ['data', 'Data & reset', 'database'],
+  ['visual', 'Visualisers', 'viz'], ['layout', 'Layout', 'layout'], ['mini', 'Mini player', 'pip'], ['keys', 'Shortcuts', 'keyboard'], ['data', 'Data & reset', 'database'],
 ];
 const HERO_MODES = [{ value: 'art', label: 'Cover art' }, { value: 'turntable', label: 'Turntable' }, { value: 'viz', label: 'Visualiser' }, { value: 'none', label: 'Nothing' }];
 const SLOT_NAMES = { top: 'Top', left: 'Left', stage: 'Centre', right: 'Right', bottom: 'Bottom' };
@@ -222,6 +222,29 @@ export function mountSettings(root) {
     return h('div', { class: 'set-page' }, h('p', { class: 'hint' }, `These only exist in ${skin.name}. Switch skin and they are replaced by that skin's own options, if it has any.`), ...parts);
   }
 
+
+  // ---------- Mini player ----------
+  function miniPage() {
+    const m = { ...DEFAULT_MINI, ...(getPrefs().mini ?? {}) };
+    const put = (k) => (v) => setPref(`mini.${k}`, v);
+    const pct = (v) => `${Math.round(v)}%`;
+    return h('div', { class: 'set-page' },
+      group('Window',
+        row('Keep on top', toggle({ label: 'Keep the mini player on top', value: m.onTop, onChange: put('onTop') }), { hint: 'It stays above other windows. Also the pin button on the mini player itself.' }),
+        row('Opens as', segmented({ label: 'Mini player opens as', options: [{ value: 'last', label: 'Last used' }, { value: 'compact', label: 'Compact' }, { value: 'expanded', label: 'Expanded' }], value: m.open, onChange: put('open') }), { hint: 'Drag the bottom-right corner of the mini player to resize it. Each size is remembered.' }),
+        row('Expanded list', segmented({ label: 'Expanded list', options: [{ value: 'queue', label: 'Up next' }, { value: 'lyrics', label: 'Lyrics' }], value: m.list, onChange: put('list') }), { hint: 'What the expanded player shows beside the cover.' })),
+      group('Look',
+        row('Background', segmented({ label: 'Mini player background', options: [{ value: 'cover', label: 'Blurred cover' }, { value: 'theme', label: 'Skin colour' }, { value: 'accent', label: 'Accent tint' }], value: m.bg, onChange: put('bg') })),
+        row('Opacity', slider({ min: 40, max: 100, step: 5, value: m.opacity, label: 'Mini player opacity', onInput: put('opacity'), format: pct }), { hint: 'Lower lets what is behind it show through.' }),
+        row('Corner radius', slider({ min: 0, max: 32, step: 2, value: m.radius, label: 'Mini player corner radius', onInput: put('radius'), format: (v) => `${v} px` })),
+        h('p', { class: 'hint' }, 'The mini player takes its colours and fonts from the current skin.')),
+      group('Show',
+        row('Cover in the compact player', toggle({ label: 'Cover in the compact player', value: m.cover, onChange: put('cover') })),
+        row('Artist and album', toggle({ label: 'Artist and album', value: m.artist, onChange: put('artist') })),
+        row('Progress line in the compact player', toggle({ label: 'Progress line in the compact player', value: m.progress, onChange: put('progress') }))),
+      group('Reset', h('div', { class: 'set-row' }, button('Back to the defaults', () => { setPref('mini', { ...DEFAULT_MINI }); render(); }))));
+  }
+
   // ---------- Visualisers ----------
   function visual() {
     const c = cfg();
@@ -253,7 +276,10 @@ export function mountSettings(root) {
       group('Visualiser panel', h('p', { class: 'hint' }, 'The Visualiser and Level meters panels can sit anywhere (see Layout).'), pickGrid('viz.side', c.viz.side), optionsFor(c.viz.side)),
       group('Drawing',
         row('Colour', select({ label: 'Visualiser colour', value: c.viz.color, options: [{ value: 'accent', label: 'Accent' }, { value: 'fg', label: 'Text colour' }, { value: 'gradient', label: 'Accent gradient' }, { value: 'art', label: 'Cover colours' }, { value: 'rainbow', label: 'Rainbow' }], onChange: (v) => set('viz.color', v) }), { path: 'viz.color', redo: again }),
-        row('Frame rate', segmented({ label: 'Visualiser frame rate', options: [{ value: 30, label: '30' }, { value: 60, label: '60' }, { value: 120, label: '120' }], value: c.viz.fps, onChange: (v) => set('viz.fps', v) }), { hint: 'Lower saves battery.', path: 'viz.fps', redo: again })));
+        row('Frame rate', segmented({ label: 'Visualiser frame rate', options: [{ value: 30, label: '30' }, { value: 60, label: '60' }, { value: 120, label: '120' }], value: c.viz.fps, onChange: (v) => set('viz.fps', v) }), { hint: 'Lower saves battery.', path: 'viz.fps', redo: again })),
+      group('Performance', h('p', { class: 'hint' }, 'Redshift stops animating when nothing is moving, so a paused player is nearly idle. These two cut the cost while music plays.'),
+        row('Reduce effects', toggle({ label: 'Reduce effects', value: !!getPrefs().perf?.lite, onChange: (v) => setPref('perf.lite', v) }), { hint: 'Drops the blur behind panels, blend modes and film grain, and caps the visualiser at 30 fps. Looks a little flatter; uses much less GPU.' }),
+        row('Slow down in the background', toggle({ label: 'Slow down in the background', value: getPrefs().perf?.background !== false, onChange: (v) => setPref('perf.background', v) }), { hint: 'Caps the visualiser at 20 fps while the window is not focused.' })));
   }
 
   // ---------- Equaliser ----------
@@ -383,7 +409,7 @@ export function mountSettings(root) {
       group('Reset', row('Everything', button('Reset all appearance settings', async () => { if (await confirmDialog('Reset everything?', 'Every skin goes back to its defaults and shortcuts are restored. Your music, playlists and playback settings are untouched.', { ok: 'Reset all' })) { const { setPref } = await import('../prefs.js'); setPref('skins', {}); setPref('keys', {}); render(); } }, { cls: 'danger' }))));
   }
 
-  const TAB_BUILDERS = { appearance, skin: skinTab, layout, visual, playback, eq: eqTab, lyrics: lyricsTab, keys: keysTab, data };
+  const TAB_BUILDERS = { appearance, skin: skinTab, layout, visual, playback, eq: eqTab, lyrics: lyricsTab, mini: miniPage, keys: keysTab, data };
   on('ui', () => { if (state.view === 'settings' && getPrefs().skin !== renderedSkin) render(); });
   on('view', (v) => { if (v === 'settings') render(); else { previews.forEach((p) => p.destroy?.()); previews = []; } });
   render();

@@ -1,6 +1,6 @@
 // Browsing the music: albums, artists, songs, favourites, play history, playlists and folders.
 
-import { api, coverUrl, pickFile, pickFolder, pickSave } from '../api.js';
+import { api, COVER, coverUrl, pickFile, pickFolder, pickSave } from '../api.js';
 import { on, emit } from '../bus.js';
 import { act, playPaths, queueAdd, refreshStats, rescanLibrary, setView, shufflePlay, toggleFavourite } from '../controller.js';
 import { baseName, crumbs, folderContents, norm, tracksUnder } from '../folders.js';
@@ -56,7 +56,7 @@ export function mountLibrary(root) {
     const img = h('img', { class: 'cover-img', alt: '', loading: 'lazy', draggable: 'false' });
     const el = h('div', { class: cls }, h('div', { class: 'cover-ph' }, icon('note', 32)), img);
     img.onload = () => el.classList.add('has-cover');
-    img.src = coverUrl(path);
+    img.src = coverUrl(path, cls === 'detail-cover' ? 480 : COVER.card);
     return el;
   }
 

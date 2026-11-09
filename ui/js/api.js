@@ -8,13 +8,15 @@ export const listen = (event, cb) => T().event.listen(event, (e) => cb(e.payload
 
 const isWindows = /Windows/i.test(navigator.userAgent);
 
-/** URL of a track's cover art (served by the app; 404 if the track has none). */
-export function coverUrl(path) {
+/** URL of a track's cover art (served by the app; 404 if the track has none). Pass `size` (pixels) for a smaller copy. */
+export function coverUrl(path, size) {
   if (!path) return null;
   if (window.__REDSHIFT_COVER__) return window.__REDSHIFT_COVER__(path);
-  const enc = encodeURIComponent(path);
-  return isWindows ? `http://cover.localhost/${enc}` : `cover://localhost/${enc}`;
+  const enc = encodeURIComponent(path), q = size ? `?s=${size}` : '';
+  return `${isWindows ? `http://cover.localhost/${enc}` : `cover://localhost/${enc}`}${q}`;
 }
+/** Sizes for covers shown small: a row or tile, a grid card, and the big now-playing picture. */
+export const COVER = { row: 96, card: 320, big: 1400 };
 
 /** URL of an imported font file (served by the app). */
 export function fontUrl(file) {
@@ -85,6 +87,7 @@ export const api = {
   playStats: () => invoke('play_stats'), resetPlayStats: (path = null) => invoke('reset_play_stats', { path }),
   // fonts and tray
   fonts: () => invoke('fonts'), importFont: (path) => invoke('import_font', { path }), removeFont: (file) => invoke('remove_font', { file }),
-  toggleMiniPlayer: () => invoke('toggle_mini_player'), miniSize: (expanded) => invoke('mini_size', { expanded }),
+  toggleMiniPlayer: () => invoke('toggle_mini_player'), miniSize: (expanded, size) => invoke('mini_size', { expanded, width: size?.[0] ?? null, height: size?.[1] ?? null }),
+  miniOnTop: (on) => invoke('mini_on_top', { on }),
   setTray: (minimizeToTray, closeToTray) => invoke('set_tray', { minimizeToTray, closeToTray }),
 };
