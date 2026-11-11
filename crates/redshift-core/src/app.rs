@@ -546,6 +546,30 @@ impl App {
         meta::read_meta(path)
     }
 
+    // ---- editing tags ----
+
+    /// The tag values the editor starts from.
+    pub fn tag_form(&self, path: &Path) -> Result<crate::tags::TagForm> {
+        crate::tags::read_form(path)
+    }
+
+    /// Writes tags, cover art and embedded lyrics into a file, then refreshes what the library
+    /// remembers about it. Returns the track's new tags.
+    pub fn write_tags(&self, path: &Path, edit: &crate::tags::TagEdit) -> Result<TrackMeta> {
+        crate::tags::write_tags(path, edit)?;
+        let fresh = meta::read_meta(path)?;
+        let mut lib = self.library.lock();
+        if lib.update_track(fresh.clone()) {
+            lib.save()?;
+        }
+        Ok(fresh)
+    }
+
+    /// Saves lyrics as an `.lrc` or `.txt` file next to the song.
+    pub fn save_lyrics_file(&self, audio: &Path, text: &str, synced: bool) -> Result<PathBuf> {
+        crate::tags::write_sidecar_lyrics(audio, text, synced)
+    }
+
     // ---- imported fonts ----
 
     fn fonts_dir(&self) -> PathBuf {

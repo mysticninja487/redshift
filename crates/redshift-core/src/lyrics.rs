@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use crate::meta;
 
 /// Sidecar and embedded lyrics larger than this are ignored; real lyrics are a few KB.
-const MAX_LYRICS_BYTES: u64 = 2 * 1024 * 1024;
+pub const MAX_LYRICS_BYTES: u64 = 2 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LyricWord {

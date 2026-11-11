@@ -1,7 +1,8 @@
 // Connects the backend to `state`: initial load, the player's events, position polling, and
 // loading the details (tags, cover, lyrics, waveform) of whatever starts playing.
 
-import { api, COVER, coverUrl, listen } from './api.js';
+import { api, bumpCover, COVER, coverUrl, listen } from './api.js';
+import { asleep as hostAsleep } from './host.js';
 import { emit } from './bus.js';
 import { state } from './state.js';
 import { updateArt } from './theme.js';
@@ -95,6 +96,19 @@ export async function initController() {
     if (ev.type === 'ended') await refreshPlayer();
     emit('player-event', ev);
   });
+  // Tags were edited (here or in the other window): drop what was remembered, refresh the lists and,
+  // if it is the song playing, its details, cover and lyrics. Many songs saved at once refresh once.
+  let tagTimer = 0; const edited = new Set();
+  await listen('tags-changed', (path) => {
+    edited.add(path); bumpCover(path); forgetMeta();
+    clearTimeout(tagTimer);
+    tagTimer = setTimeout(() => {
+      const playing = state.trackPath && edited.has(state.trackPath);
+      edited.clear();
+      emit('library');
+      if (playing) loadTrack(state.queue.current_entry).catch(() => {});
+    }, 200);
+  });
   await listen('scan-progress', (p) => { state.scan = { ...p, running: true }; emit('scan'); });
   // Position and volume come from a light poll; the interpolation in position() fills the gaps.
   // It slows down while paused or hidden, when nothing on screen is moving.
@@ -104,10 +118,10 @@ export async function initController() {
       busy = true;
       try { await refreshPlayer(); } catch { /* the backend may be busy; try again next tick */ } finally { busy = false; }
     }
-    setTimeout(poll, document.hidden ? 1500 : state.player.status === 'playing' ? 250 : 600);
+    setTimeout(poll, hostAsleep() ? 4000 : state.player.status === 'playing' ? 250 : 600);
   };
   setTimeout(poll, 250);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPlayer().catch(() => {}); });
+  document.addEventListener('visibilitychange', () => { if (!hostAsleep()) refreshPlayer().catch(() => {}); });
 }
 
 // A queue with many missing files would otherwise raise one error per file; gather those that

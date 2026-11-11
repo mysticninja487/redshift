@@ -102,9 +102,11 @@ img { display: block; }
 .panel[data-panel="queue"], .panel[data-panel="lyrics"], .panel[data-panel="eq"], .panel[data-panel="viz"], .panel[data-panel="meters"] {
   background: color-mix(in srgb, var(--bg2) calc(100% - var(--glass) * 45%), transparent);
   border: var(--bw) solid var(--line); border-radius: var(--r-panel); overflow: hidden;
-  backdrop-filter: blur(calc(var(--glass) * 22px)) saturate(1.2);
+  backdrop-filter: none;
   box-shadow: 0 calc(10px * var(--shadow-k)) calc(30px * var(--shadow-k)) rgba(0, 0, 0, calc(.18 * var(--shadow-k)));
 }
+/* Frosted glass only costs anything (it re-blurs what is behind, every frame something moves) when it is on. */
+:root[data-glass="on"] .panel[data-panel="queue"], :root[data-glass="on"] .panel[data-panel="lyrics"], :root[data-glass="on"] .panel[data-panel="eq"], :root[data-glass="on"] .panel[data-panel="viz"], :root[data-glass="on"] .panel[data-panel="meters"] { backdrop-filter: blur(calc(var(--glass) * 22px)); }
 .panel-head { display: flex; align-items: center; gap: 10px; padding: 12px var(--pad) 8px; flex: none; }
 .q-title { font-family: var(--font-display); font-weight: 600; font-size: .78rem; letter-spacing: .14em; text-transform: uppercase; color: var(--fg2); }
 .q-count { margin-right: auto; font-family: var(--font-mono); font-size: .72rem; color: var(--fg3); }
@@ -147,3 +149,9 @@ img { display: block; }
 /* Reduce effects: no blur behind panels, no blend modes, no grain. They are redrawn every frame under a moving visualiser. */
 :root[data-fx="lite"] *, :root[data-fx="lite"] *::before, :root[data-fx="lite"] *::after { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; mix-blend-mode: normal !important; }
 :root[data-fx="lite"] .grain { display: none; }
+
+/* Window hidden to the tray or minimised: freeze every CSS animation (the web page is not told it is out of sight). */
+html[data-asleep="true"] *, html[data-asleep="true"] *::before, html[data-asleep="true"] *::after { animation-play-state: paused !important; }
+
+/* With Frosted glass at 0 there is nothing to blur; skins that always set a blur don't get to (HUD keeps its own). */
+:root[data-glass="off"]:not([data-skin="hud"]) .panel, :root[data-glass="off"]:not([data-skin="hud"]) .slot { backdrop-filter: none !important; }

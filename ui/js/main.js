@@ -8,11 +8,12 @@ import { eqDrawerOpen, onEqDrawer, toggleEqDrawer } from './ui/eqdrawer.js';
 import { initKeys } from './keys.js';
 import { mountLayout } from './layout.js';
 import { toggleAmbient } from './ambient.js';
-import { cfg, featureOn, flushPrefs, followOtherWindows, getPrefs, loadPrefs, set, setPref, setSkin, takeMigrated } from './prefs.js';
+import { initHost } from './host.js';
+import { cfg, featureOn, flushPrefs, followOtherWindows, getPrefs, isComparing, loadPrefs, set, setPref, setSkin, takeMigrated } from './prefs.js';
 import { skins } from './skins.js';
 import { state } from './state.js';
 import { applyTheme } from './theme.js';
-import { h, toast } from './util.js';
+import { debounce, h, toast } from './util.js';
 import { iconButton, select } from './ui/controls.js';
 import { icon } from './ui/icons.js';
 
@@ -93,15 +94,25 @@ function buildViews(app) {
   mountLayout(now);
   const mounted = {};
   const loaders = { library: () => import('./views/library.js').then((m) => m.mountLibrary(library)), settings: () => import('./views/settings.js').then((m) => m.mountSettings(settings)) };
+  // On a wide window Settings sits beside the live Now Playing view, so a change can be seen as it is made.
+  // On a narrow one it fills the window, and "Hold to compare" shows Now Playing for as long as it is held.
+  const SPLIT_MIN = 1020;
   const show = async (v) => {
-    document.documentElement.dataset.view = v;
-    now.hidden = v !== 'now'; library.hidden = v !== 'library'; settings.hidden = v !== 'settings';
+    const root = document.documentElement;
+    const split = v === 'settings' && innerWidth >= SPLIT_MIN;
+    const peek = v === 'settings' && !split && isComparing();
+    root.dataset.view = split || peek ? 'now' : v;
+    root.dataset.split = String(split);
+    root.dataset.compare = String(isComparing());
+    now.hidden = !(v === 'now' || split || peek); library.hidden = v !== 'library'; settings.hidden = v !== 'settings';
     if (v !== 'now' && !mounted[v]) {
       mounted[v] = true;
       try { mounted[v] = await loaders[v](); } catch (e) { console.error(e); toast(`Could not open ${v}`, 'error'); mounted[v] = false; }
     } else if (v === 'library') mounted.library?.reload?.();
   };
   on('view', show);
+  on('compare', () => show(state.view));
+  addEventListener('resize', debounce(() => { if (state.view === 'settings') show('settings'); }, 150));
   show(state.view);
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.view !== 'now' && !document.querySelector('.dialog-back,.popover,.menu')) setView('now'); });
 }
@@ -129,6 +140,7 @@ async function boot() {
   buildViews(app);
   app.append(h('div', { class: 'grain' }));
   initKeys();
+  initHost();
   if (takeMigrated()) setTimeout(() => toast('Redshift now opens in the new Classic layout. Your other skins are still in the skin menu and Settings.'), 800);
   try { await initController(); } catch (e) { console.error(e); toast('Could not reach the audio engine', 'error'); }
   document.documentElement.dataset.ready = 'true';

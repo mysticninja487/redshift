@@ -1,5 +1,6 @@
 // What every panel needs: a way to subscribe that cleans up after itself, and per-frame hooks.
 
+import { asleep as hostAsleep } from '../host.js';
 import { on } from '../bus.js';
 import { isPlaying } from '../state.js';
 
@@ -19,7 +20,7 @@ export function lifecycle() {
       const tick = (now) => {
         if (!live) return;
         const dt = Math.min(0.1, (now - last) / 1000); last = now;
-        if (whenPlaying && !isPlaying()) { asleep = true; return; }
+        if ((whenPlaying && !isPlaying()) || hostAsleep()) { asleep = true; return; }
         if (fn(dt) === 'sleep') { asleep = true; return; }
         id = requestAnimationFrame(tick);
       };
@@ -27,7 +28,7 @@ export function lifecycle() {
       id = requestAnimationFrame(tick);
       const stop = () => { live = false; cancelAnimationFrame(id); rafs.delete(stop); };
       stop.wake = wake;
-      offs.push(on('status', wake));
+      offs.push(on('status', wake), on('awake', wake));
       rafs.add(stop);
       return stop;
     },

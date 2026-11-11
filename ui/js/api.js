@@ -8,11 +8,16 @@ export const listen = (event, cb) => T().event.listen(event, (e) => cb(e.payload
 
 const isWindows = /Windows/i.test(navigator.userAgent);
 
+// Covers are cached by address, so a track whose artwork was just edited gets a new one.
+const coverEdits = new Map();
+export function bumpCover(path) { coverEdits.set(path, (coverEdits.get(path) ?? 0) + 1); }
+
 /** URL of a track's cover art (served by the app; 404 if the track has none). Pass `size` (pixels) for a smaller copy. */
 export function coverUrl(path, size) {
   if (!path) return null;
-  if (window.__REDSHIFT_COVER__) return window.__REDSHIFT_COVER__(path);
-  const enc = encodeURIComponent(path), q = size ? `?s=${size}` : '';
+  if (window.__REDSHIFT_COVER__) return window.__REDSHIFT_COVER__(path, coverEdits.get(path));
+  const enc = encodeURIComponent(path), v = coverEdits.get(path);
+  const q = size || v ? `?${[size && `s=${size}`, v && `v=${v}`].filter(Boolean).join('&')}` : '';
   return `${isWindows ? `http://cover.localhost/${enc}` : `cover://localhost/${enc}`}${q}`;
 }
 /** Sizes for covers shown small: a row or tile, a grid card, and the big now-playing picture. */
@@ -70,6 +75,10 @@ export const api = {
   isScanning: () => invoke('is_scanning'), tracks: () => invoke('library_tracks'), search: (query) => invoke('search_library', { query }),
   albums: () => invoke('library_albums'), artists: () => invoke('library_artists'), recent: (limit = 30) => invoke('recently_added', { limit }),
   trackMeta: (path) => invoke('track_meta', { path }), lyrics: (path) => invoke('lyrics', { path }),
+  // tag editor: the form's values, saving (only what changed), a .lrc file, and a picture file shrunk for preview
+  tagForm: (path) => invoke('tag_form', { path }), writeTags: (path, edit) => invoke('write_tags', { path, edit }),
+  saveLyricsFile: (path, text, synced) => invoke('save_lyrics_file', { path, text, synced }),
+  imagePreview: async (path) => new Blob([await invoke('image_preview', { path })]),
   waveform: (path, buckets) => invoke('waveform', { path, buckets }),
   // playlists
   playlists: () => invoke('playlists'), playlist: (id) => invoke('playlist', { id }),

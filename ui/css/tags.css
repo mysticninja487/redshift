@@ -1,0 +1,54 @@
+/* ---------- tag editor and lyrics sync ---------- */
+.dialog.tg-dialog { width: min(740px, 94vw); max-height: min(88vh, 820px); overflow: auto; align-content: start; }
+.tg-file { margin: -8px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: none; }
+.tg-tabs { margin: 0; }
+.tg-pane[hidden] { display: none; }
+.tg-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 14px; align-content: start; min-height: 300px; }
+.tg-field { grid-column: span 2; display: grid; gap: 4px; align-content: start; min-width: 0; }
+.tg-field.wide { grid-column: 1 / -1; }
+.tg-field.num { grid-column: span 1; }
+.tg-label { font-size: .76rem; color: var(--fg3); }
+.tg-input[aria-invalid="true"] { border-color: #ff6b5e; }
+.tg-area { resize: vertical; min-height: 54px; font-family: inherit; }
+@media (max-width: 560px) { .tg-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tg-field { grid-column: 1 / -1; } .tg-field.num { grid-column: span 1; } }
+
+.tg-art { display: grid; grid-template-columns: minmax(180px, 260px) 1fr; gap: 20px; align-items: start; min-height: 300px; }
+.tg-art-frame { position: relative; aspect-ratio: 1; border-radius: var(--r-ctl); overflow: hidden; background: color-mix(in srgb, var(--fg) 7%, var(--bg2)); border: var(--bw) solid var(--line); display: grid; place-items: center; }
+.tg-art-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tg-art-img[hidden], .tg-art-empty[hidden] { display: none; }
+.tg-art-empty { color: var(--fg3); font-size: .85rem; text-align: center; padding: 12px; }
+.tg-art-side { display: grid; gap: 10px; align-content: start; }
+.tg-art-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.tg-undo[hidden] { display: none; }
+@media (max-width: 560px) { .tg-art { grid-template-columns: 1fr; } .tg-art-frame { max-width: 260px; } }
+
+.tg-lyr { display: grid; gap: 10px; }
+.tg-lyrics { min-height: 260px; resize: vertical; font-family: var(--font-mono, ui-monospace, monospace); font-size: .84rem; line-height: 1.5; white-space: pre; overflow: auto; }
+.tg-ly-info { margin: 0; }
+.tg-ly-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tg-ly-target { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: .82rem; color: var(--fg3); }
+.tg-ly-side { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tg-ly-side[hidden] { display: none; }
+
+.dialog.tg-sync { width: min(680px, 94vw); max-height: min(90vh, 860px); grid-template-rows: auto auto auto minmax(0, 1fr) auto auto auto; }
+.tg-sync .hint { margin: 0; }
+.sy-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sy-clock { font-family: var(--font-mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; min-width: 4.5em; }
+.sy-lagwrap { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--fg3); }
+.sy-lag { padding-top: 4px; padding-bottom: 4px; }
+.btn.sy-small { padding: 5px 10px; font-size: .78rem; }
+.sy-stamp { padding-inline: 22px; }
+.sy-list { overflow: auto; min-height: 200px; max-height: 44vh; border: var(--bw) solid var(--line); border-radius: var(--r-ctl); padding: 6px; display: grid; align-content: start; gap: 1px; scroll-behavior: smooth; }
+.sy-row { display: grid; grid-template-columns: 84px 1fr; align-items: center; border-radius: 6px; border-left: 3px solid transparent; }
+.sy-row.is-next { background: color-mix(in srgb, var(--accent) 14%, transparent); border-left-color: var(--accent); }
+.sy-row.is-sel .sy-time { color: var(--accent); }
+.sy-row.is-now .sy-text { color: var(--fg); font-weight: 600; }
+.sy-time, .sy-text { background: none; border: 0; color: inherit; text-align: left; padding: 6px 8px; font: inherit; cursor: pointer; border-radius: 6px; }
+.sy-time { font-family: var(--font-mono, ui-monospace, monospace); font-size: .78rem; color: var(--fg3); font-variant-numeric: tabular-nums; }
+.sy-time:disabled { cursor: default; opacity: .6; }
+.sy-row.is-done .sy-time { color: var(--fg2); }
+.sy-text { color: var(--fg2); overflow-wrap: anywhere; }
+.sy-text:hover, .sy-time:not(:disabled):hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sy-status { min-height: 2.6em; }
+.sy-row.is-off { border-left-color: #ff6b5e; }
+.sy-row.is-off .sy-time { color: #ff8a80; }

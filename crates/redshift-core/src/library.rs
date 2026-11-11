@@ -245,6 +245,19 @@ impl Library {
         self.tracks = result.tracks.into_iter().map(|t| (t.path.clone(), t)).collect();
     }
 
+    /// Replaces one track's tags after the file was edited. Keeps the date it was added; a track
+    /// that isn't in the library is left out (it will appear with the next scan if it belongs).
+    pub fn update_track(&mut self, mut fresh: TrackMeta) -> bool {
+        match self.tracks.get_mut(&fresh.path) {
+            Some(old) => {
+                fresh.added = old.added;
+                *old = fresh;
+                true
+            }
+            None => false,
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.tracks.len()
     }

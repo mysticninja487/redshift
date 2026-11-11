@@ -38,8 +38,22 @@ export function mount(el) {
     return p[k] * (1 - (i - k)) + p[Math.min(p.length - 1, k + 1)] * (i - k);
   };
 
+  // Skip frames where nothing visible changed: the bar moves a fraction of a pixel per frame.
+  let lastKey = '';
+  const tick = () => {
+    const style = get('seek.style'), idle = !state.waveform && style === 'wave' ? Math.floor(performance.now() / 120) : 0;
+    const key = `${style}|${W}|${H}|${Math.round(progress() * W * 2)}|${hover}|${scrub}|${idle}|${state.waveform ? 1 : 0}`;
+    if (key === lastKey) { setText(); return; }
+    draw();
+  };
+  const setText = () => {
+    const secs = scrub != null ? scrub * duration() : position();
+    cur.textContent = fmtTime(secs);
+  };
+
   function draw() {
     const style = get('seek.style'), p = progress(), t = tokens;
+    lastKey = `${style}|${W}|${H}|${Math.round(p * W * 2)}|${hover}|${scrub}|${!state.waveform && style === 'wave' ? Math.floor(performance.now() / 120) : 0}|${state.waveform ? 1 : 0}`;
     ctx.clearRect(0, 0, W, H);
     const played = t.accent, rest = rgba(t.fg, 0.28);
     const x = p * W, cy = H / 2;
@@ -112,7 +126,7 @@ export function mount(el) {
     if (d !== undefined) { ev.preventDefault(); act(api.seek(clamp(position() + d, 0, duration()))); }
   });
 
-  L.frame(draw, { whenPlaying: true });
+  L.frame(tick, { whenPlaying: true });
   L.on(['status', 'track', 'waveform', 'ui', 'theme', 'player'], () => { if (state.player.status !== 'playing') draw(); });
   L.on('ui', () => { el.dataset.style = get('seek.style'); wrap.parentElement.classList.toggle('no-times', !get('seek.times')); });
   el.dataset.style = get('seek.style');

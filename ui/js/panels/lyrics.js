@@ -13,9 +13,16 @@ export function mount(el) {
   const L = lifecycle();
   const scroller = h('div', { class: 'ly-scroll', tabindex: '0', 'aria-label': 'Lyrics' });
   const empty = h('div', { class: 'empty ly-empty' }, icon('lyrics', 28), h('p', { class: 'ly-empty-title' }, 'No lyrics for this track'),
-    h('p', { class: 'ly-empty-hint' }, 'Put a .lrc file with the same name next to the song, or embed lyrics in its tags.'));
+    h('p', { class: 'ly-empty-hint' }, 'Put a .lrc file with the same name next to the song, or embed lyrics in its tags.'),
+    h('button', { class: 'btn', type: 'button', onclick: () => editLyrics() }, 'Add lyrics…'));
   const badge = h('div', { class: 'ly-badge' });
-  const root = h('div', { class: 'lyrics' }, badge, scroller, empty);
+  const editBtn = h('button', { class: 'btn icon-btn ly-edit', type: 'button', title: 'Edit or sync lyrics', 'aria-label': 'Edit or sync lyrics', onclick: () => editLyrics() }, icon('edit', 16));
+  const root = h('div', { class: 'lyrics' }, badge, editBtn, scroller, empty);
+  async function editLyrics() {
+    if (!state.trackPath) return;
+    const { openTagEditor } = await import('../ui/tageditor.js');
+    openTagEditor([state.trackPath], { tab: 'lyrics' });
+  }
   el.append(root);
   let lines = [], active = -1, userScrollUntil = 0, wordEls = [], wordsOn = get('lyrics.words');
 
@@ -30,6 +37,7 @@ export function mount(el) {
     const ly = state.lyrics;
     scroller.replaceChildren(); lines = []; wordEls = []; active = -1; wordsOn = get('lyrics.words');
     el.dataset.synced = String(!!ly?.synced);
+    editBtn.hidden = !state.trackPath;
     empty.hidden = !!ly; scroller.hidden = !ly;
     badge.textContent = ly ? (ly.synced ? '' : 'Not synced') : '';
     if (!ly) return;
@@ -73,6 +81,7 @@ export function mount(el) {
 
   L.frame(() => update(), { whenPlaying: true });
   L.on('lyrics', build);
+  L.on('track', () => { editBtn.hidden = !state.trackPath; });
   L.on('player', () => { if (!isPlaying()) update(); });
   // The panel is built before it is in the page and moves when the skin or layout changes, so its size is
   // not known at first: re-centre whenever it changes, or the line sits off-screen until the next one.

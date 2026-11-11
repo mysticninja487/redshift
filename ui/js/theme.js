@@ -196,6 +196,7 @@ export function applyTheme() {
   for (const [k, v] of Object.entries(t)) if (['paper', 'ink', 'g1', 'g2', 'g3', 'g4'].includes(k)) vars[`--${k}`] = v;
   for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
   root.dataset.fx = getPrefs().perf?.lite ? 'lite' : 'full';
+  root.dataset.glass = c.shape.glass > 0 ? 'on' : 'off';
   emit('theme', t);
 }
 

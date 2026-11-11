@@ -3,16 +3,21 @@
 import { h } from '../util.js';
 import { button } from './controls.js';
 
-function modal(build) {
+/**
+ * Opens a dialog built by `build(box, done)`; `done(value)` closes it. With `guard`, Escape and a click
+ * outside ask `guard()` first (it can return a promise) and only close when it says true.
+ */
+export function modal(build, { guard } = {}) {
   return new Promise((resolve) => {
     const prev = document.activeElement;
     // Focus goes back after the key press has finished, or the Enter that confirmed a dialog
     // would also "click" the button that opened it.
     const done = (v) => { back.remove(); setTimeout(() => prev?.focus?.()); resolve(v); };
     const box = h('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true' });
-    const back = h('div', { class: 'dialog-back', onpointerdown: (e) => { if (e.target === back) done(null); } }, box);
-    build(box, done);
-    back.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); done(null); } });
+    const cancel = async () => { if (!guard || await guard()) done(null); };
+    const back = h('div', { class: 'dialog-back', onpointerdown: (e) => { if (e.target === back) cancel(); } }, box);
+    build(box, done, cancel);
+    back.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); cancel(); } });
     document.body.append(back);
     (box.querySelector('input') ?? box.querySelector('button.primary'))?.focus();
   });

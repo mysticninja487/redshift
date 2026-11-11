@@ -67,7 +67,8 @@ This is an early version. If something breaks, please [open an issue](https://gi
 - Open songs, folders or playlists with Redshift (right-click, "Open with", or drag them onto the exe or the window). A second launch hands its files to the player that's already running.
 - A mini player: a small always-on-top window with two sizes. The compact strip has the cover, the track, the controls and a progress line; the arrow in its corner expands it into a card with the queue (click a track to jump to it) or the lyrics beside the cover. Open it from the top bar or with `Ctrl+M`, drag it anywhere, resize it from the bottom-right corner (each size is remembered), pin it above other windows or let it sit among them, and double-click it to go back to the full player. Settings > Mini player sets whether it opens compact or expanded, its background, opacity and corner radius, and what it shows.
 - Ambient mode: the whole window becomes the visualiser, the lyrics, or the lyrics over the visualiser, full screen. Open it from the top bar or with `A`; the controls fade away when the mouse is still, `1`, `2` and `3` switch views, `V` changes the visualiser, `Esc` leaves. The screen stays awake while it is open. Settings > Ambient mode sets the background, visualiser, how soon the controls hide and more.
-- Settings shows what you changed: rows that differ from their default get a dot and a Reset button, a **Changes** tab lists every changed setting with what it was and what it is now (with Reset and Show for each), and a chip with Undo appears after each change.
+- Settings shows what each option does while you change it: a panel beside the settings shows the real thing (the player, with your changes applied), rows that differ from their default get a dot and a Reset button, and **Hold to compare** shows the player as it looks with everything at its default for as long as you hold it.
+- A tag editor: right-click a song (or an album, or an artist) and choose **Edit tags…**, or press `T` for the song playing. Edit the title, artist, album, album artist, genre, composer, year, track and disc numbers and comment, replace or remove the cover picture, and add or change the lyrics. Pick several songs (an album, say) to change the fields they share in one go; only the fields you touch are written. Lyrics can be plain or timed, saved in the song's tags, in a `.lrc` file next to it, or both. **Sync lyrics** plays the song while you press Space as each line starts, with undo, nudges for one line or all of them, and an allowance for your reaction time. Tags are written to a copy that replaces the file only once it checks out, so a failed save leaves the song as it was.
 
 ## Getting started
 
@@ -82,6 +83,7 @@ This is an early version. If something breaks, please [open an issue](https://gi
 | `←` `→` | Seek 5 s | `Shift` + `V` | Visualisers on / off |
 | `↑` `↓` | Volume | `L` | Lyrics on / off |
 | `S` `R` `M` | Shuffle, repeat, mute | `E` | Equaliser |
+| `T` | Edit tags of the current song | | |
 | `1` `2` `3` | Now playing, Library, Settings | `D` | Light / dark |
 | `Ctrl` + `F` | Search the library | `F` | Fullscreen |
 
@@ -107,7 +109,7 @@ crates/redshift-core/   All the logic. No GUI dependencies; `cargo test` runs he
   decode/             FLAC/MP3/Vorbis/WAV/AAC via symphonia; Opus via libopus
   dsp/                EQ, resampler, spectrum analyser
   engine/             Real-time mixer, decoder-fed sources, output, player thread
-  queue.rs  library.rs  playlists.rs  lyrics.rs  meta.rs
+  queue.rs  library.rs  playlists.rs  lyrics.rs  meta.rs  tags.rs
   resolve.rs  stats.rs  fonts.rs   Playlist matching, play history and favourites, imported fonts
   app.rs              Owns the player, library, playlists and settings
 src-tauri/            Thin Tauri shell: one command per `App` method, plus events
@@ -190,4 +192,4 @@ MIT
 
 ## Performance
 
-Redshift stops animating when nothing is moving: a paused player redraws almost nothing, and the visualiser, record and lyrics loops go back to sleep. While music plays, the visualiser slows down when the window isn't focused. Cover art in lists and the library is served as small copies instead of full-size images. Settings > Visualisers > Performance has **Reduce effects**, which drops the blur behind panels, blend modes and film grain and caps the visualiser at 30 fps, for older graphics hardware or laptops on battery.
+Redshift stops animating when nothing is moving: a paused player redraws almost nothing, and the visualiser, record and lyrics loops go back to sleep. When the window is minimised or in the tray, the page stops drawing altogether and its web view is suspended, so the player idles at close to nothing while the music plays on. While music plays, the visualiser slows down when the window isn't focused. Cover art in lists and the library is served as small copies instead of full-size images. Settings > Visualisers > Performance has **Reduce effects**, which drops the blur behind panels, blend modes and film grain and caps the visualiser at 30 fps, for older graphics hardware or laptops on battery.

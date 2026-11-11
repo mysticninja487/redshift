@@ -7,6 +7,7 @@
 
 import { api } from '../api.js';
 import { on } from '../bus.js';
+import { asleep as hostAsleep } from '../host.js';
 import { cfg, getPrefs } from '../prefs.js';
 import { duration, position, isPlaying, state } from '../state.js';
 import { tokens } from '../theme.js';
@@ -94,7 +95,7 @@ function targetFps() {
 const wanted = () => watchers.size > 0 || [...targets].some((t) => t.visible);
 
 function loop(now) {
-  if (!wanted() || document.hidden) { running = false; return; }
+  if (!wanted() || hostAsleep()) { running = false; return; }
   // Paused with every bar back at zero: the last frame drawn is the final one.
   if (!isPlaying() && calmFrames > 20) { running = false; return; }
   const fps = targetFps();

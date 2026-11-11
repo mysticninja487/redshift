@@ -298,6 +298,33 @@ fn lyrics(state: State<AppState>, path: PathBuf) -> Option<Lyrics> {
     state.0.lyrics(&path)
 }
 
+// ---- tag editor ----
+
+#[tauri::command(async)]
+fn tag_form(state: State<AppState>, path: PathBuf) -> CmdResult<redshift_core::tags::TagForm> {
+    state.0.tag_form(&path).map_err(err)
+}
+/// Saves tags, cover art and embedded lyrics. Tells every window afterwards so lists, the
+/// now-playing view and the mini player pick the change up.
+#[tauri::command]
+async fn write_tags(app: AppHandle, state: State<'_, AppState>, path: PathBuf, edit: redshift_core::tags::TagEdit) -> CmdResult<TrackMeta> {
+    let core = state.0.clone();
+    let p = path.clone();
+    let meta = tauri::async_runtime::spawn_blocking(move || core.write_tags(&p, &edit)).await.map_err(err)?.map_err(err)?;
+    let _ = app.emit("tags-changed", &path);
+    Ok(meta)
+}
+#[tauri::command(async)]
+fn save_lyrics_file(state: State<AppState>, path: PathBuf, text: String, synced: bool) -> CmdResult<PathBuf> {
+    state.0.save_lyrics_file(&path, &text, synced).map_err(err)
+}
+/// A picture file, shrunk, as raw bytes (not JSON) so the editor can show it before saving.
+#[tauri::command(async)]
+fn image_preview(path: PathBuf) -> CmdResult<tauri::ipc::Response> {
+    let c = redshift_core::tags::preview_image(&path, 640).map_err(err)?;
+    Ok(tauri::ipc::Response::new(c.data))
+}
+
 // ---- playlists ----
 
 #[tauri::command(async)]
@@ -491,6 +518,7 @@ fn toggle_mini_player(app: AppHandle) -> CmdResult<bool> {
     let _ = mini.set_focus();
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.minimize();
+        sync_main_sleep(&app);
     }
     Ok(true)
 }
@@ -504,8 +532,57 @@ fn show_main_window(app: &AppHandle) {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
+        sync_main_sleep(app);
     }
 }
+
+// ---- sleeping while out of sight ----
+
+static MAIN_ASLEEP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// When the main window can't be seen (hidden to the tray, or minimised) the page behind it has nothing
+/// to draw: tell it, and have the system browser engine suspend it, as Edge does for a background tab.
+/// Audio is played by the Rust side and carries on. Called whenever the window may have changed.
+fn sync_main_sleep(app: &AppHandle) {
+    use std::sync::atomic::Ordering;
+    let Some(w) = app.get_webview_window("main") else { return };
+    let asleep = !w.is_visible().unwrap_or(true) || w.is_minimized().unwrap_or(false);
+    if MAIN_ASLEEP.swap(asleep, Ordering::SeqCst) == asleep {
+        return;
+    }
+    if asleep {
+        let _ = app.emit_to("main", "host-visible", false);
+        webview_sleep(&w, true);
+    } else {
+        webview_sleep(&w, false);
+        let _ = app.emit_to("main", "host-visible", true);
+    }
+}
+
+#[cfg(windows)]
+fn webview_sleep(window: &tauri::WebviewWindow, asleep: bool) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_3;
+    use webview2_com::TrySuspendCompletedHandler;
+    use windows_core::Interface;
+    let _ = window.with_webview(move |wv| unsafe {
+        let controller = wv.controller();
+        let core3 = controller.CoreWebView2().ok().and_then(|c| c.cast::<ICoreWebView2_3>().ok());
+        if asleep {
+            let _ = controller.SetIsVisible(false);
+            if let Some(c) = core3 {
+                let _ = c.TrySuspend(&TrySuspendCompletedHandler::create(Box::new(|_, _| Ok(()))));
+            }
+        } else {
+            if let Some(c) = core3 {
+                let _ = c.Resume();
+            }
+            let _ = controller.SetIsVisible(true);
+        }
+    });
+}
+
+#[cfg(not(windows))]
+fn webview_sleep(_window: &tauri::WebviewWindow, _asleep: bool) {}
 
 /// Adds or removes the tray icon so it's there exactly when one of the tray options is on.
 fn sync_tray(app: &AppHandle, tray: TraySettings) -> tauri::Result<()> {
@@ -669,6 +746,7 @@ fn main() {
                 WindowEvent::CloseRequested { api, .. } if tray.close_to_tray => {
                     api.prevent_close();
                     let _ = window.hide();
+                    sync_main_sleep(app);
                 }
                 WindowEvent::CloseRequested { .. } => {
                     // Quitting for real: don't leave the mini player running on its own.
@@ -678,7 +756,9 @@ fn main() {
                 }
                 WindowEvent::Resized(_) if tray.minimize_to_tray && window.is_minimized().unwrap_or(false) && app.get_webview_window(MINI_LABEL).is_none() => {
                     let _ = window.hide();
+                    sync_main_sleep(app);
                 }
+                WindowEvent::Resized(_) | WindowEvent::Focused(_) => sync_main_sleep(app),
                 _ => {}
             }
         })
@@ -729,7 +809,7 @@ fn main() {
             reset_play_stats, fonts, import_font, remove_font, relink_playlist, paths_exist,
             viz_frame, configure_viz, ui_state, set_ui_state,
             library_folders, add_library_folder, remove_library_folder, scan_library, is_scanning,
-            library_tracks, search_library, library_albums, library_artists, recently_added, track_meta, lyrics, waveform,
+            library_tracks, search_library, library_albums, library_artists, recently_added, track_meta, lyrics, tag_form, write_tags, save_lyrics_file, image_preview, waveform,
             playlists, playlist, create_playlist, rename_playlist, delete_playlist, move_playlist,
             add_to_playlist, remove_from_playlist, move_in_playlist, import_m3u, export_m3u, play_playlist,
         ])

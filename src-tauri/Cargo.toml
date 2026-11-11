@@ -19,3 +19,5 @@ tauri-plugin-single-instance = "2"
 
 [target."cfg(windows)".dependencies]
 souvlaki = "0.8.3"
+webview2-com = "0.39"
+windows-core = "0.62"

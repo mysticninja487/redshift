@@ -71,7 +71,17 @@ export const featureOn = (name) => prefs.features?.[name] !== false;
 /** The settings in force for the current skin (or `skinId`). */
 export function cfg(skinId = prefs.skin) {
   const skin = getSkin(skinId);
-  return deepMerge(deepMerge(BASE, skin.defaults), prefs.skins[skin.id] ?? {});
+  return deepMerge(deepMerge(BASE, skin.defaults), comparing ? {} : prefs.skins[skin.id] ?? {});
+}
+
+// While Settings' "Hold to compare" is pressed, the skin shows as if you had changed nothing.
+let comparing = false;
+export const isComparing = () => comparing;
+export function setComparing(on) {
+  if (comparing === on) return;
+  comparing = on;
+  emit('compare', on);
+  emit('ui');
 }
 export const get = (path) => getPath(cfg(), path);
 

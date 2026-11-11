@@ -75,6 +75,9 @@ window.__REDSHIFT_FONT__ = (file) => `fonts/${file}`;
 window.__REDSHIFT_COVER__ = (path) => {
   const t = find(decodeURIComponent(path));
   if (!t) return 'data:,';
+  const ec = EDITS.get(t.path)?.cover;
+  if (ec === 'none') return 'missing://no-cover.png';
+  if (ec) return ec;
   const a = ALBUMS[t._album ?? 0];
   if (a.style === 'none') return 'missing://no-cover.png'; // exercises the "no cover" fallback
   if (coverCache.has(a.title)) return coverCache.get(a.title);
@@ -95,7 +98,20 @@ window.__REDSHIFT_COVER__ = (path) => {
 };
 
 // ---------------------------------------------------------------- lyrics
+const EDITS = new Map(); // path -> { comment, composer, track_total, disc_total, lyrics (text | null), cover ('none' | data URL) }
+const edit = (path) => EDITS.get(path) ?? EDITS.set(path, {}).get(path);
+function parseMockLyrics(text) {
+  const lines = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const m = /^\[(\d+):(\d+)(?:\.(\d+))?\](.*)$/.exec(raw.trim());
+    if (m) lines.push({ time_ms: (+m[1] * 60 + +m[2]) * 1000 + Math.round(+(`0.${m[3] ?? 0}`) * 1000), text: m[4].trim(), words: [] });
+    else if (raw.trim() && !/^\[[a-z]+:/i.test(raw.trim())) lines.push({ time_ms: 0, text: raw.trim(), words: [] });
+  }
+  return { synced: lines.some((l) => l.time_ms > 0), lines, offset_ms: 0, source: 'embedded' };
+}
 function lyricsFor(path) {
+  const e = EDITS.get(path);
+  if (e && 'lyrics' in e) return e.lyrics ? parseMockLyrics(e.lyrics) : null;
   const t = find(path);
   if (!t || t._album === 4) return null; // one album has none
   const r = rnd(hash(path) + SEED), lines = [], n = Math.round(t.duration_secs / 6);
@@ -300,6 +316,27 @@ const cmds = {
   library_tracks: () => tracks.map(pub), search_library: ({ query }) => tracks.filter((t) => `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(query.toLowerCase())).map(pub),
   library_albums: albums, library_artists: artists, recently_added: ({ limit }) => tracks.slice(-limit).map(pub),
   track_meta: ({ path }) => { const t = find(path); if (!t) throw new Error('unreadable'); return pub(t); },
+  tag_form: ({ path }) => {
+    const t = find(path); if (!t) throw new Error('unreadable'); const e = EDITS.get(path) ?? {};
+    const ly = lyricsFor(path);
+    const text = 'lyrics' in e ? (e.lyrics ?? '') : '';
+    return { path, format: t.format, title: t.title, artist: t.artist, album: t.album, album_artist: t.album_artist, genre: t.genre, composer: e.composer ?? '', comment: e.comment ?? '',
+      year: t.year, track_no: t.track_no, track_total: e.track_total ?? null, disc_no: t.disc_no, disc_total: e.disc_total ?? null, lyrics: text, has_cover: e.cover ? e.cover !== 'none' : ALBUMS[t._album ?? 0].style !== 'none', writable: !t.path.includes('Readonly'), _ly: !!ly };
+  },
+  write_tags: ({ path, edit: ed }) => {
+    const t = tracks.find((x) => x.path === path); if (!t) throw new Error('unreadable');
+    if (window.__mockFailWrite) throw new Error('couldn\'t replace the file (is something else using it?)');
+    const e = edit(path);
+    for (const k of ['title', 'artist', 'album', 'album_artist', 'genre', 'year', 'track_no', 'disc_no']) if (k in ed) t[k] = ed[k] ?? (k === 'title' ? path.split('/').pop() : k.includes('no') || k === 'year' ? null : '');
+    for (const k of ['composer', 'comment', 'track_total', 'disc_total', 'lyrics']) if (k in ed) e[k] = ed[k];
+    if (ed.cover === 'remove') e.cover = 'none';
+    else if (ed.cover?.file) e.cover = window.__mockCover ?? e.cover;
+    t.has_embedded_lyrics = !!(e.lyrics);
+    emit('tags-changed', path);
+    return pub(t);
+  },
+  save_lyrics_file: ({ path }) => path.replace(/\.[^.]+$/, '.lrc'),
+  image_preview: async () => { const c = document.createElement('canvas'); c.width = c.height = 120; const x = c.getContext('2d'); x.fillStyle = '#c0392b'; x.fillRect(0, 0, 120, 120); x.fillStyle = '#f1c40f'; x.fillRect(30, 30, 60, 60); return await new Promise((r) => c.toBlob(async (b) => r(await b.arrayBuffer()), 'image/png')); },
   lyrics: ({ path }) => lyricsFor(path), waveform: ({ path, buckets }) => waveform(path, buckets),
   playlists: plSummary, playlist: ({ id }) => PL.list.find((p) => p.id === id) ?? null,
   create_playlist: ({ name, tracks: ts }) => { const id = PL.seq++; PL.list.push({ id, name, tracks: ts ?? [] }); return id; },

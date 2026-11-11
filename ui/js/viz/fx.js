@@ -1,8 +1,26 @@
 // Atmospheric visualisers: the glowing orb on its orbit, and the particle burst.
 
 import { alpha, lighten, mixHex } from '../color.js';
-import { cfg } from '../prefs.js';
+import { cfg, getPrefs } from '../prefs.js';
 import { ease, keep, rgba } from './util.js';
+
+let halftoneTex = null;
+/** The orb's dot shading on a transparent square, drawn once: dots grow towards the lower right. */
+function halftone() {
+  if (halftoneTex) return halftoneTex;
+  const S = 256, R = S / 2, c = document.createElement('canvas');
+  c.width = c.height = S;
+  const x2 = c.getContext('2d');
+  x2.beginPath(); x2.arc(R, R, R, 0, Math.PI * 2); x2.clip();
+  x2.fillStyle = rgba('#000000', 0.28);
+  const step = Math.max(5, R / 16);
+  for (let y = -R; y < R; y += step) for (let x = -R; x < R; x += step) {
+    const d = (x * 0.8 + y * 0.6) / R;
+    if (d > 0.1) { x2.beginPath(); x2.arc(R + x + ((Math.round(y / step) % 2) * step) / 2, R + y, Math.max(0.4, (d - 0.1) * step * 0.5), 0, Math.PI * 2); x2.fill(); }
+  }
+  halftoneTex = c;
+  return c;
+}
 
 export const orb = {
   id: 'orb', name: 'Orb', blurb: 'A glowing sphere that swells with the bass, with a ring orbiting it.',
@@ -49,19 +67,15 @@ export const orb = {
 
     const g = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.4, R * 0.1, cx, cy, R);
     g.addColorStop(0, lighten(a, 0.1)); g.addColorStop(0.55, a); g.addColorStop(1, mixHex(a, '#000000', 0.62));
-    ctx.save();
-    ctx.shadowColor = alpha(a, 0.55 * glow + 0.1); ctx.shadowBlur = R * 0.5;
+    // The glow around the sphere is a second soft gradient, not a canvas shadow: a shadow re-blurs the whole sphere every frame.
+    const rim = ctx.createRadialGradient(cx, cy, R * 0.92, cx, cy, R * 1.32);
+    rim.addColorStop(0, alpha(a, 0.55 * glow + 0.1)); rim.addColorStop(1, alpha(a, 0));
+    ctx.fillStyle = rim; ctx.beginPath(); ctx.arc(cx, cy, R * 1.32, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
     if (o.grain) {
-      ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
-      ctx.fillStyle = rgba('#000000', 0.28);
-      const step = Math.max(5, R / 16);
-      for (let y = -R; y < R; y += step) for (let x = -R; x < R; x += step) {
-        const d = (x * 0.8 + y * 0.6) / R; // darker towards the lower right
-        if (d > 0.1) { ctx.beginPath(); ctx.arc(cx + x + ((Math.round(y / step) % 2) * step) / 2, cy + y, Math.max(0.4, (d - 0.1) * step * 0.5), 0, Math.PI * 2); ctx.fill(); }
-      }
-      ctx.restore();
+      // The halftone dots are drawn once at a fixed size and scaled; drawing a thousand circles each frame was the most expensive thing here.
+      const tex = halftone();
+      ctx.drawImage(tex, cx - R, cy - R, R * 2, R * 2);
     }
     rings.forEach((r) => drawRing(r, true));
 
@@ -98,7 +112,7 @@ export const particles = {
     ctx.fillStyle = e.paint(0, 0, w, h);
     const dark = e.scheme === 'dark';
     if (dark) ctx.globalCompositeOperation = 'lighter';
-    ctx.shadowColor = e.tokens.accent; ctx.shadowBlur = 8;
+    if (!getPrefs().perf?.lite) { ctx.shadowColor = e.tokens.accent; ctx.shadowBlur = 8; }
     st.ps = st.ps.filter((p) => {
       p.life -= p.decay * e.dt;
       if (p.life <= 0) return false;

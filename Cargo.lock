@@ -3179,7 +3179,7 @@ dependencies = [
 
 [[package]]
 name = "redshift"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "redshift-core",
  "serde",
@@ -3189,11 +3189,13 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-single-instance",
+ "webview2-com",
+ "windows-core",
 ]
 
 [[package]]
 name = "redshift-core"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "audiopus",
  "cpal",

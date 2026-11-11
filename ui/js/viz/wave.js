@@ -1,6 +1,7 @@
 // Visualisers drawn from the waveform: the whole-track hairline view, oscilloscope, vectorscope
 // and the blurred "wavelength" pods.
 
+import { getPrefs } from '../prefs.js';
 import { rgba, ease, keep, resample, smoothstep } from './util.js';
 
 export const lines = {
@@ -20,38 +21,40 @@ export const lines = {
 
     const base = Math.floor((e.position * pps) / o.gap) * o.gap / pps, shift = (e.position - base) * pps;
     const half = h * o.height;
-    const grad = ctx.createLinearGradient(0, cy - half, 0, cy + half);
-    const fg = e.tokens.fg;
-    grad.addColorStop(0, rgba(fg, 0)); grad.addColorStop(0.5, rgba(fg, 1)); grad.addColorStop(1, rgba(fg, 0));
+    const fg = e.tokens.fg, gkey = `${Math.round(cy - half)}|${Math.round(half)}|${fg}`;
+    if (st.gkey !== gkey) { // the fade is the same every frame, so build it once
+      const g = ctx.createLinearGradient(0, cy - half, 0, cy + half);
+      g.addColorStop(0, rgba(fg, 0)); g.addColorStop(0.5, rgba(fg, 1)); g.addColorStop(1, rgba(fg, 0));
+      st.grad = g; st.gkey = gkey;
+    }
     ctx.lineCap = 'round';
     ctx.lineWidth = Math.max(1, o.gap > 8 ? 1.6 : 1.2);
     const from = Math.floor(-headX / o.gap) - 1, to = Math.ceil((w - headX) / o.gap) + 1;
-    // Past lines are bright, lines still to come are dimmer.
-    for (const [alpha, past] of [[0.95, true], [0.5, false]]) {
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = grad;
-      ctx.beginPath();
-      for (let i = from; i <= to; i++) {
-        const x = headX + i * o.gap - shift;
-        if (x < -2 || x > w + 2 || (i * o.gap - shift <= 0) !== past) continue;
-        const t = base + (i * o.gap) / pps;
-        let a;
-        if (wf && dur > 0) {
-          const idx = (t / dur) * (wf.length - 1);
-          if (idx < 0 || idx > wf.length - 1) a = 0.02;
-          else { const k = Math.floor(idx), f = idx - k; a = wf[k] * (1 - f) + (wf[Math.min(wf.length - 1, k + 1)] ?? 0) * f; }
-        } else {
-          // No overview yet: draw the recent loudness history instead.
-          const back = Math.round(((headX - (x - 0)) / pps) * 60);
-          a = back >= 0 ? (e.levels[e.levels.length - 1 - back] ?? 0) * 2.2 : 0.02;
-        }
-        a = Math.min(1, Math.sqrt(a)) * (0.06 + 0.94 * smoothstep(0, 0.08, x / w) * smoothstep(0, 0.08, 1 - x / w));
-        const near = Math.exp(-(((x - headX) / (o.gap * 5)) ** 2));
-        const hh = Math.max(1.5, a * half * (1 + near * st.pulse * 0.45));
-        ctx.moveTo(x, cy - hh); ctx.lineTo(x, cy + hh);
+    // Past lines are bright, lines still to come are dimmer: one pass builds both paths.
+    const pastPath = new Path2D(), nextPath = new Path2D();
+    for (let i = from; i <= to; i++) {
+      const x = headX + i * o.gap - shift;
+      if (x < -2 || x > w + 2) continue;
+      const t = base + (i * o.gap) / pps;
+      let a;
+      if (wf && dur > 0) {
+        const idx = (t / dur) * (wf.length - 1);
+        if (idx < 0 || idx > wf.length - 1) a = 0.02;
+        else { const k = Math.floor(idx), f = idx - k; a = wf[k] * (1 - f) + (wf[Math.min(wf.length - 1, k + 1)] ?? 0) * f; }
+      } else {
+        // No overview yet: draw the recent loudness history instead.
+        const back = Math.round(((headX - x) / pps) * 60);
+        a = back >= 0 ? (e.levels[e.levels.length - 1 - back] ?? 0) * 2.2 : 0.02;
       }
-      ctx.stroke();
+      a = Math.min(1, Math.sqrt(a)) * (0.06 + 0.94 * smoothstep(0, 0.08, x / w) * smoothstep(0, 0.08, 1 - x / w));
+      const near = Math.exp(-(((x - headX) / (o.gap * 5)) ** 2));
+      const hh = Math.max(1.5, a * half * (1 + near * st.pulse * 0.45));
+      const path = i * o.gap - shift <= 0 ? pastPath : nextPath;
+      path.moveTo(x, cy - hh); path.lineTo(x, cy + hh);
     }
+    ctx.strokeStyle = st.grad;
+    ctx.globalAlpha = 0.95; ctx.stroke(pastPath);
+    ctx.globalAlpha = 0.5; ctx.stroke(nextPath);
     ctx.globalAlpha = 1;
     if (o.playhead) {
       ctx.strokeStyle = e.tokens.accent; ctx.lineWidth = 1.5;
@@ -74,7 +77,7 @@ export const wave = {
     ctx.lineJoin = 'round';
     ctx.strokeStyle = e.paint(0, 0, w, 0);
     ctx.lineWidth = o.thickness;
-    if (o.glow > 0) { ctx.shadowColor = e.tokens.accent; ctx.shadowBlur = 18 * o.glow; }
+    if (o.glow > 0 && !getPrefs().perf?.lite) { ctx.shadowColor = e.tokens.accent; ctx.shadowBlur = 18 * o.glow; }
     lanes.forEach(([data, cy], i) => {
       const amp = (o.split ? h * 0.22 : h * 0.4) * o.gain / 1.6;
       ctx.globalAlpha = i === 0 || o.split ? 1 : 0.45;
@@ -105,7 +108,7 @@ export const lissajous = {
     const L = e.frame.scope_left, Rr = e.frame.scope_right, n = Math.min(L.length, Rr.length);
     ctx.strokeStyle = e.paint(cx - R, cy - R, cx + R, cy + R);
     ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
-    if (o.glow > 0) { ctx.shadowColor = e.tokens.accent; ctx.shadowBlur = 16 * o.glow; }
+    if (o.glow > 0 && !getPrefs().perf?.lite) { ctx.shadowColor = e.tokens.accent; ctx.shadowBlur = 16 * o.glow; }
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
       const x = cx + ((L[i] - Rr[i]) * 0.7071) * R, y = cy - ((L[i] + Rr[i]) * 0.7071) * R;

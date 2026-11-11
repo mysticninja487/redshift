@@ -7,13 +7,13 @@ import { on } from '../bus.js';
 import { act, refreshPlayer, refreshSettings, setView } from '../controller.js';
 import { ACTIONS, captureKeys, comboFor, comboFromEvent, prettyCombo, setCombo } from '../keys.js';
 import { importFontFile, importedFonts, removeImportedFont } from '../fonts.js';
-import { DEFAULT_AMBIENT, DEFAULT_MINI, DEFAULT_PREFS, cfg, exportSkinOverrides, featureOn, getPrefs, importSkinOverrides, isOverridden, resetSkin, set, setPref, setSkin } from '../prefs.js';
+import { DEFAULT_AMBIENT, DEFAULT_MINI, DEFAULT_PREFS, setComparing, cfg, exportSkinOverrides, featureOn, getPrefs, importSkinOverrides, isOverridden, resetSkin, set, setPref, setSkin } from '../prefs.js';
 import { ACCENTS, FONTS, PANELS, SLOTS, cleanFontName, fitsSlot, getSkin, skins } from '../skins.js';
 import { icon } from '../ui/icons.js';
 import { state } from '../state.js';
 import { tokens } from '../theme.js';
 import { clear, clone, getPath, h, toast } from '../util.js';
-import { SECTION_ORDER, changesIn, defaultValue, describe, diff, nameOf, otherSkins, tabOf } from './changes.js';
+import { changedKeys } from './changes.js';
 import { VIZ, getViz, vizOptions } from '../viz/index.js';
 import { mountViz } from '../viz/engine.js';
 import { button, colorInput, iconButton, segmented, select, slider as bareSlider, toggle } from '../ui/controls.js';
@@ -23,7 +23,7 @@ import { confirmDialog } from '../ui/dialog.js';
 // [id, label, icon]. The 'skin' entry only exists for skins that have options of their own.
 const TABS = [
   ['appearance', 'Appearance', 'palette'], ['skin', '', 'record'], ['playback', 'Playback', 'play'], ['eq', 'Equaliser', 'eq'], ['lyrics', 'Lyrics & info', 'lyrics'],
-  ['visual', 'Visualisers', 'viz'], ['layout', 'Layout', 'layout'], ['ambient', 'Ambient mode', 'ambient'], ['mini', 'Mini player', 'pip'], ['keys', 'Shortcuts', 'keyboard'], ['changes', 'Changes', 'changes'], ['data', 'Data & reset', 'database'],
+  ['visual', 'Visualisers', 'viz'], ['layout', 'Layout', 'layout'], ['ambient', 'Ambient mode', 'ambient'], ['mini', 'Mini player', 'pip'], ['keys', 'Shortcuts', 'keyboard'], ['data', 'Data & reset', 'database'],
 ];
 const HERO_MODES = [{ value: 'art', label: 'Cover art' }, { value: 'turntable', label: 'Turntable' }, { value: 'viz', label: 'Visualiser' }, { value: 'none', label: 'Nothing' }];
 const SLOT_NAMES = { top: 'Top', left: 'Left', stage: 'Centre', right: 'Right', bottom: 'Bottom' };
@@ -40,7 +40,7 @@ function row(label, control, { hint, path, gpath, redo } = {}) {
   const reset = key ? h('button', { class: 'row-reset', type: 'button', title: path ? 'Back to this skin\'s default' : 'Back to the default', 'aria-label': `Reset ${label}`, hidden: true,
     onclick: () => { if (path) set(path, undefined); else setPref(gpath, getPath(DEFAULT_PREFS, gpath)); (redo ?? (() => liveRender?.()))(); } }, 'Reset') : null;
   const el = h('div', { class: 'set-row' }, h('div', { class: 'set-label' }, h('span', null, label), hint && h('small', null, hint)), h('div', { class: 'set-control' }, control, reset));
-  if (key) { liveRows.push({ key, el, reset }); markRow({ key, el, reset }, new Set(changesIn(getPrefs()).map((c) => c.key))); }
+  if (key) { liveRows.push({ key, el, reset }); markRow({ key, el, reset }, new Set(changedKeys(getPrefs()))); }
   return el;
 }
 let liveRender = null;
@@ -66,9 +66,22 @@ export function mountSettings(root) {
   let tab = 'appearance';
   const tabs = h('nav', { class: 'set-nav', role: 'tablist', 'aria-orientation': 'vertical', 'aria-label': 'Settings sections' }, TABS.map(([id, name, ic]) =>
     h('button', { class: 'set-tab', type: 'button', role: 'tab', dataset: { tab: id }, onclick: () => { tab = id; render(); } }, icon(ic, 18), h('span', null, name))));
-  const head = h('header', { class: 'v-head' }, iconButton('chevronLeft', 'Back to now playing', () => setView('now'), { cls: 'v-back' }), h('h1', { class: 'v-title' }, 'Settings'));
+  // Hold to see the skin as it is without your changes: what did that setting actually do?
+  const compareBtn = h('button', { class: 'cmp-btn', type: 'button', title: 'Hold to see this skin without your changes' }, icon('eye', 16), h('span', null, 'Hold to compare'));
+  const badge = h('div', { class: 'cmp-badge', role: 'status', hidden: true });
+  const hold = (on) => { setComparing(on); compareBtn.setAttribute('aria-pressed', String(on)); };
+  compareBtn.addEventListener('pointerdown', (e) => { if (e.button === 0) hold(true); });
+  compareBtn.addEventListener('keydown', (e) => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); hold(true); } });
+  compareBtn.addEventListener('keyup', (e) => { if (e.key === ' ' || e.key === 'Enter') hold(false); });
+  for (const ev of ['pointerup', 'pointercancel', 'blur']) addEventListener(ev, () => hold(false));
+  on('compare', (v) => {
+    const any = changedKeys(getPrefs()).some((k) => k.startsWith('skin:'));
+    badge.textContent = any ? `${getSkin(getPrefs().skin).name} without your changes` : 'You haven\'t changed this skin yet';
+    badge.hidden = !v;
+  });
+  const head = h('header', { class: 'v-head' }, iconButton('chevronLeft', 'Back to now playing', () => setView('now'), { cls: 'v-back' }), h('h1', { class: 'v-title' }, 'Settings'), compareBtn);
   const body = h('div', { class: 'v-body set-body' });
-  root.append(head, h('div', { class: 'set-shell' }, tabs, body));
+  root.append(head, h('div', { class: 'set-shell' }, tabs, body), badge);
   let previews = [];
   let renderedSkin = null;
 
@@ -93,63 +106,13 @@ export function mountSettings(root) {
   const again = () => render();
   liveRender = render;
 
-  // ---------- what has changed ----------
-  const goTo = (t) => { tab = t; render(); };
-  const rawDefault = (c) => (c.scope === 'skin' ? c.from : c.from);
-  const undoChange = (c) => { if (c.scope === 'skin') set(c.path, undefined); else if (c.path.startsWith('keys.')) setCombo(c.path.slice(5), c.from); else setPref(c.path, getPath(DEFAULT_PREFS, c.path)); };
-  function changesTab() {
-    const prefs = getPrefs(), skin = getSkin(prefs.skin);
-    const all = changesIn(prefs), mine = all.filter((c) => c.scope === 'skin'), shared = all.filter((c) => c.scope === 'shared');
-    const others = otherSkins(prefs);
-    const item = (c) => h('div', { class: 'set-row chg-row' },
-      h('div', { class: 'set-label' }, h('span', null, c.name), h('small', { class: 'chg-vals' }, h('s', null, describe(c.path, rawDefault(c))), ' → ', h('b', null, describe(c.path, c.to)))),
-      h('div', { class: 'set-control' }, h('button', { class: 'row-reset chg-show', type: 'button', onclick: () => goTo(tabOf(c.path)) }, 'Show'), button('Reset', () => { undoChange(c); render(); })));
-    const section = (title, items) => items.length && group(title, ...SECTION_ORDER.map((s) => [s, items.filter((c) => c.section === s)]).filter(([, l]) => l.length).flatMap(([s, l]) => [h('h4', { class: 'chg-sec' }, s), ...l.map(item)]));
-    if (!all.length && !others.length) return h('div', { class: 'set-page' }, group('Changes', h('p', { class: 'hint' }, `Nothing is changed. ${skin.name} and everything else is at its defaults. Once you change a setting it shows up here, with what it was and what it is now.`)));
-    return h('div', { class: 'set-page' },
-      group('Changes', h('p', { class: 'hint' }, `Every setting that differs from its default. ${mine.length ? `${mine.length} for ${skin.name}` : `None for ${skin.name}`}${shared.length ? `, ${shared.length} that apply to every skin` : ''}.`),
-        mine.length ? h('div', { class: 'set-row' }, button(`Reset all ${skin.name} changes`, async () => { if (await confirmDialog('Reset skin?', `All your changes to ${skin.name} will be forgotten.`, { ok: 'Reset' })) { resetSkin(); render(); } })) : null),
-      section(`${skin.name}`, mine), section('Every skin', shared),
-      others.length ? group('Other skins', h('p', { class: 'hint' }, 'Changes you made while using these skins. Switch to one to see them.'), ...others.map((o) => h('div', { class: 'set-row' }, h('div', { class: 'set-label' }, h('span', null, o.name), h('small', null, `${o.count} ${o.count === 1 ? 'change' : 'changes'}`)),
-        h('div', { class: 'set-control' }, button('Switch to it', () => { setSkin(o.id); render(); }))))) : null);
-  }
-
-  // The chip that says what you just changed, with an undo.
-  const chipText = h('span', { class: 'chip-text' });
-  const chipUndo = button('Undo', () => undoLast());
-  const chip = h('div', { class: 'set-chip', role: 'status', 'aria-live': 'polite', hidden: true }, h('i', { class: 'chip-dot' }), chipText, chipUndo);
-  root.append(chip);
-  let snapshot = clone(getPrefs()), chipFor = null, chipTimer = 0, flashTimer = 0;
-  const badge = () => { const n = changesIn(getPrefs()).length; const t = tabs.querySelector('[data-tab="changes"]'); if (t) { t.dataset.count = String(n); t.title = n ? `${n} changed` : 'Nothing changed'; } };
-  function undoLast() {
-    if (!chipFor) return;
-    for (const c of chipFor.items) { if (c.scope === 'skin') set(c.path, c.from); else if (c.path === 'skin') setSkin(c.from); else setPref(c.path, c.from); }
-    chip.hidden = true; chipFor = null; snapshot = clone(getPrefs()); render(); badge();
-  }
-  function onChange() {
-    if (state.view !== 'settings') { snapshot = clone(getPrefs()); return; }
-    const now = getPrefs(), moved = diff(snapshot, now);
-    snapshot = clone(now);
-    // Rows and the tab badge follow along.
-    const keys = new Set(changesIn(now).map((c) => c.key));
+  // Rows that differ from their default carry a dot and a Reset button; they follow along as things change.
+  on('ui', () => {
+    if (state.view !== 'settings') return;
+    const keys = new Set(changedKeys(getPrefs()));
     liveRows = liveRows.filter((r) => r.el.isConnected);
     liveRows.forEach((r) => markRow(r, keys));
-    badge();
-    if (!moved.length || moved.length > 4 || moved.some((m) => m.path === 'skin')) return;
-    // A slider drag is many changes to one setting; keep the first "from" so Undo goes back to before the drag.
-    const same = chipFor && !chip.hidden && moved.every((m) => chipFor.items.some((i) => i.path === m.path && i.scope === m.scope));
-    const items = moved.map((m) => ({ ...m, from: same ? chipFor.items.find((i) => i.path === m.path && i.scope === m.scope).from : m.from }));
-    chipFor = { items };
-    const first = items[0], [name] = nameOf(first.path);
-    chipText.replaceChildren(h('b', null, name), ` ${describe(first.path, first.from ?? defaultValue(first.scope, first.path, now))} → ${describe(first.path, first.to ?? defaultValue(first.scope, first.path, now))}`, items.length > 1 ? ` and ${items.length - 1} more` : '');
-    chip.hidden = false;
-    clearTimeout(chipTimer); chipTimer = setTimeout(() => { chip.hidden = true; }, 7000);
-    // And the row itself blinks, so you can see which control it was.
-    for (const m of moved) liveRows.filter((r) => r.key === `${m.scope}:${m.path}`).forEach((r) => { r.el.classList.remove('just-changed'); void r.el.offsetWidth; r.el.classList.add('just-changed'); });
-    clearTimeout(flashTimer);
-  }
-  on('ui', onChange);
-  on('view', () => { chip.hidden = true; });
+  });
 
   // ---------- Appearance ----------
   function appearance() {
@@ -505,7 +468,7 @@ export function mountSettings(root) {
       group('Reset', row('Everything', button('Reset all appearance settings', async () => { if (await confirmDialog('Reset everything?', 'Every skin goes back to its defaults and shortcuts are restored. Your music, playlists and playback settings are untouched.', { ok: 'Reset all' })) { const { setPref } = await import('../prefs.js'); setPref('skins', {}); setPref('keys', {}); render(); } }, { cls: 'danger' }))));
   }
 
-  const TAB_BUILDERS = { changes: changesTab, appearance, skin: skinTab, layout, visual, playback, eq: eqTab, lyrics: lyricsTab, ambient: ambientPage, mini: miniPage, keys: keysTab, data };
+  const TAB_BUILDERS = { appearance, skin: skinTab, layout, visual, playback, eq: eqTab, lyrics: lyricsTab, ambient: ambientPage, mini: miniPage, keys: keysTab, data };
   on('ui', () => { if (state.view === 'settings' && getPrefs().skin !== renderedSkin) render(); });
   on('view', (v) => { if (v === 'settings') render(); else { previews.forEach((p) => p.destroy?.()); previews = []; } });
   render();
