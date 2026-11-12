@@ -2,7 +2,7 @@
 // Settings. Combos are written like "Shift+ArrowRight" (modifiers in the order Ctrl, Alt, Shift).
 
 import { api } from './api.js';
-import { act, setView } from './controller.js';
+import { act, setView, toggleSettings } from './controller.js';
 import { featureOn, get, getPrefs, set, setPref, setSkin } from './prefs.js';
 import { toggleAmbient } from './ambient.js';
 import { toggleEqDrawer } from './ui/eqdrawer.js';
@@ -28,7 +28,7 @@ export const ACTIONS = [
   { id: 'repeat', label: 'Repeat', key: 'R', run: () => act(api.setRepeat({ off: 'all', all: 'one', one: 'off' }[state.queue.repeat] ?? 'off')) },
   { id: 'now', label: 'Now playing', key: '1', run: () => setView('now') },
   { id: 'library', label: 'Library', key: '2', run: () => setView('library') },
-  { id: 'settings', label: 'Settings', key: '3', run: () => setView('settings') },
+  { id: 'settings', label: 'Settings', key: '3', run: () => toggleSettings() },
   { id: 'search', label: 'Search library', key: 'Ctrl+F', run: () => { setView('library'); setTimeout(() => document.querySelector('.lib-search')?.focus(), 30); } },
   { id: 'skinnext', label: 'Next skin', key: ']', run: () => { const s = cycle(skins.map((x) => x.id), getPrefs().skin, 1); setSkin(s); toast(`Skin: ${skins.find((x) => x.id === s).name}`); } },
   { id: 'skinprev', label: 'Previous skin', key: '[', run: () => { const s = cycle(skins.map((x) => x.id), getPrefs().skin, -1); setSkin(s); toast(`Skin: ${skins.find((x) => x.id === s).name}`); } },
@@ -77,7 +77,7 @@ export function initKeys() {
     if (t instanceof HTMLElement && (t.closest('[role="slider"]') || t.closest('.segmented')) && /^(Arrow|Home|End|Page)/.test(e.key)) return;
     if (t instanceof HTMLElement && t.tagName === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
     if (document.querySelector('.dialog-back')) return;
-    if ((e.ctrlKey || e.metaKey) && e.key === ',') { e.preventDefault(); setView('settings'); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key === ',') { e.preventDefault(); toggleSettings(); return; }
     const combo = comboFromEvent(e);
     if (!combo) return;
     const action = ACTIONS.find((a) => comboFor(a.id) === combo);

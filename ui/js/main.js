@@ -2,7 +2,7 @@
 
 import { on } from './bus.js';
 import { api, listen } from './api.js';
-import { initController, setView } from './controller.js';
+import { initController, setView, toggleSettings } from './controller.js';
 import { loadImportedFonts } from './fonts.js';
 import { eqDrawerOpen, onEqDrawer, toggleEqDrawer } from './ui/eqdrawer.js';
 import { initKeys } from './keys.js';
@@ -22,7 +22,7 @@ const NAV = [['now', 'Now playing', 'record'], ['library', 'Library', 'library']
 
 function buildChrome() {
   const nav = h('nav', { class: 'nav', 'aria-label': 'Sections' }, NAV.map(([id, label, ic]) =>
-    h('button', { class: 'nav-btn', type: 'button', dataset: { view: id }, onclick: () => setView(id) }, icon(ic, 16), h('span', null, label))));
+    h('button', { class: 'nav-btn', type: 'button', dataset: { view: id }, onclick: () => (id === 'settings' ? toggleSettings() : setView(id)) }, icon(ic, 16), h('span', null, label))));
   const skinSel = select({ label: 'Skin', value: getPrefs().skin, options: [], onChange: (v) => setSkin(v) });
   skinSel.classList.add('skin-select');
   // Shows the mode a click switches to: a sun while it's dark, a moon while it's light.
@@ -57,8 +57,6 @@ function buildChrome() {
   const nowTools = h('div', { class: 'now-tools', role: 'group', 'aria-label': 'Now playing tools' }, lyricsBtn, vizBtn, queueBtn, eqBtn);
   // Always visible whatever the skin does with the navigation links: settings are one click away.
   const mini = iconButton('pip', 'Mini player (Ctrl+M)', () => api.toggleMiniPlayer(), { cls: 'mini-btn-open' });
-  const gear = iconButton('settings', 'Settings (Ctrl+,)', () => setView('settings'), { cls: 'settings-btn' });
-  on('view', (v) => gear.setAttribute('aria-pressed', String(v === 'settings')));
   const ambient = iconButton('ambient', 'Ambient mode (A)', () => toggleAmbient(), { cls: 'ambient-btn' });
   const full = iconButton('fullscreen', 'Fullscreen', () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => {})), { cls: 'full-btn' });
   // The menu lists the built-in skins and the person's own; it is rebuilt when that list changes.
@@ -74,7 +72,7 @@ function buildChrome() {
   nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === state.view)));
   return h('header', { class: 'chrome' },
     h('div', { class: 'brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }), h('span', { class: 'brand-name' }, 'Redshift')),
-    nav, h('div', { class: 'chrome-tools' }, nowTools, skinSel, scheme, gear, sleepButton(), ambient, mini, full));
+    nav, h('div', { class: 'chrome-tools' }, nowTools, skinSel, scheme, sleepButton(), ambient, mini, full));
 }
 
 /** Background layers that skins show or hide with CSS: ghost type, sun, rings, side labels. */
@@ -123,7 +121,7 @@ function buildViews(app) {
   on('compare', () => show(state.view));
   addEventListener('resize', debounce(() => { if (state.view === 'settings') show('settings'); }, 150));
   show(state.view);
-  addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.view !== 'now' && !document.querySelector('.dialog-back,.popover,.menu')) setView('now'); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.view !== 'now' && !document.querySelector('.dialog-back,.popover,.menu')) { if (state.view === 'settings') toggleSettings(); else setView('now'); } });
 }
 
 async function bootMini() {

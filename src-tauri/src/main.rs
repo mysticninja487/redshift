@@ -424,8 +424,11 @@ fn favourites(state: State<AppState>) -> Vec<TrackMeta> {
     state.0.favourites()
 }
 #[tauri::command(async)]
-fn set_favourite(state: State<AppState>, paths: Vec<PathBuf>, on: bool) -> usize {
-    state.0.set_favourite(&paths, on)
+fn set_favourite(app: AppHandle, state: State<AppState>, paths: Vec<PathBuf>, on: bool) -> usize {
+    let n = state.0.set_favourite(&paths, on);
+    // Both the main window and the mini player show hearts, so tell them both.
+    let _ = app.emit("favourites-changed", n);
+    n
 }
 #[tauri::command(async)]
 fn play_stats(state: State<AppState>) -> Vec<PlayStat> {

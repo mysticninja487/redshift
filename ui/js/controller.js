@@ -119,6 +119,8 @@ export async function initController() {
     if (r?.removed) bits.push(`${r.removed} removed`);
     if (bits.length) toast(`Library updated: ${bits.join(', ')}`);
   });
+  // Favourites changed in the other window (the mini player and the main window are separate pages).
+  await listen('favourites-changed', () => { refreshFavs().catch(() => {}); });
   await listen('scan-progress', (p) => { state.scan = { ...p, running: true }; emit('scan'); });
   // Position and volume come from a light poll; the interpolation in position() fills the gaps.
   // It slows down while paused or hidden, when nothing on screen is moving.
@@ -158,17 +160,18 @@ export async function refreshStats() {
   emit('stats');
 }
 /** Adds `paths` to the favourites, or removes them if they all are favourites already. */
-export async function toggleFavourite(paths) {
+export async function toggleFavourite(paths, { quiet = false } = {}) {
   const list = [...new Set(paths)];
   if (!list.length) return;
   const remove = list.every((p) => state.favs.has(p));
   await act(api.setFavourite(list, !remove));
   await refreshFavs();
-  toast(remove ? 'Removed from favourites' : list.length > 1 ? `Added ${list.length} tracks to favourites` : 'Added to favourites');
+  if (!quiet) toast(remove ? 'Removed from favourites' : list.length > 1 ? `Added ${list.length} tracks to favourites` : 'Added to favourites');
 }
 
 export function setView(view) {
   if (state.view === view) return;
+  if (view === 'settings') state.viewBeforeSettings = state.view;
   state.view = view;
   emit('view', view);
 }
@@ -205,4 +208,11 @@ export async function rescanLibrary() {
     state.scan = null; emit('scan');
     toast(String(e?.message ?? e), 'error');
   }
+}
+
+/** Opens Settings, or, when it is already open, goes back to the screen you came from. */
+export function toggleSettings() {
+  if (state.view !== 'settings') return setView('settings');
+  const back = state.viewBeforeSettings;
+  setView(back && back !== 'settings' ? back : 'now');
 }

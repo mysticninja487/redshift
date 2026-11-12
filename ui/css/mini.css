@@ -94,3 +94,8 @@ html[data-mini] #app { height: 100vh; display: block; background: transparent; }
 .drop-hint[hidden] { display: none; }
 .drop-hint > div { display: grid; justify-items: center; gap: 6px; padding: 36px 56px; border: 2px dashed var(--accent); border-radius: var(--r-panel, 14px); color: var(--accent-text, var(--accent)); }
 .drop-hint b { font-family: var(--font-display); font-size: 1.4rem; color: var(--fg); } .drop-hint span { color: var(--fg2); font-size: .85rem; }
+
+/* Favourite */
+.mini-fav:disabled { opacity: .35; cursor: default; }
+.mini-fav.on { color: var(--accent-text, var(--accent)); }
+.mini-fav.on svg { fill: currentColor; }

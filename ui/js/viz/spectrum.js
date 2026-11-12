@@ -95,7 +95,9 @@ export const ring = {
     ctx.beginPath(); ctx.arc(cx, cy, Math.max(1, R0 - 8), 0, Math.PI * 2); ctx.clip();
     if (o.cover && e.coverImg?.complete && e.coverImg.naturalWidth) {
       ctx.translate(cx, cy); ctx.rotate(e.t * o.spin * Math.PI * 2 * 0.5);
-      const s = Math.max(2, (R0 - 8) * 2); ctx.drawImage(e.coverImg, -s / 2, -s / 2, s, s);
+      const s = Math.max(2, (R0 - 8) * 2), img = e.coverImg, iw = img.naturalWidth, ih = img.naturalHeight, side = Math.min(iw, ih);
+      // Fill the circle with the middle of the picture, so a cover that isn't square isn't squeezed.
+      ctx.drawImage(img, (iw - side) / 2, (ih - side) / 2, side, side, -s / 2, -s / 2, s, s);
     } else { ctx.fillStyle = rgba(e.tokens.accent, 0.12); ctx.fillRect(0, 0, w, h); }
     ctx.restore();
   },

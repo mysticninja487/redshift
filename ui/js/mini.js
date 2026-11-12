@@ -4,7 +4,7 @@
 import { api, COVER, coverUrl } from './api.js';
 import { on } from './bus.js';
 import { flushPrefs, getPrefs, setPref } from './prefs.js';
-import { act, getMeta } from './controller.js';
+import { act, getMeta, toggleFavourite } from './controller.js';
 import { duration, isPlaying, position, state } from './state.js';
 import { debounce, fmtTime, h } from './util.js';
 import { icon } from './ui/icons.js';
@@ -51,6 +51,9 @@ function seekBar(cls) {
 export function mountMini(root) {
   const btn = (name, label, fn, cls = '', size = 18) => h('button', { class: `mini-btn ${cls}`, type: 'button', title: label, 'aria-label': label, onclick: fn }, icon(name, size));
 
+  const toggleHeart = () => { if (state.trackPath) toggleFavourite([state.trackPath], { quiet: true }); };
+  const cHeart = btn('heart', 'Add to favourites', toggleHeart, 'mini-fav', 18), fHeart = btn('heart', 'Add to favourites', toggleHeart, 'mini-fav', 18);
+
   const togglePin = () => setPref('mini.onTop', !(miniPrefs().onTop !== false));
   const cPin = btn('pin', 'Keep on top', togglePin, 'mini-pin', 16), fPin = btn('pin', 'Keep on top', togglePin, 'mini-ghost mini-pin', 16);
 
@@ -61,7 +64,7 @@ export function mountMini(root) {
   const compact = h('div', { class: 'mini-compact' },
     h('div', { class: 'mini-cover' }),
     h('div', { class: 'mini-info' }, h('div', { class: 'mini-meta' }, cTitle, cArtist),
-      h('div', { class: 'mini-controls' }, btn('prev', 'Previous', () => act(api.previous())), cPlay, btn('next', 'Next', () => act(api.next())))),
+      h('div', { class: 'mini-controls' }, btn('prev', 'Previous', () => act(api.previous())), cPlay, btn('next', 'Next', () => act(api.next())), cHeart)),
     h('div', { class: 'mini-corner' }, cPin, btn('expand', 'Expand', () => setExpanded(true))),
     cSeek);
 
@@ -81,7 +84,7 @@ export function mountMini(root) {
       h('div', { class: 'mini-over' }, h('div', { class: 'mini-meta' }, fTitle, fArtist),
         h('div', { class: 'mini-line' }, btn('prev', 'Previous', () => act(api.previous()), 'mini-ghost'), fSeek, btn('next', 'Next', () => act(api.next()), 'mini-ghost')))),
     h('div', { class: 'mini-right' }, listEl,
-      h('div', { class: 'mini-foot' }, shuffle, fPlay, repeat, h('span', { class: 'mini-spacer' }), lyricsBtn)));
+      h('div', { class: 'mini-foot' }, shuffle, fPlay, repeat, h('span', { class: 'mini-spacer' }), fHeart, lyricsBtn)));
 
   const grip = h('div', { class: 'mini-grip', title: 'Drag to resize', 'aria-hidden': 'true', onpointerdown: (e) => { if (e.button !== 0) return; e.preventDefault(); win()?.startResizeDragging?.('SouthEast'); } });
   const mini = h('div', { class: 'mini', dataset: { mode: 'compact' } }, h('div', { class: 'mini-bg' }), compact, full, grip);
@@ -134,6 +137,15 @@ export function mountMini(root) {
     const p = isPlaying();
     for (const [b, size] of [[cPlay, 20], [fPlay, 22]]) { b.replaceChildren(icon(p ? 'pause' : 'play', size)); b.title = b.ariaLabel = p ? 'Pause' : 'Play'; }
   };
+  const paintHeart = () => {
+    const fav = !!state.trackPath && state.favs.has(state.trackPath);
+    for (const b of [cHeart, fHeart]) {
+      b.disabled = !state.trackPath;
+      b.classList.toggle('on', fav);
+      b.setAttribute('aria-pressed', String(fav));
+      b.title = b.ariaLabel = fav ? 'Remove from favourites' : 'Add to favourites';
+    }
+  };
   const paintModes = () => {
     shuffle.setAttribute('aria-pressed', String(!!state.queue.shuffle));
     const r = state.queue.repeat;
@@ -185,7 +197,8 @@ export function mountMini(root) {
     if (expanded && list === 'lyrics') paintLyrics(false);
   };
 
-  on('track', () => { paintTrack(); paintList(); tick(); });
+  on('track', () => { paintTrack(); paintHeart(); paintList(); tick(); });
+  on('favs', paintHeart);
   on('art', paintTrack);
   on('lyrics', () => { paintList(list === 'lyrics'); tick(); });
   on('queue', () => { paintModes(); paintList(); });
@@ -193,7 +206,7 @@ export function mountMini(root) {
   on('status', paintPlay);
   on('ui', applyPrefs);
   applyPrefs();
-  paintTrack(); paintPlay(); paintModes(); tick();
+  paintTrack(); paintHeart(); paintPlay(); paintModes(); tick();
   setInterval(tick, 250);
   const open = miniPrefs().open ?? 'last';
   if (open === 'expanded' || (open === 'last' && savedExpanded())) setExpanded(true, false);
