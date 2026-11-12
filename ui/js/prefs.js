@@ -7,7 +7,7 @@
 
 import { api } from './api.js';
 import { emit } from './bus.js';
-import { getSkin } from './skins.js';
+import { builtinSkins, getSkin, isBuiltinSkin, setCustomSkins } from './skins.js';
 import { clone, debounce, deepMerge, getPath, setPath } from './util.js';
 
 export const BASE = {
@@ -35,6 +35,8 @@ export const DEFAULT_PREFS = {
   skin: 'classic',
   layoutVersion: 2,
   skins: {},
+  // The person's own skins: [{ id, name, base, settings }]. Each shows up as a skin called `custom:<id>`.
+  looks: [],
   keys: {},
   library: { tab: 'albums', sort: 'default', albumSize: 190, playMode: 'single' },
   // On/off switches that apply to every skin.
@@ -62,6 +64,7 @@ export async function loadPrefs() {
   // People who set Redshift up before the Classic layout existed move to it once. Their own
   // per-skin choices are kept, and the other skins are one click away.
   if (had && (saved.layoutVersion ?? 0) < 2) { prefs.skin = 'classic'; prefs.layoutVersion = 2; migrated = true; }
+  syncLooks();
   return prefs;
 }
 export const getPrefs = () => prefs;
@@ -120,6 +123,7 @@ export function followOtherWindows(listen) {
     if (unsaved || !v || typeof v !== 'object' || v.v !== 1) return;
     if (JSON.stringify(v) === JSON.stringify(prefs)) return; // our own save coming back
     prefs = deepMerge(clone(DEFAULT_PREFS), v);
+    syncLooks();
     emit('ui');
   });
 }
@@ -130,3 +134,102 @@ function changed() {
   emit('ui');
 }
 export const flushPrefs = () => save.flush();
+
+// ---------- Your own skins ----------
+// A look is a skin of your own: one of the built-in skins plus the settings you saved on it. It
+// shows in the skin lists like any other, and still keeps its own changes on top.
+
+const LOOK_NAME_MAX = 40;
+const LOOK_MAX = 40;
+const LOOK_BYTES_MAX = 64 * 1024;
+const LOOK_KEYS = Object.keys(BASE);
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** `v` as plain data, without anything that could change how objects behave. */
+function plain(v, depth = 0) {
+  if (depth > 12) return undefined;
+  if (Array.isArray(v)) return v.slice(0, 64).map((x) => plain(x, depth + 1));
+  if (v && typeof v === 'object') {
+    const out = {};
+    for (const [k, x] of Object.entries(v)) if (!UNSAFE_KEYS.has(k)) { const y = plain(x, depth + 1); if (y !== undefined) out[k] = y; }
+    return out;
+  }
+  return ['string', 'number', 'boolean'].includes(typeof v) || v === null ? v : undefined;
+}
+/** Checks settings from a file or the clipboard: only the sections Redshift knows, and not too large. Returns null if unusable. */
+export function cleanLookSettings(settings) {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
+  const out = {};
+  for (const k of LOOK_KEYS) if (k in settings) { const y = plain(settings[k]); if (y !== undefined) out[k] = y; }
+  return JSON.stringify(out).length > LOOK_BYTES_MAX ? null : out;
+}
+const cleanName = (n, fallback) => String(n ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, LOOK_NAME_MAX) || fallback;
+const newLookId = () => Math.random().toString(36).slice(2, 10);
+
+function cleanLooks(list) {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : []).slice(0, LOOK_MAX).flatMap((l) => {
+    const id = typeof l?.id === 'string' && /^[a-z0-9]{3,16}$/.test(l.id) ? l.id : null;
+    const settings = cleanLookSettings(l?.settings);
+    if (!id || seen.has(id) || !settings) return [];
+    seen.add(id);
+    return [{ id, name: cleanName(l.name, 'My skin'), base: isBuiltinSkin(l.base) ? l.base : builtinSkins[0].id, settings }];
+  });
+}
+/** Makes the skin list match the saved looks, and falls back to a built-in skin if the current one is gone. */
+function syncLooks() {
+  prefs.looks = cleanLooks(prefs.looks);
+  setCustomSkins(prefs.looks);
+  if (getSkin(prefs.skin).id !== prefs.skin) prefs.skin = getSkin(prefs.skin).id;
+}
+export const getLooks = () => prefs.looks ?? [];
+export const isCustomSkin = (id = prefs.skin) => typeof id === 'string' && id.startsWith('custom:');
+const lookKey = (id) => id.replace(/^custom:/, '');
+
+/** Saves the current skin, with your changes, as a new skin and switches to it. Returns it, or null when there are too many. */
+export function saveLook(name) {
+  if ((prefs.looks?.length ?? 0) >= LOOK_MAX) return null;
+  const here = getSkin(prefs.skin);
+  const settings = cleanLookSettings(exportSkinOverrides()) ?? {};
+  // Saving from a custom skin builds on that skin's own base, with its saved settings underneath.
+  const under = isCustomSkin() ? deepMerge(clone(getLooks().find((l) => l.id === lookKey(here.id))?.settings ?? {}), settings) : settings;
+  const look = { id: newLookId(), name: cleanName(name, `${here.name} copy`), base: here.baseId ?? here.id, settings: under };
+  prefs = { ...prefs, looks: [...(prefs.looks ?? []), look] };
+  syncLooks();
+  prefs = { ...prefs, skin: `custom:${look.id}` };
+  changed();
+  return look;
+}
+export function renameLook(id, name) {
+  prefs = { ...prefs, looks: getLooks().map((l) => (l.id === lookKey(id) ? { ...l, name: cleanName(name, l.name) } : l)) };
+  syncLooks();
+  changed();
+}
+/** Deletes a look. If it was the current skin, goes back to the skin it was built on. */
+export function deleteLook(id) {
+  const key = lookKey(id), gone = getLooks().find((l) => l.id === key);
+  if (!gone) return;
+  const { [`custom:${key}`]: _o, ...rest } = prefs.skins;
+  prefs = { ...prefs, looks: getLooks().filter((l) => l.id !== key), skins: rest, skin: prefs.skin === `custom:${key}` ? gone.base : prefs.skin };
+  syncLooks();
+  changed();
+}
+/** What a look looks like as a file. */
+export function lookFile(id = prefs.skin) {
+  const skin = getSkin(id);
+  const look = getLooks().find((l) => `custom:${l.id}` === skin.id);
+  const mine = cleanLookSettings(exportSkinOverrides()) ?? {};
+  return { redshiftSkin: 1, name: skin.name, base: skin.baseId ?? skin.id, settings: look ? deepMerge(clone(look.settings), mine) : mine };
+}
+/** Adds a skin from a file's contents (a parsed look). Returns the new look, or null if it isn't one. */
+export function importLook(data) {
+  const settings = cleanLookSettings(data?.settings);
+  if (!settings || (prefs.looks?.length ?? 0) >= LOOK_MAX) return null;
+  const base = isBuiltinSkin(data.base) ? data.base : isBuiltinSkin(data.skin) ? data.skin : builtinSkins[0].id;
+  const look = { id: newLookId(), name: cleanName(data.name, 'Imported skin'), base, settings };
+  prefs = { ...prefs, looks: [...(prefs.looks ?? []), look] };
+  syncLooks();
+  prefs = { ...prefs, skin: `custom:${look.id}` };
+  changed();
+  return look;
+}

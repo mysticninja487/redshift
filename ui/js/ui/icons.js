@@ -28,6 +28,7 @@ const P = {
   changes: '<path d="M4 6h11M4 12h7M4 18h5"/><circle cx="18" cy="15" r="3.2"/><path d="m16.6 15 1 1 1.9-2"/>',
   eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   edit: '<path d="M4 20h4L19.5 8.5l-4-4L4 16v4z"/><path d="m13.5 6.5 4 4"/>',
+  timer: '<circle cx="12" cy="13.5" r="7"/><path d="M12 9.5v4l2.5 1.5M9.5 3h5"/>',
   pin: '<path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6zM12 14v7"/>',
   expand: '<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/>', collapse: '<path d="M20 10h-6V4M4 14h6v6M14 10l7-7M10 14l-7 7"/>',
   chevronLeft: '<path d="m14.5 5-7 7 7 7"/>', chevronRight: '<path d="m9.5 5 7 7-7 7"/>',

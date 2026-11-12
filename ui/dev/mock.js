@@ -137,6 +137,8 @@ const S = {
 };
 const EQ_FREQS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 const CUSTOM_PRESETS = [];
+let SLEEP = null;
+const sleepStatus = () => (!SLEEP ? { active: false, kind: null, remaining_secs: null, fading: false } : SLEEP.kind === 'song' ? { active: true, kind: 'song', remaining_secs: null, fading: false } : { active: true, kind: 'time', remaining_secs: Math.max(0, (SLEEP.end - performance.now()) / 1000), fading: false });
 const TRAY = { minimize_to_tray: false, close_to_tray: false };
 const FONTS = [];
 const FAVS = []; // most recent first
@@ -259,7 +261,7 @@ if (!params.has('empty') && !params.has('fresh')) {
 
 // ---------------------------------------------------------------- commands
 const ui = () => { try { return JSON.parse(localStorage.getItem('redshift-mock-ui') ?? 'null'); } catch { return null; } };
-const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, viz: {}, custom_eq_presets: CUSTOM_PRESETS, tray: TRAY, ui: ui() });
+const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, viz: {}, custom_eq_presets: CUSTOM_PRESETS, tray: TRAY, restore_session: S.restore !== false, watch_folders: S.watch !== false, ui: ui() });
 const addEntries = (paths, at = S.entries.length) => S.entries.splice(at, 0, ...paths.map((path) => ({ id: S.seq++, path })));
 const cmds = {
   set_queue: ({ paths, start, autoplay }) => { S.entries = []; addEntries(paths); S.cur = S.entries[start]?.id ?? null; S.pos = 0; S.t0 = performance.now(); S.status = autoplay && S.cur ? 'playing' : 'stopped'; if (S.status === 'playing') noteStart(curEntry()?.path); emit('player-event', { type: 'queue_changed' }); emit('player-event', { type: 'track_changed', entry_id: S.cur }); },
@@ -298,6 +300,11 @@ const cmds = {
     return n;
   },
   delete_eq_preset: ({ name }) => { const i = CUSTOM_PRESETS.findIndex((x) => x.name.toLowerCase() === name.toLowerCase()); if (i >= 0) CUSTOM_PRESETS.splice(i, 1); return i >= 0; },
+  set_sleep_timer: ({ minutes }) => { SLEEP = minutes == null ? { kind: 'song' } : minutes ? { kind: 'time', end: performance.now() + minutes * 60000 } : null; return sleepStatus(); },
+  cancel_sleep_timer: () => { SLEEP = null; },
+  sleep_status: () => sleepStatus(),
+  set_watch_folders: ({ on }) => { S.watch = on; },
+  set_restore_session: ({ on }) => { S.restore = on; },
   set_tray: ({ minimizeToTray, closeToTray }) => { TRAY.minimize_to_tray = minimizeToTray; TRAY.close_to_tray = closeToTray; },
   favourite_paths: () => [...FAVS],
   set_favourite: ({ paths, on }) => { let n = 0; for (const p of paths) { const i = FAVS.indexOf(p); if (on && i < 0) { FAVS.unshift(p); n++; } else if (!on && i >= 0) { FAVS.splice(i, 1); n++; } } return n; },
@@ -335,6 +342,8 @@ const cmds = {
     emit('tags-changed', path);
     return pub(t);
   },
+  write_look_file: ({ path, text }) => { (window.__mockFiles ??= {})[path] = text; },
+  read_look_file: ({ path }) => { const t = (window.__mockFiles ??= {})[path]; if (t == null) throw new Error('no such file'); return t; },
   save_lyrics_file: ({ path }) => path.replace(/\.[^.]+$/, '.lrc'),
   image_preview: async () => { const c = document.createElement('canvas'); c.width = c.height = 120; const x = c.getContext('2d'); x.fillStyle = '#c0392b'; x.fillRect(0, 0, 120, 120); x.fillStyle = '#f1c40f'; x.fillRect(30, 30, 60, 60); return await new Promise((r) => c.toBlob(async (b) => r(await b.arrayBuffer()), 'image/png')); },
   lyrics: ({ path }) => lyricsFor(path), waveform: ({ path, buckets }) => waveform(path, buckets),

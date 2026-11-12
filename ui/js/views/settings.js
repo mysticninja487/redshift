@@ -7,7 +7,7 @@ import { on } from '../bus.js';
 import { act, refreshPlayer, refreshSettings, setView } from '../controller.js';
 import { ACTIONS, captureKeys, comboFor, comboFromEvent, prettyCombo, setCombo } from '../keys.js';
 import { importFontFile, importedFonts, removeImportedFont } from '../fonts.js';
-import { DEFAULT_AMBIENT, DEFAULT_MINI, DEFAULT_PREFS, setComparing, cfg, exportSkinOverrides, featureOn, getPrefs, importSkinOverrides, isOverridden, resetSkin, set, setPref, setSkin } from '../prefs.js';
+import { DEFAULT_AMBIENT, DEFAULT_MINI, DEFAULT_PREFS, setComparing, cfg, featureOn, getPrefs, isOverridden, resetSkin, set, setPref, setSkin, deleteLook, importLook, isCustomSkin, lookFile, renameLook, saveLook } from '../prefs.js';
 import { ACCENTS, FONTS, PANELS, SLOTS, cleanFontName, fitsSlot, getSkin, skins } from '../skins.js';
 import { icon } from '../ui/icons.js';
 import { state } from '../state.js';
@@ -122,8 +122,17 @@ export function mountSettings(root) {
       return h('button', { class: 'skin-card', type: 'button', 'aria-pressed': String(s.id === skin.id), onclick: () => { setSkin(s.id); render(); },
         style: { '--p-bg': p.bg, '--p-bg2': p.bg2, '--p-fg': p.fg, '--p-accent': p.accent } },
         h('span', { class: 'sc-preview' }, h('i', { class: 'sc-a' }), h('i', { class: 'sc-b' }), h('i', { class: 'sc-c' })),
-        h('span', { class: 'sc-name' }, s.name), h('span', { class: 'sc-blurb' }, s.blurb));
+        h('span', { class: 'sc-name' }, s.name, s.custom ? h('span', { class: 'sc-mine' }, 'Yours') : null), h('span', { class: 'sc-blurb' }, s.blurb));
     }));
+    const mineRow = h('div', { class: 'set-row set-actions' },
+      button('Save this look as a new skin…', async () => {
+        const name = await promptText('Name your skin', { value: isCustomSkin() ? `${skin.name} copy` : `My ${skin.name}`, ok: 'Save skin' });
+        if (name === null) return;
+        if (!saveLook(name)) toast('That\'s the most skins you can keep. Delete one first.', 'error'); else toast(`Saved “${name}”`);
+        render();
+      }),
+      isCustomSkin() ? button('Rename', async () => { const name = await promptText('Rename skin', { value: skin.name, ok: 'Rename' }); if (name !== null) { renameLook(skin.id, name); render(); } }) : null,
+      isCustomSkin() ? button('Delete this skin', async () => { if (await confirmDialog('Delete skin?', `“${skin.name}” will be removed. Your music and the built-in skins aren\'t touched.`, { ok: 'Delete' })) { deleteLook(skin.id); render(); } }, { cls: 'danger' }) : null);
 
     const mode = c.color.mode;
     const colorBits = h('div', { class: 'color-bits' });
@@ -142,8 +151,8 @@ export function mountSettings(root) {
     buildColorBits();
 
     return h('div', { class: 'set-page' },
-      group('Skin', h('p', { class: 'hint' }, 'A skin is a whole look: layout, type, decoration and a default visualiser. Your changes are remembered separately for each one.'), cards,
-        h('div', { class: 'set-row' }, button('Reset this skin to its defaults', async () => { if (await confirmDialog('Reset skin?', `All your changes to ${skin.name} will be forgotten.`, { ok: 'Reset' })) { resetSkin(); render(); } }))),
+      group('Skin', h('p', { class: 'hint' }, 'A skin is a whole look: layout, type, decoration and a default visualiser. Your changes are remembered separately for each one. Like how this one turned out? Save it as a skin of your own.'), cards, mineRow,
+        h('div', { class: 'set-row' }, button(isCustomSkin() ? 'Undo my changes to this skin' : 'Reset this skin to its defaults', async () => { if (await confirmDialog('Reset skin?', `All your changes to ${skin.name} since you ${isCustomSkin() ? 'saved it' : 'started'} will be forgotten.`, { ok: 'Reset' })) { resetSkin(); render(); } }))),
       group('Colour',
         row('Light or dark', segmented({ label: 'Colour scheme', options: [{ value: 'skin', label: 'Skin default' }, { value: 'dark', label: 'Dark' }, { value: 'light', label: 'Light' }], value: c.color.scheme, onChange: (v) => set('color.scheme', v) })),
         row('Accent from', segmented({ label: 'Where the accent colour comes from', options: [{ value: 'skin', label: 'Skin' }, { value: 'preset', label: 'Preset' }, { value: 'custom', label: 'Custom' }, { value: 'art', label: 'Album art' }], value: mode, onChange: (v) => { set('color.mode', v); buildColorBits(); } }), { hint: 'Album art follows the cover of whatever is playing.' }),
@@ -366,8 +375,18 @@ export function mountSettings(root) {
       group('Output', row('Device', dev), h('p', { class: 'hint' }, p.sample_rate ? `Running at ${p.sample_rate / 1000} kHz. Songs at other rates are converted.` : '')),
       group('Library',
         row('Playing a track from a list', segmented({ label: 'Playing a track from a list', options: [{ value: 'single', label: 'Just that track' }, { value: 'list', label: 'Continue through the list' }], value: getPrefs().library.playMode ?? 'single', onChange: (v) => setPref('library.playMode', v) }),
-          { hint: 'What double-clicking a track or pressing its play button does. The right-click menu always offers both.' })),
+          { hint: 'What double-clicking a track or pressing its play button does. The right-click menu always offers both.' }),
+        row('Watch music folders', toggle({ label: 'Watch music folders', value: state.settings?.watch_folders ?? true, onChange: async (v) => { await act(api.setWatchFolders(v)); await refreshSettings(); render(); } }),
+          { hint: 'Looks at your library folders about once a minute and adds, updates or removes songs when files change. Turn it off to rescan only by hand.' })),
+      group('Startup', startup()),
       group('Window', tray()));
+  }
+
+  /** What Redshift does when it opens. */
+  function startup() {
+    const on = state.settings?.restore_session ?? true;
+    return row('Continue where you left off', toggle({ label: 'Continue where you left off', value: on, onChange: async (v) => { await act(api.setRestoreSession(v)); await refreshSettings(); render(); } }),
+      { hint: 'Opens with your last queue loaded and the song you were on paused at the place you stopped. Nothing plays until you press play.' });
   }
 
   /** Minimise-to-tray options. They're saved by the app and also tell it to show or hide the tray icon. */
@@ -456,14 +475,27 @@ export function mountSettings(root) {
   // ---------- Data ----------
   function data() {
     return h('div', { class: 'set-page' },
-      group('Share a look', h('p', { class: 'hint' }, 'Export your changes to the current skin as a small file, or load one someone sent you.'),
-        h('div', { class: 'set-row' },
-          button('Export this skin\'s settings', async () => {
-            const dest = await pickSave(`redshift-${getPrefs().skin}.json`, [{ name: 'Redshift theme', extensions: ['json'] }]).catch(() => null);
-            if (dest !== null) { navigator.clipboard?.writeText(JSON.stringify({ skin: getPrefs().skin, settings: exportSkinOverrides() }, null, 2)).catch(() => {}); toast('Settings copied to the clipboard'); }
+      group('Share a look', h('p', { class: 'hint' }, 'Save the current skin, with your changes, as a small file, or add a skin someone sent you. A loaded skin shows up with your own.'),
+        h('div', { class: 'set-row set-actions' },
+          button('Export this skin to a file…', async () => {
+            const file = lookFile();
+            const dest = await pickSave(`${file.name.replace(/[^\w .-]+/g, '').trim() || 'skin'}.redshift-skin.json`, [{ name: 'Redshift skin', extensions: ['json'] }]).catch(() => null);
+            if (!dest) return;
+            try { await api.writeLookFile(dest, JSON.stringify(file, null, 2)); toast('Skin saved'); } catch (e) { toast(`Couldn't save the file: ${e}`, 'error'); }
           }),
-          button('Import from clipboard', async () => {
-            try { const t = JSON.parse(await navigator.clipboard.readText()); if (!t || typeof t.settings !== 'object') throw new Error('not a Redshift theme'); if (t.skin) setSkin(t.skin); importSkinOverrides(t.settings); toast('Theme applied'); render(); } catch { toast('The clipboard doesn\'t contain a Redshift theme.', 'error'); }
+          button('Add a skin from a file…', async () => {
+            const src = await pickFile([{ name: 'Redshift skin', extensions: ['json'] }]).catch(() => null);
+            if (!src) return;
+            let data = null;
+            try { data = JSON.parse(await api.readLookFile(src)); } catch { /* reported below */ }
+            const look = data ? importLook(data) : null;
+            if (look) { toast(`Added “${look.name}”`); render(); } else toast('That file isn\'t a Redshift skin, or you have too many skins already.', 'error');
+          }),
+          button('Add a skin from the clipboard', async () => {
+            let data = null;
+            try { data = JSON.parse(await navigator.clipboard.readText()); } catch { /* reported below */ }
+            const look = data ? importLook(data) : null;
+            if (look) { toast(`Added “${look.name}”`); render(); } else toast('The clipboard doesn\'t contain a Redshift skin.', 'error');
           }))),
       group('Reset', row('Everything', button('Reset all appearance settings', async () => { if (await confirmDialog('Reset everything?', 'Every skin goes back to its defaults and shortcuts are restored. Your music, playlists and playback settings are untouched.', { ok: 'Reset all' })) { const { setPref } = await import('../prefs.js'); setPref('skins', {}); setPref('keys', {}); render(); } }, { cls: 'danger' }))));
   }

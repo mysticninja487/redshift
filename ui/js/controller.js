@@ -109,6 +109,16 @@ export async function initController() {
       if (playing) loadTrack(state.queue.current_entry).catch(() => {});
     }, 200);
   });
+  // The app noticed songs added, changed or removed in the library folders and updated the library.
+  await listen('library-updated', (r) => {
+    if (state.scan?.running) return;
+    forgetMeta(); emit('library');
+    const bits = [];
+    if (r?.added) bits.push(`${r.added} new`);
+    if (r?.updated) bits.push(`${r.updated} updated`);
+    if (r?.removed) bits.push(`${r.removed} removed`);
+    if (bits.length) toast(`Library updated: ${bits.join(', ')}`);
+  });
   await listen('scan-progress', (p) => { state.scan = { ...p, running: true }; emit('scan'); });
   // Position and volume come from a light poll; the interpolation in position() fills the gaps.
   // It slows down while paused or hidden, when nothing on screen is moving.

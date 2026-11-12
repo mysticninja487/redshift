@@ -77,6 +77,7 @@ export const api = {
   trackMeta: (path) => invoke('track_meta', { path }), lyrics: (path) => invoke('lyrics', { path }),
   // tag editor: the form's values, saving (only what changed), a .lrc file, and a picture file shrunk for preview
   tagForm: (path) => invoke('tag_form', { path }), writeTags: (path, edit) => invoke('write_tags', { path, edit }),
+  writeLookFile: (path, text) => invoke('write_look_file', { path, text }), readLookFile: (path) => invoke('read_look_file', { path }),
   saveLyricsFile: (path, text, synced) => invoke('save_lyrics_file', { path, text, synced }),
   imagePreview: async (path) => new Blob([await invoke('image_preview', { path })]),
   waveform: (path, buckets) => invoke('waveform', { path, buckets }),
@@ -98,5 +99,8 @@ export const api = {
   fonts: () => invoke('fonts'), importFont: (path) => invoke('import_font', { path }), removeFont: (file) => invoke('remove_font', { file }),
   toggleMiniPlayer: () => invoke('toggle_mini_player'), miniSize: (expanded, size) => invoke('mini_size', { expanded, width: size?.[0] ?? null, height: size?.[1] ?? null }),
   miniOnTop: (on) => invoke('mini_on_top', { on }),
+  setSleepTimer: (minutes) => invoke('set_sleep_timer', { minutes }), cancelSleepTimer: () => invoke('cancel_sleep_timer'), sleepStatus: () => invoke('sleep_status'),
+  setWatchFolders: (on) => invoke('set_watch_folders', { on }),
+  setRestoreSession: (on) => invoke('set_restore_session', { on }),
   setTray: (minimizeToTray, closeToTray) => invoke('set_tray', { minimizeToTray, closeToTray }),
 };

@@ -52,3 +52,13 @@
 .sy-status { min-height: 2.6em; }
 .sy-row.is-off { border-left-color: #ff6b5e; }
 .sy-row.is-off .sy-time { color: #ff8a80; }
+
+/* ---------- sleep timer ---------- */
+.sleep-btn { position: relative; }
+.sleep-left { position: absolute; right: -2px; bottom: -3px; padding: 0 4px; border-radius: 999px; font-size: .62rem; line-height: 1.5; font-weight: 600; letter-spacing: .01em;
+  background: var(--accent); color: var(--accent-ink, #fff); white-space: nowrap; pointer-events: none; font-variant-numeric: tabular-nums; }
+.sleep-left[hidden] { display: none; }
+
+/* Your own skins */
+.sc-mine { margin-left: .5em; padding: .05em .5em; border-radius: 999px; font: 600 .66rem var(--font-body); letter-spacing: .04em; text-transform: uppercase; color: var(--accent-fg, var(--fg)); background: color-mix(in srgb, var(--accent) 22%, transparent); vertical-align: .1em; }
+.set-actions { flex-wrap: wrap; gap: .5rem; }

@@ -165,7 +165,7 @@ export function applyTheme() {
   Object.assign(tokens, { art2: art?.accent ?? t.accent, art3: art?.accent2 ?? t.accent2, accent: t.accent, bg: t.bg, fg: t.fg, scheme: t.scheme, accent2: t.accent2, fg2: t.fg2, line: t.line, bg2: t.bg2, bg3: t.bg3 });
 
   const root = document.documentElement;
-  root.dataset.skin = skin.id;
+  root.dataset.skin = skin.cssId ?? skin.id;
   root.dataset.scheme = t.scheme;
   root.dataset.colorMode = t.mode;
   const reduce = c.motion.reduce === 'system' ? matchMedia('(prefers-reduced-motion: reduce)').matches : c.motion.reduce === true || c.motion.reduce === 'on';

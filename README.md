@@ -48,6 +48,7 @@ This is an early version. If something breaks, please [open an issue](https://gi
 
 - Eight skins, each a whole composition rather than a colour set. Classic is the default: a sidebar, the cover and track in the middle, lyrics and the queue beside them, a player bar along the bottom. The others are Turntable, Noir Studio, Wavelength, Mist HUD, Paper, Soft Console and Pixel Mono. Switch from the skin menu, or with `[` and `]`. Options that only one skin has (the turntable's tonearm, Paper's halftone) show up under that skin's own heading in Settings.
 - Light and dark, an accent from the skin, a preset, a custom colour, or colours taken from the current album art.
+- Skins of your own: change a skin until it looks right, then **Settings > Appearance > Save this look as a new skin**. It joins the built-in ones in the skin menu and the skin keys, can be renamed or deleted, and can be exported to a small `.json` file (Settings > Data & reset) to send to someone, or added from one.
 - Your own fonts for any skin: a built-in font, an installed font by name, or an imported font file. Text size, spacing, corner radius, line weight, shadows, frosted glass and grain are adjustable, and you can rearrange the panels.
 
 **A library that knows your listening**
@@ -60,6 +61,9 @@ This is an early version. If something breaks, please [open an issue](https://gi
 - Favourites, recently played, most played (tracks, albums, artists), recently added and not played.
 - Playlists with M3U/M3U8 import and export. Playlists made on another device are matched to your library by file name, folders and track title; anything that can't be found is kept, dimmed and skipped, and can be relinked later.
 - Minimise to the system tray, with play/pause/next/previous in the tray menu.
+- Redshift picks up where you left off: the queue, the song and the position come back after a restart (switch it off in Settings > Playback).
+- Watches your music folders: songs you add, change or remove show up within about a minute, without a manual rescan (switch it off in Settings > Playback). Scrolling in a long library isn't disturbed when a new song starts.
+- A sleep timer in the top bar: stop in 15 minutes to 2 hours, or at the end of the current song. The volume fades out over the last ten seconds and returns to where it was.
 
 **Fits into Windows**
 
@@ -182,9 +186,7 @@ Open <http://localhost:8000>. With no Tauri around, the app loads `ui/dev/mock.j
 ## Not done yet
 
 - Wider testing on real Windows machines and sound hardware. The engine's tests use a simulated sound card, so device-specific bugs are likely to turn up.
-- Restoring the queue and position after a restart.
 - Opus files with more than two channels (they're reported as unsupported).
-- Watching library folders for changes (rescan is manual).
 
 ## Licence
 

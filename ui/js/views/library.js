@@ -353,10 +353,24 @@ export function mountLibrary(root) {
 
   // ---- the page ----
 
+  // Where you were in the list. Rebuilding the same page (a track started, a favourite changed, a scan
+  // finished) keeps it; going to another tab, album, search or sort starts at the top.
+  let lastKey = '';
+  const viewKey = () => JSON.stringify([tab, query, folderPath, mostMode, getPrefs().library.sort, detail?.type, detail?.id, detail?.album?.name, detail?.album?.artist, detail?.artist?.name]);
+  function restoreScroll(top, listTop) {
+    body.scrollTop = top;
+    const list = body.querySelector('.vlist');
+    if (!list || !listTop) return;
+    // The list fills in on the next frame; put it back once it has its rows.
+    requestAnimationFrame(() => requestAnimationFrame(() => { list.scrollTop = listTop; }));
+  }
+
   async function render() {
     const token = ++renderToken;
     tabs.querySelectorAll('.lib-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
-    const scroll = body.scrollTop;
+    const key = viewKey(), keep = key === lastKey;
+    lastKey = key;
+    const scroll = keep ? body.scrollTop : 0, listScroll = keep ? (body.querySelector('.vlist')?.scrollTop ?? 0) : 0;
     clear(body);
     if (!data.tracks.length && !state.scan?.running) {
       if (tab === 'folders') { body.append(foldersView()); return; }
@@ -382,7 +396,7 @@ export function mountLibrary(root) {
     else if (tab === 'not-played') body.append(notPlayedView());
     else if (tab === 'playlists') body.append(playlistsView());
     else if (tab === 'folders') body.append(foldersView());
-    if (scroll) body.scrollTop = scroll;
+    if (scroll || listScroll) restoreScroll(scroll, listScroll);
   }
 
   const renderScan = () => {
@@ -396,7 +410,8 @@ export function mountLibrary(root) {
   on('scan', renderScan);
   on('library', () => load().catch(console.error));
   on('playlists', () => api.playlists().then((p) => { data.playlists = p; if (visible() && tab === 'playlists') render(); }));
-  on('track', () => { if (visible() && (tab === 'tracks' || detail)) render(); });
+  // A new song only changes which row is highlighted: redraw the rows on screen, never the page.
+  on('track', () => body.querySelectorAll('.vlist').forEach((l) => l.refresh?.()));
   on('favs', () => {
     body.querySelectorAll('.fav-btn').forEach((b) => { const on = state.favs.has(b.dataset.path); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
     if (visible() && tab === 'favourites') render();

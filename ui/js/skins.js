@@ -8,6 +8,8 @@
 // Slots are the places panels can sit: top, left, stage (the big middle), right, bottom. Each skin
 // gives them its own geometry; a panel dropped in a different slot restyles itself to fit.
 
+import { clone, deepMerge } from './util.js';
+
 export const SLOTS = ['top', 'left', 'stage', 'right', 'bottom'];
 
 export const PANELS = [
@@ -234,5 +236,20 @@ const SKINS = [
   },
 ];
 
-export const skins = SKINS;
-export const getSkin = (id) => SKINS.find((s) => s.id === id) ?? SKINS[0];
+export const builtinSkins = SKINS;
+/** Every skin: the built-in ones, then the person's own looks. The array is shared, so lists made from it stay current. */
+export const skins = [...SKINS];
+export const getSkin = (id) => skins.find((s) => s.id === id) ?? SKINS[0];
+export const isBuiltinSkin = (id) => SKINS.some((s) => s.id === id);
+
+/** A saved look as a skin: its base skin with the saved settings as its defaults. It draws with the base skin's styles. */
+function lookToSkin(look) {
+  const base = SKINS.find((s) => s.id === look.base) ?? SKINS[0];
+  return { ...base, id: `custom:${look.id}`, name: look.name, blurb: `Your own look, built on ${base.name}.`, cssId: base.id, custom: true, baseId: base.id,
+    defaults: deepMerge(clone(base.defaults ?? {}), look.settings ?? {}) };
+}
+/** Replaces the custom skins with `looks` (from the saved settings). */
+export function setCustomSkins(looks) {
+  skins.length = SKINS.length;
+  for (const l of looks ?? []) skins.push(lookToSkin(l));
+}

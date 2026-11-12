@@ -8,6 +8,7 @@ import { eqDrawerOpen, onEqDrawer, toggleEqDrawer } from './ui/eqdrawer.js';
 import { initKeys } from './keys.js';
 import { mountLayout } from './layout.js';
 import { toggleAmbient } from './ambient.js';
+import { sleepButton } from './sleep.js';
 import { initHost } from './host.js';
 import { cfg, featureOn, flushPrefs, followOtherWindows, getPrefs, isComparing, loadPrefs, set, setPref, setSkin, takeMigrated } from './prefs.js';
 import { skins } from './skins.js';
@@ -22,7 +23,7 @@ const NAV = [['now', 'Now playing', 'record'], ['library', 'Library', 'library']
 function buildChrome() {
   const nav = h('nav', { class: 'nav', 'aria-label': 'Sections' }, NAV.map(([id, label, ic]) =>
     h('button', { class: 'nav-btn', type: 'button', dataset: { view: id }, onclick: () => setView(id) }, icon(ic, 16), h('span', null, label))));
-  const skinSel = select({ label: 'Skin', value: getPrefs().skin, options: skins.map((s) => ({ value: s.id, label: s.name })), onChange: (v) => setSkin(v) });
+  const skinSel = select({ label: 'Skin', value: getPrefs().skin, options: [], onChange: (v) => setSkin(v) });
   skinSel.classList.add('skin-select');
   // Shows the mode a click switches to: a sun while it's dark, a moon while it's light.
   const scheme = h('button', { class: 'btn icon-btn scheme-btn', type: 'button', onclick: () => set('color.scheme', document.documentElement.dataset.scheme === 'dark' ? 'light' : 'dark') });
@@ -60,12 +61,20 @@ function buildChrome() {
   on('view', (v) => gear.setAttribute('aria-pressed', String(v === 'settings')));
   const ambient = iconButton('ambient', 'Ambient mode (A)', () => toggleAmbient(), { cls: 'ambient-btn' });
   const full = iconButton('fullscreen', 'Fullscreen', () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => {})), { cls: 'full-btn' });
-  on('ui', () => skinSel.set(getPrefs().skin));
+  // The menu lists the built-in skins and the person's own; it is rebuilt when that list changes.
+  let listed = '';
+  const fillSkins = () => {
+    const key = skins.map((s) => `${s.id}\n${s.name}`).join('\n');
+    if (key !== listed) { listed = key; skinSel.replaceChildren(...skins.map((s) => h('option', { value: s.id }, s.name))); }
+    skinSel.set(getPrefs().skin);
+  };
+  fillSkins();
+  on('ui', fillSkins);
   on('view', (v) => nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === v))));
   nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === state.view)));
   return h('header', { class: 'chrome' },
     h('div', { class: 'brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }), h('span', { class: 'brand-name' }, 'Redshift')),
-    nav, h('div', { class: 'chrome-tools' }, nowTools, skinSel, scheme, gear, ambient, mini, full));
+    nav, h('div', { class: 'chrome-tools' }, nowTools, skinSel, scheme, gear, sleepButton(), ambient, mini, full));
 }
 
 /** Background layers that skins show or hide with CSS: ghost type, sun, rings, side labels. */

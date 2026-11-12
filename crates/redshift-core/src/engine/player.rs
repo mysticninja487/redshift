@@ -173,6 +173,8 @@ pub struct PlayerState {
 
 enum Msg {
     SetQueue { paths: Vec<PathBuf>, start: usize, autoplay: bool },
+    /// Puts a remembered queue back: the current track loaded and paused at `secs`.
+    Restore { paths: Vec<PathBuf>, start: usize, secs: f64 },
     Append(Vec<PathBuf>),
     InsertNext(Vec<PathBuf>),
     Remove(EntryId),
@@ -283,6 +285,26 @@ impl Player {
     /// Replaces the queue and (optionally) starts playing `paths[start]`.
     pub fn set_queue(&self, paths: Vec<PathBuf>, start: usize, autoplay: bool) {
         self.send(Msg::SetQueue { paths, start, autoplay });
+    }
+    /// Brings back a queue from an earlier run: `paths[start]` is loaded, paused, at `secs`.
+    pub fn restore_queue(&self, paths: Vec<PathBuf>, start: usize, secs: f64) {
+        self.send(Msg::Restore { paths, start, secs });
+    }
+    /// Cheap fingerprint of the queue (its length, order and current entry) for noticing changes
+    /// without copying it.
+    pub fn queue_stamp(&self) -> u64 {
+        let v = self.view.read();
+        let mut h = (v.entries.len() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ v.current_entry.unwrap_or(0);
+        for (i, e) in v.entries.iter().enumerate() {
+            h = h.rotate_left(5) ^ e.id.wrapping_mul(i as u64 + 1);
+        }
+        h
+    }
+    /// The paths in play order and the index of the current one, for saving the queue.
+    pub fn queue_paths(&self) -> (Vec<PathBuf>, Option<usize>) {
+        let v = self.view.read();
+        let cur = v.current_entry.and_then(|id| v.entries.iter().position(|e| e.id == id));
+        (v.entries.iter().map(|e| e.path.clone()).collect(), cur)
     }
     pub fn play_entry(&self, id: EntryId) {
         self.send(Msg::PlayEntry(id));
@@ -686,6 +708,12 @@ impl Core {
                 } else {
                     self.halt();
                 }
+            }
+            Msg::Restore { paths, start, secs } => {
+                self.queue.set(paths, start);
+                self.emit(PlayerEvent::QueueChanged);
+                // Loaded but not playing; an unplayable file is reported and the next one is tried.
+                self.start_current(secs.max(0.0), 10, false, true, true);
             }
             Msg::Append(paths) => {
                 self.queue.append(paths);

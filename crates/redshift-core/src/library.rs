@@ -54,6 +54,27 @@ pub struct ScanResult {
     pub report: ScanReport,
 }
 
+/// Whether the folders hold something the library doesn't know about as it is: a new or changed
+/// audio file, or fewer files than the library has. Stops at the first difference. This is the
+/// cheap look that decides whether a scan is worth running.
+pub fn has_changes(folders: &[PathBuf], known: &HashMap<PathBuf, TrackMeta>) -> bool {
+    let mut seen = HashSet::new();
+    for folder in folders {
+        for entry in WalkDir::new(folder).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+            if !entry.file_type().is_file() || !meta::is_audio_file(entry.path()) || !seen.insert(entry.path().to_path_buf()) {
+                continue;
+            }
+            let Some(old) = known.get(entry.path()) else { return true };
+            let Ok(m) = entry.metadata() else { continue };
+            let mtime = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
+            if old.modified != mtime || old.size != m.len() {
+                return true;
+            }
+        }
+    }
+    seen.len() != known.len()
+}
+
 /// Scans `folders` for audio files. `known` is what the library already has; files that haven't
 /// changed since are carried over without being read again.
 pub fn scan(

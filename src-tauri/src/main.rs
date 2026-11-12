@@ -318,6 +318,31 @@ async fn write_tags(app: AppHandle, state: State<'_, AppState>, path: PathBuf, e
 fn save_lyrics_file(state: State<AppState>, path: PathBuf, text: String, synced: bool) -> CmdResult<PathBuf> {
     state.0.save_lyrics_file(&path, &text, synced).map_err(err)
 }
+// ---- skins (looks) as files ----
+
+const LOOK_FILE_MAX: u64 = 256 * 1024;
+fn is_json(path: &std::path::Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("json"))
+}
+/// Saves a skin file. Only `.json` files, and only a small amount of text.
+#[tauri::command(async)]
+fn write_look_file(path: PathBuf, text: String) -> CmdResult<()> {
+    if !is_json(&path) || text.len() as u64 > LOOK_FILE_MAX {
+        return Err("a skin file is a small .json file".into());
+    }
+    std::fs::write(&path, text).map_err(err)
+}
+/// Reads a skin file. Refuses anything that isn't a small `.json` file.
+#[tauri::command(async)]
+fn read_look_file(path: PathBuf) -> CmdResult<String> {
+    if !is_json(&path) {
+        return Err("not a .json file".into());
+    }
+    if std::fs::metadata(&path).map_err(err)?.len() > LOOK_FILE_MAX {
+        return Err("that file is too large to be a skin".into());
+    }
+    std::fs::read_to_string(&path).map_err(err)
+}
 /// A picture file, shrunk, as raw bytes (not JSON) so the editor can show it before saving.
 #[tauri::command(async)]
 fn image_preview(path: PathBuf) -> CmdResult<tauri::ipc::Response> {
@@ -633,6 +658,28 @@ fn sync_tray(app: &AppHandle, tray: TraySettings) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Stops the music after that many minutes, or at the end of the song with no minutes given.
+#[tauri::command]
+fn set_sleep_timer(state: State<AppState>, minutes: Option<u32>) -> redshift_core::app::SleepStatus {
+    state.0.set_sleep_timer(minutes);
+    state.0.sleep_status()
+}
+#[tauri::command]
+fn cancel_sleep_timer(state: State<AppState>) {
+    state.0.cancel_sleep_timer();
+}
+#[tauri::command]
+fn sleep_status(state: State<AppState>) -> redshift_core::app::SleepStatus {
+    state.0.sleep_status()
+}
+#[tauri::command]
+fn set_watch_folders(state: State<AppState>, on: bool) {
+    state.0.set_watch_folders(on);
+}
+#[tauri::command]
+fn set_restore_session(state: State<AppState>, on: bool) {
+    state.0.set_restore_session(on);
+}
 #[tauri::command]
 fn set_tray(app: AppHandle, state: State<AppState>, minimize_to_tray: bool, close_to_tray: bool) -> CmdResult<()> {
     let tray = TraySettings { minimize_to_tray, close_to_tray };
@@ -766,6 +813,9 @@ fn main() {
             let data_dir = app.path().app_data_dir()?;
             let (core, events) = App::new(data_dir, PlayerConfig::default())?;
             let core = Arc::new(core);
+            // Back to where you left off (paused), unless that is switched off or you started it
+            // with files, which replace the queue a moment later.
+            core.restore_session();
 
             // Player events go to the UI as they happen.
             let handle = app.handle().clone();
@@ -783,9 +833,38 @@ fn main() {
 
             // Counting plays needs a regular look at what the player is doing.
             let counter = core.clone();
-            std::thread::Builder::new().name("play-counter".into()).spawn(move || loop {
-                std::thread::sleep(Duration::from_millis(500));
-                counter.poll_playback();
+            // The sleep timer rides on the same thread. It wakes ten times a second only while a
+            // timer is running, so the fade is smooth and an idle player isn't kept busy.
+            std::thread::Builder::new().name("play-counter".into()).spawn(move || {
+                let mut last_poll = std::time::Instant::now();
+                loop {
+                    let busy = counter.sleep_timer_running();
+                    std::thread::sleep(Duration::from_millis(if busy { 100 } else { 500 }));
+                    if busy {
+                        counter.tick_sleep_timer();
+                    }
+                    if last_poll.elapsed() >= Duration::from_millis(450) {
+                        last_poll = std::time::Instant::now();
+                        counter.poll_playback();
+                    }
+                }
+            })?;
+
+            // Notices new, changed and removed songs in the library folders: a quick look every
+            // minute, and a scan only when something differs. Quiet: it only tells the window
+            // when the library actually changed.
+            let watcher = core.clone();
+            let watch_handle = app.handle().clone();
+            std::thread::Builder::new().name("library-watch".into()).spawn(move || {
+                std::thread::sleep(Duration::from_secs(20));
+                loop {
+                    if let Ok(Some(report)) = watcher.auto_rescan(&mut |_| {}) {
+                        if report.added + report.updated + report.removed > 0 {
+                            let _ = watch_handle.emit("library-updated", &report);
+                        }
+                    }
+                    std::thread::sleep(Duration::from_secs(60));
+                }
             })?;
 
             let tray = core.settings().tray;
@@ -800,7 +879,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            set_queue, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
+            set_queue, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
             queue_append, queue_play_next, queue_remove, queue_move, queue_clear, player_state, queue_view,
             get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_replaygain,
             output_devices, set_output_device,
@@ -809,7 +888,7 @@ fn main() {
             reset_play_stats, fonts, import_font, remove_font, relink_playlist, paths_exist,
             viz_frame, configure_viz, ui_state, set_ui_state,
             library_folders, add_library_folder, remove_library_folder, scan_library, is_scanning,
-            library_tracks, search_library, library_albums, library_artists, recently_added, track_meta, lyrics, tag_form, write_tags, save_lyrics_file, image_preview, waveform,
+            library_tracks, search_library, library_albums, library_artists, recently_added, track_meta, lyrics, tag_form, write_tags, save_lyrics_file, write_look_file, read_look_file, image_preview, waveform,
             playlists, playlist, create_playlist, rename_playlist, delete_playlist, move_playlist,
             add_to_playlist, remove_from_playlist, move_in_playlist, import_m3u, export_m3u, play_playlist,
         ])
@@ -819,6 +898,7 @@ fn main() {
     app.run(|handle, event| {
         if let RunEvent::Exit = event {
             if let Some(state) = handle.try_state::<AppState>() {
+                let _ = state.0.save_session(true);
                 let _ = state.0.flush();
             }
         }

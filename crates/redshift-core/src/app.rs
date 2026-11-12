@@ -12,7 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crossbeam_channel::Receiver;
 use parking_lot::Mutex;
@@ -47,6 +47,18 @@ pub const SETTINGS_FILE: &str = "settings.json";
 pub const LIBRARY_FILE: &str = "library.json";
 pub const PLAYLISTS_FILE: &str = "playlists.json";
 pub const STATS_FILE: &str = "stats.json";
+pub const SESSION_FILE: &str = "session.json";
+/// The longest queue that is remembered between runs.
+const SESSION_MAX_TRACKS: usize = 20_000;
+/// How long the volume fades out before a sleep timer pauses the music.
+const SLEEP_FADE_SECS: f64 = 10.0;
+/// A song counts as finished for "end of this song" when this much of it is left; pausing then
+/// lets the pause ramp finish inside the last moment of the song.
+const SLEEP_END_MARGIN_SECS: f64 = 0.3;
+/// How long after pausing the volume is put back, so the pause is not heard as a jump.
+const SLEEP_RESTORE_DELAY: Duration = Duration::from_millis(600);
+/// How far playback has to move before the saved position is rewritten.
+const SESSION_POSITION_STEP_SECS: f64 = 15.0;
 
 /// The front end can keep this much of its own state (theme, layout...) in the settings file.
 const MAX_CUSTOM_PRESETS: usize = 50;
@@ -91,6 +103,38 @@ pub struct TraySettings {
     pub close_to_tray: bool,
 }
 
+/// What a sleep timer is waiting for.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum SleepKind {
+    /// Until this moment, fading out over the last few seconds.
+    At(Instant),
+    /// Until the song playing now ends.
+    EndOfSong(Option<crate::queue::EntryId>),
+    /// Paused already; the volume goes back at this moment.
+    Restoring(Instant),
+}
+
+/// For the window: whether a sleep timer is running and how long is left.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct SleepStatus {
+    pub active: bool,
+    /// `"time"` or `"song"` while active.
+    pub kind: Option<&'static str>,
+    /// Seconds until the music stops, for a timer set in minutes.
+    pub remaining_secs: Option<f64>,
+    /// The volume is on its way down.
+    pub fading: bool,
+}
+
+/// The queue and place in it that are remembered between runs.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Session {
+    pub paths: Vec<PathBuf>,
+    pub current: usize,
+    pub position_secs: f64,
+}
+
 /// What's remembered between runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -109,6 +153,11 @@ pub struct Settings {
     pub viz: SpectrumConfig,
     pub custom_eq_presets: Vec<CustomPreset>,
     pub tray: TraySettings,
+    /// Start where you left off: the queue and the position in the song, paused.
+    pub restore_session: bool,
+    /// Look for new, changed and removed songs in the library folders now and then, and update the
+    /// library when there are some.
+    pub watch_folders: bool,
     /// Owned by the front end (theme, layout, customisation); stored as is.
     pub ui: Value,
 }
@@ -128,6 +177,8 @@ impl Default for Settings {
             viz: SpectrumConfig::default(),
             custom_eq_presets: Vec::new(),
             tray: TraySettings::default(),
+            restore_session: true,
+            watch_folders: true,
             ui: Value::Null,
         }
     }
@@ -229,6 +280,9 @@ pub struct App {
     covers: Mutex<VecDeque<(CoverKey, Option<Arc<Cover>>)>>,
     /// Small covers for lists and grids, by file, modified time and size, kept up to a byte budget.
     thumbs: Mutex<VecDeque<(CoverKey, u32, Option<Arc<Cover>>)>>,
+    /// What the session file holds: the queue's fingerprint and the saved position; `None` before the first save.
+    session_saved: Mutex<Option<(u64, f64)>>,
+    sleep: Mutex<Option<SleepKind>>,
 }
 
 type CoverKey = (PathBuf, u64, u64);
@@ -283,6 +337,8 @@ impl App {
             waveforms: Mutex::new(VecDeque::new()),
             covers: Mutex::new(VecDeque::new()),
             thumbs: Mutex::new(VecDeque::new()),
+            session_saved: Mutex::new(None),
+            sleep: Mutex::new(None),
         };
         Ok((app, events))
     }
@@ -306,6 +362,7 @@ impl App {
     /// shell does so on a timer and on exit); setters only mark the settings as changed so that
     /// dragging a slider doesn't write a file per mouse move.
     pub fn flush(&self) -> Result<()> {
+        self.save_session(false)?;
         if self.stats_dirty.swap(false, Ordering::AcqRel) {
             if let Err(e) = self.stats.lock().save() {
                 self.stats_dirty.store(true, Ordering::Release);
@@ -320,6 +377,158 @@ impl App {
             }
         }
         Ok(())
+    }
+
+    // ---- sleep timer ----
+
+    /// Stops the music after `minutes` (fading out at the end), or at the end of the song playing
+    /// now when `minutes` is `None`. `Some(0)` cancels. A new timer replaces the old one.
+    pub fn set_sleep_timer(&self, minutes: Option<u32>) {
+        self.set_sleep_timer_in(minutes.map(|m| Duration::from_secs(u64::from(m.min(24 * 60)) * 60)));
+    }
+
+    fn set_sleep_timer_in(&self, after: Option<Duration>) {
+        self.put_volume_back();
+        *self.sleep.lock() = match after {
+            Some(d) if d.is_zero() => None,
+            Some(d) => Some(SleepKind::At(Instant::now() + d)),
+            None => self.player.current_track().map(|c| SleepKind::EndOfSong(Some(c.entry_id))),
+        };
+    }
+
+    /// Whether a timer is running or finishing, i.e. whether [`tick_sleep_timer`](App::tick_sleep_timer) has work.
+    pub fn sleep_timer_running(&self) -> bool {
+        self.sleep.lock().is_some()
+    }
+
+    pub fn cancel_sleep_timer(&self) {
+        self.set_sleep_timer_in(Some(Duration::ZERO));
+    }
+
+    pub fn sleep_status(&self) -> SleepStatus {
+        let now = Instant::now();
+        match *self.sleep.lock() {
+            Some(SleepKind::At(t)) => {
+                let left = t.saturating_duration_since(now).as_secs_f64();
+                SleepStatus { active: true, kind: Some("time"), remaining_secs: Some(left), fading: left < SLEEP_FADE_SECS }
+            }
+            Some(SleepKind::EndOfSong(_)) => SleepStatus { active: true, kind: Some("song"), remaining_secs: None, fading: false },
+            Some(SleepKind::Restoring(_)) | None => SleepStatus { active: false, kind: None, remaining_secs: None, fading: false },
+        }
+    }
+
+    /// The volume the person set, in case a fade moved the player's away from it.
+    fn put_volume_back(&self) {
+        let v = self.settings.lock().volume;
+        self.player.set_volume(v);
+    }
+
+    /// Advances the sleep timer. Call a few times a second (the shell does, every 100 ms) so the
+    /// fade is smooth. Cheap when no timer is running.
+    pub fn tick_sleep_timer(&self) {
+        let now = Instant::now();
+        let mut guard = self.sleep.lock();
+        let Some(kind) = *guard else { return };
+        match kind {
+            SleepKind::At(deadline) => {
+                let left = deadline.saturating_duration_since(now).as_secs_f64();
+                if left <= 0.0 {
+                    self.player.pause();
+                    *guard = Some(SleepKind::Restoring(now + SLEEP_RESTORE_DELAY));
+                } else if left < SLEEP_FADE_SECS {
+                    let x = (left / SLEEP_FADE_SECS) as f32;
+                    // Eases off rather than dropping in a straight line.
+                    self.player.set_volume(self.settings.lock().volume * x * x * (3.0 - 2.0 * x));
+                }
+            }
+            SleepKind::EndOfSong(was) => {
+                let Some(cur) = self.player.current_track() else {
+                    *guard = None;
+                    return;
+                };
+                if was != Some(cur.entry_id) {
+                    // Skipped to another song since: the timer follows to the one playing now.
+                    *guard = Some(SleepKind::EndOfSong(Some(cur.entry_id)));
+                    return;
+                }
+                let left = cur.duration_secs.map(|d| d - self.player.position_secs());
+                if self.player.status() == crate::engine::Status::Playing && left.is_some_and(|l| l <= SLEEP_END_MARGIN_SECS) {
+                    self.player.pause();
+                    *guard = None;
+                }
+            }
+            SleepKind::Restoring(at) => {
+                if now >= at {
+                    *guard = None;
+                    drop(guard);
+                    self.put_volume_back();
+                }
+            }
+        }
+    }
+
+    // ---- remembering the queue ----
+
+    /// Writes the queue and position if they changed (the position only when it has moved a fair
+    /// way, or with `force` when the app is closing). A long queue is only rewritten when it
+    /// changes, not as the song plays.
+    pub fn save_session(&self, force: bool) -> Result<()> {
+        if !self.settings.lock().restore_session {
+            return Ok(());
+        }
+        let stamp = self.player.queue_stamp();
+        let pos = if self.player.status() == crate::engine::Status::Stopped { 0.0 } else { self.player.position_secs() };
+        let mut saved = self.session_saved.lock();
+        let step = if force { 0.5 } else { SESSION_POSITION_STEP_SECS };
+        if saved.is_some_and(|(s, p)| s == stamp && (pos - p).abs() < step) {
+            return Ok(());
+        }
+        let (mut paths, cur) = self.player.queue_paths();
+        let mut current = cur.unwrap_or(0);
+        if paths.len() > SESSION_MAX_TRACKS {
+            let from = current.saturating_sub(SESSION_MAX_TRACKS / 2).min(paths.len() - SESSION_MAX_TRACKS);
+            paths = paths[from..from + SESSION_MAX_TRACKS].to_vec();
+            current -= from;
+        }
+        write_json_atomic(&self.data_dir.join(SESSION_FILE), &Session { paths, current, position_secs: pos })?;
+        *saved = Some((stamp, pos));
+        Ok(())
+    }
+
+    /// Puts the remembered queue back, paused at the remembered position. Files that have gone
+    /// are left out. Returns whether anything was restored. Does nothing if the setting is off.
+    pub fn restore_session(&self) -> bool {
+        if !self.settings.lock().restore_session {
+            return false;
+        }
+        let Ok(bytes) = fs::read(self.data_dir.join(SESSION_FILE)) else { return false };
+        let Ok(session) = serde_json::from_slice::<Session>(&bytes) else { return false };
+        let before = session.current.min(session.paths.len().saturating_sub(1));
+        let mut paths = Vec::new();
+        let mut start = None;
+        for (i, p) in session.paths.iter().enumerate() {
+            if !p.is_file() {
+                continue;
+            }
+            if start.is_none() && i >= before {
+                start = Some(paths.len());
+            }
+            paths.push(p.clone());
+        }
+        let Some(start) = start.or(if paths.is_empty() { None } else { Some(paths.len() - 1) }) else { return false };
+        // Only the position of the very song that was playing still means anything.
+        let secs = if session.paths.get(before) == paths.get(start) && session.position_secs.is_finite() { session.position_secs } else { 0.0 };
+        self.player.restore_queue(paths, start, secs);
+        true
+    }
+
+    pub fn set_restore_session(&self, on: bool) {
+        self.update(|s| s.restore_session = on);
+        if !on {
+            let _ = fs::remove_file(self.data_dir.join(SESSION_FILE));
+        } else {
+            *self.session_saved.lock() = None;
+        }
     }
 
     pub fn set_volume(&self, v: f32) {
@@ -514,6 +723,28 @@ impl App {
         lib.apply_scan(result);
         lib.save()?;
         Ok(report)
+    }
+
+    /// If watching is on, nothing else is scanning and the folders changed since the last scan,
+    /// scans them and returns what the scan found. `Ok(None)` means nothing was done.
+    pub fn auto_rescan(&self, progress: &mut dyn FnMut(ScanProgress)) -> Result<Option<ScanReport>> {
+        if !self.settings.lock().watch_folders || self.is_scanning() {
+            return Ok(None);
+        }
+        let (folders, known) = self.library.lock().scan_inputs();
+        if folders.is_empty() || !crate::library::has_changes(&folders, &known) {
+            return Ok(None);
+        }
+        match self.scan_library(progress) {
+            Ok(report) => Ok(Some(report)),
+            // Someone else started a scan between the check and here: theirs covers it.
+            Err(_) if self.is_scanning() => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn set_watch_folders(&self, on: bool) {
+        self.update(|s| s.watch_folders = on);
     }
 
     pub fn is_scanning(&self) -> bool {
@@ -869,6 +1100,208 @@ mod tests {
         fs::copy(fixture("tagged.mp3"), d.path().join("b.mp3")).unwrap();
         fs::copy(fixture("tagged.opus"), d.path().join("c.opus")).unwrap();
         d
+    }
+
+    fn wait_for(what: &str, mut ok: impl FnMut() -> bool) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !ok() {
+            assert!(std::time::Instant::now() < deadline, "timed out waiting for {what}");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn folders_are_rescanned_by_themselves_when_something_changes() {
+        let m = music();
+        let d = tempfile::tempdir().unwrap();
+        let app = open(d.path());
+        app.add_library_folder(m.path()).unwrap();
+        app.scan_library(&mut |_| {}).unwrap();
+        let n = app.track_count();
+        assert!(n >= 3);
+        assert!(app.auto_rescan(&mut |_| {}).unwrap().is_none(), "nothing changed, nothing scanned");
+
+        let extra = m.path().join("sub");
+        fs::create_dir_all(&extra).unwrap();
+        fs::copy(m.path().join("a.flac"), extra.join("new song.flac")).unwrap();
+        let r = app.auto_rescan(&mut |_| {}).unwrap().expect("a new file is picked up");
+        assert_eq!((r.added, r.removed), (1, 0));
+        assert_eq!(app.track_count(), n + 1);
+        assert!(app.auto_rescan(&mut |_| {}).unwrap().is_none(), "and then it is up to date again");
+
+        fs::remove_file(m.path().join("b.mp3")).unwrap();
+        let r = app.auto_rescan(&mut |_| {}).unwrap().expect("a removed file is noticed");
+        assert_eq!(r.removed, 1);
+        assert_eq!(app.track_count(), n);
+
+        // A file changed in place (its size differs) counts too.
+        let c = m.path().join("c.opus");
+        let mut bytes = fs::read(&c).unwrap();
+        bytes.extend_from_slice(&[0; 16]);
+        fs::write(&c, bytes).unwrap();
+        assert!(app.auto_rescan(&mut |_| {}).unwrap().is_some());
+    }
+
+    #[test]
+    fn watching_can_be_switched_off() {
+        let m = music();
+        let d = tempfile::tempdir().unwrap();
+        let app = open(d.path());
+        app.add_library_folder(m.path()).unwrap();
+        app.scan_library(&mut |_| {}).unwrap();
+        fs::copy(m.path().join("a.flac"), m.path().join("later.flac")).unwrap();
+        app.set_watch_folders(false);
+        assert!(app.auto_rescan(&mut |_| {}).unwrap().is_none());
+        app.set_watch_folders(true);
+        assert!(app.auto_rescan(&mut |_| {}).unwrap().is_some());
+        // No folders at all: nothing to look at.
+        let empty = open(tempfile::tempdir().unwrap().path());
+        assert!(empty.auto_rescan(&mut |_| {}).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_sleep_timer_fades_the_volume_then_pauses_and_puts_it_back() {
+        let m = music();
+        let d = tempfile::tempdir().unwrap();
+        let app = open(d.path());
+        app.set_volume(0.8);
+        app.player.set_queue(vec![m.path().join("a.flac"), m.path().join("b.mp3")], 0, true);
+        wait_for("playback", || app.player.status() == crate::engine::Status::Playing);
+        assert!(!app.sleep_status().active);
+        app.set_sleep_timer_in(Some(Duration::from_secs(4)));
+        let st = app.sleep_status();
+        assert!(st.active && st.kind == Some("time") && st.fading && st.remaining_secs.unwrap() <= 4.0, "{st:?}");
+        app.tick_sleep_timer();
+        assert!(app.player.volume() < 0.5, "four seconds from the end the volume is already coming down: {}", app.player.volume());
+        // Time passes: move the deadline instead of waiting for it.
+        *app.sleep.lock() = Some(SleepKind::At(Instant::now() - Duration::from_millis(1)));
+        app.tick_sleep_timer();
+        wait_for("pause", || app.player.status() == crate::engine::Status::Paused);
+        assert!(!app.sleep_status().active);
+        *app.sleep.lock() = Some(SleepKind::Restoring(Instant::now() - Duration::from_millis(1)));
+        app.tick_sleep_timer();
+        assert!((app.player.volume() - 0.8).abs() < 1e-4, "volume back to what was set: {}", app.player.volume());
+        assert!(app.sleep.lock().is_none());
+    }
+
+    #[test]
+    fn cancelling_a_sleep_timer_puts_the_volume_back() {
+        let m = music();
+        let d = tempfile::tempdir().unwrap();
+        let app = open(d.path());
+        app.set_volume(0.9);
+        app.player.set_queue(vec![m.path().join("a.flac")], 0, true);
+        wait_for("playback", || app.player.status() == crate::engine::Status::Playing);
+        app.set_sleep_timer(Some(1));
+        *app.sleep.lock() = Some(SleepKind::At(Instant::now() + Duration::from_secs(3)));
+        app.tick_sleep_timer();
+        assert!(app.player.volume() < 0.9);
+        app.cancel_sleep_timer();
+        assert!((app.player.volume() - 0.9).abs() < 1e-4);
+        assert!(!app.sleep_status().active);
+        app.set_sleep_timer(Some(0));
+        assert!(!app.sleep_status().active, "zero minutes means off");
+    }
+
+    #[test]
+    fn end_of_song_pauses_before_the_next_one_starts() {
+        let m = music();
+        let d = tempfile::tempdir().unwrap();
+        let app = open(d.path());
+        let (a, b) = (m.path().join("a.flac"), m.path().join("b.mp3"));
+        app.player.set_queue(vec![a.clone(), b], 0, true);
+        wait_for("playback", || app.player.status() == crate::engine::Status::Playing);
+        app.set_sleep_timer(None);
+        assert_eq!(app.sleep_status().kind, Some("song"));
+        wait_for("the song to end and the music to pause", || {
+            app.tick_sleep_timer();
+            app.player.status() == crate::engine::Status::Paused
+        });
+        assert_eq!(app.player.current_track().unwrap().path, a, "stayed on the first song");
+        assert!(!app.sleep_status().active);
+        assert!((app.player.volume() - 1.0).abs() < 1e-4, "no fade for end-of-song");
+    }
+
+    #[test]
+    fn end_of_song_with_nothing_playing_sets_no_timer() {
+        let d = tempfile::tempdir().unwrap();
+        let app = open(d.path());
+        app.set_sleep_timer(None);
+        assert!(!app.sleep_status().active);
+    }
+
+    #[test]
+    fn the_queue_and_position_come_back_after_a_restart() {
+        let m = music();
+        let d = tempfile::tempdir().unwrap();
+        let (a, b, c) = (m.path().join("a.flac"), m.path().join("b.mp3"), m.path().join("c.opus"));
+        {
+            let app = open(d.path());
+            app.player.set_queue(vec![a.clone(), b.clone(), c.clone()], 1, true);
+            wait_for("playback", || app.player.status() == crate::engine::Status::Playing);
+            app.player.pause();
+            app.player.seek(0.6);
+            wait_for("seek", || (app.player.position_secs() - 0.6).abs() < 0.2);
+            app.save_session(true).unwrap();
+        }
+        let app = open(d.path());
+        assert!(app.restore_session());
+        wait_for("restored queue", || app.player.queue().entries.len() == 3 && app.player.current_track().is_some());
+        let q = app.player.queue();
+        assert_eq!(q.entries.iter().map(|e| e.path.clone()).collect::<Vec<_>>(), vec![a, b.clone(), c]);
+        assert_eq!(app.player.current_track().unwrap().path, b);
+        assert_eq!(app.player.status(), crate::engine::Status::Paused, "restored paused, not playing");
+        assert!((app.player.position_secs() - 0.6).abs() < 0.2, "position {}", app.player.position_secs());
+    }
+
+    #[test]
+    fn songs_that_are_gone_are_left_out_and_the_next_one_takes_over() {
+        let m = music();
+        let d = tempfile::tempdir().unwrap();
+        let (a, b, c) = (m.path().join("a.flac"), m.path().join("b.mp3"), m.path().join("c.opus"));
+        write_json_atomic(&d.path().join(SESSION_FILE), &Session { paths: vec![a.clone(), b.clone(), c.clone()], current: 1, position_secs: 1.0 }).unwrap();
+        fs::remove_file(&b).unwrap();
+        let app = open(d.path());
+        assert!(app.restore_session());
+        wait_for("queue", || app.player.queue().entries.len() == 2 && app.player.current_track().is_some());
+        assert_eq!(app.player.current_track().unwrap().path, c);
+        assert!(app.player.position_secs() < 0.3, "the old position belonged to the song that is gone");
+    }
+
+    #[test]
+    fn nothing_is_restored_when_off_or_empty_or_damaged() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(!open(d.path()).restore_session(), "no session file");
+        fs::write(d.path().join(SESSION_FILE), "{ not json").unwrap();
+        assert!(!open(d.path()).restore_session());
+        let m = music();
+        write_json_atomic(&d.path().join(SESSION_FILE), &Session { paths: vec![m.path().join("a.flac")], current: 0, position_secs: 0.0 }).unwrap();
+        let app = open(d.path());
+        app.set_restore_session(false);
+        assert!(!app.restore_session());
+        assert!(!d.path().join(SESSION_FILE).exists(), "turning it off forgets the saved queue");
+        app.save_session(true).unwrap();
+        assert!(!d.path().join(SESSION_FILE).exists(), "and nothing is saved while it is off");
+    }
+
+    #[test]
+    fn the_session_is_only_rewritten_when_something_changed() {
+        let m = music();
+        let d = tempfile::tempdir().unwrap();
+        let app = open(d.path());
+        app.player.set_queue(vec![m.path().join("a.flac"), m.path().join("b.mp3")], 0, false);
+        wait_for("queue", || app.player.queue().entries.len() == 2);
+        app.save_session(false).unwrap();
+        let file = d.path().join(SESSION_FILE);
+        let first = fs::metadata(&file).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        app.save_session(false).unwrap();
+        assert_eq!(fs::metadata(&file).unwrap().modified().unwrap(), first, "unchanged: not written again");
+        app.player.append(vec![m.path().join("c.opus")]);
+        wait_for("append", || app.player.queue().entries.len() == 3);
+        app.save_session(false).unwrap();
+        let s: Session = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+        assert_eq!(s.paths.len(), 3);
     }
 
     #[test]
