@@ -452,6 +452,10 @@ fn clear_history(state: State<AppState>) -> CmdResult<()> {
     state.0.clear_history().map_err(err)
 }
 #[tauri::command]
+fn set_count_percent(state: State<AppState>, percent: u8) {
+    state.0.set_count_percent(percent);
+}
+#[tauri::command]
 fn set_record_history(state: State<AppState>, on: bool) {
     state.0.set_record_history(on);
 }
@@ -914,7 +918,7 @@ fn main() {
             output_devices, set_output_device,
             eq_info, set_eq_enabled, set_eq_preamp_db, set_eq_band_db, set_eq_gains_db, apply_eq_preset, eq_curve,
             save_eq_preset, delete_eq_preset, set_tray, toggle_mini_player, mini_size, mini_on_top, favourite_paths, favourites, set_favourite, play_stats,
-            listening_totals, listening_report, mixes, clear_history, set_record_history,
+            listening_totals, listening_report, mixes, clear_history, set_record_history, set_count_percent,
             reset_play_stats, fonts, import_font, remove_font, relink_playlist, paths_exist,
             viz_frame, configure_viz, ui_state, set_ui_state,
             library_folders, add_library_folder, remove_library_folder, scan_library, is_scanning,

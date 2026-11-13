@@ -87,3 +87,36 @@ button.st-li:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); 
   .st-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .st-hero { grid-template-columns: 1fr; }
 }
+
+.st-story { margin-top: 14px; }
+
+/* the story */
+.dialog.story { position: relative; width: min(420px, calc(100vw - 24px)); height: min(740px, calc(100vh - 24px)); padding: 0; overflow: hidden; border-radius: calc(var(--r-panel) * 1.2); display: grid; place-items: center;
+  background: radial-gradient(120% 80% at 20% 0%, color-mix(in srgb, var(--accent) 38%, var(--bg)), var(--bg) 70%); border: var(--bw) solid var(--line); }
+.sty-top { position: absolute; inset: 14px 14px auto; display: grid; gap: 10px; z-index: 5; pointer-events: none; }
+.sty-bars { display: flex; gap: 5px; }
+.sty-seg { flex: 1; height: 3px; border-radius: 3px; background: color-mix(in srgb, var(--fg) 22%, transparent); overflow: hidden; display: block; }
+.sty-seg i { display: block; height: 100%; background: var(--fg); transform-origin: left; transform: scaleX(0); }
+.sty-tools { display: flex; justify-content: flex-end; gap: 4px; pointer-events: auto; }
+.sty-hit { position: absolute; top: 64px; bottom: 90px; width: 38%; border: 0; background: none; z-index: 3; cursor: pointer; }
+.sty-prev { left: 0; } .sty-next { right: 0; }
+.sty-stage { position: relative; z-index: 4; display: grid; gap: 14px; justify-items: center; align-content: center; text-align: center; padding: 70px 30px 40px; width: 100%; min-height: 0; pointer-events: none; }
+.sty-stage .sty-actions, .sty-stage button { pointer-events: auto; }
+.sty-stage.in > * { animation: sty-in .5s var(--ease) both; }
+.sty-stage.in > *:nth-child(2) { animation-delay: .08s; } .sty-stage.in > *:nth-child(3) { animation-delay: .16s; } .sty-stage.in > *:nth-child(4) { animation-delay: .24s; } .sty-stage.in > *:nth-child(5) { animation-delay: .32s; }
+@keyframes sty-in { from { opacity: 0; transform: translateY(14px); } }
+@media (prefers-reduced-motion: reduce) { .sty-stage.in > * { animation: none; } }
+.sty-eyebrow { font-size: .8rem; letter-spacing: .14em; text-transform: uppercase; color: var(--fg2); font-weight: 600; }
+.sty-title { font-family: var(--font-display); font-size: clamp(2rem, 9vw, 2.8rem); font-weight: 800; line-height: 1.05; letter-spacing: -.03em; }
+.sty-num { font-family: var(--font-display); font-size: clamp(3rem, 16vw, 4.6rem); font-weight: 800; letter-spacing: -.04em; color: var(--accent-text); line-height: 1; }
+.sty-name { font-family: var(--font-display); font-size: 1.7rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; overflow-wrap: anywhere; }
+.sty-sub { color: var(--fg2); font-size: .98rem; line-height: 1.4; }
+.sty-best { margin-top: 8px; }
+.sty-delta { padding: 4px 14px; border-radius: 999px; background: color-mix(in srgb, var(--fg) 12%, transparent); font-weight: 600; font-size: .9rem; }
+.sty-delta.is-up { background: color-mix(in srgb, var(--accent) 28%, transparent); color: var(--accent-text); }
+.sty-art { width: min(250px, 62vw); aspect-ratio: 1; border-radius: var(--r-panel); overflow: hidden; position: relative; background: var(--bg3); box-shadow: 0 22px 50px rgba(0, 0, 0, .5); }
+.sty-art.is-round { border-radius: 50%; }
+.sty-genres { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 10px; width: 100%; }
+.sty-genres li { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 16px; border-radius: var(--r-ctl); background: color-mix(in srgb, var(--fg) 9%, transparent); font-size: 1.05rem; }
+.sty-genres small { color: var(--fg2); font-family: var(--font-mono); font-size: .85rem; }
+.sty-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }

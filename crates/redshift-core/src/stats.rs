@@ -126,9 +126,23 @@ impl Stats {
     }
 }
 
-/// Decides when a play counts: the track has to be heard for half its length or 30 seconds,
-/// whichever is shorter, so skipping past it doesn't count and a long track doesn't need to be
-/// finished. Fed once per tick with what the player is doing.
+/// How much of a track has to be heard to count as a play, as a fraction of its length. The person
+/// sets it (a percentage); half is the default.
+pub const DEFAULT_COUNT_FRACTION: f64 = 0.5;
+/// A track that doesn't say how long it is counts after this many seconds.
+const UNKNOWN_LENGTH_COUNT_SECS: f64 = 30.0;
+
+/// Seconds of listening a track needs before it counts. Never less than a second, so brushing past
+/// a track with the setting at its lowest isn't a play.
+pub fn secs_needed(duration: Option<f64>, fraction: f64) -> f64 {
+    match duration.filter(|d| d.is_finite() && *d > 0.0) {
+        Some(d) => (d * fraction.clamp(0.01, 1.0)).max(1.0).min(d),
+        None => UNKNOWN_LENGTH_COUNT_SECS,
+    }
+}
+
+/// Decides when a play counts: the track has to be heard for a set share of its length, so skipping
+/// past it doesn't count. Fed once per tick with what the player is doing.
 #[derive(Debug, Default)]
 pub struct PlayCounter {
     entry: Option<EntryId>,
@@ -146,8 +160,9 @@ pub struct PlayTick {
 }
 
 impl PlayCounter {
-    /// `dt` is the time since the previous tick; `pos` the playback position in seconds.
-    pub fn tick(&mut self, current: Option<&CurrentTrack>, playing: bool, pos: f64, dt: f64) -> PlayTick {
+    /// `dt` is the time since the previous tick; `pos` the playback position in seconds; `fraction` the
+    /// share of the track that has to be heard (0.01 to 1).
+    pub fn tick(&mut self, current: Option<&CurrentTrack>, playing: bool, pos: f64, dt: f64, fraction: f64) -> PlayTick {
         let Some(cur) = current else {
             *self = PlayCounter::default();
             return PlayTick::default();
@@ -166,7 +181,7 @@ impl PlayCounter {
         if playing {
             self.heard += dt.clamp(0.0, 5.0);
         }
-        let need = cur.duration_secs.filter(|d| d.is_finite() && *d > 0.0).map_or(30.0, |d| (d * 0.5).clamp(1.0, 30.0));
+        let need = secs_needed(cur.duration_secs, fraction);
         let counted = !self.counted && self.heard >= need;
         self.counted |= counted;
         PlayTick { started, counted }
@@ -217,29 +232,47 @@ mod tests {
     fn started() -> PlayTick {
         PlayTick { started: true, counted: false }
     }
-    fn counted() -> PlayTick {
-        PlayTick { started: false, counted: true }
-    }
 
     #[test]
-    fn a_play_counts_after_half_the_track_or_thirty_seconds() {
+    fn a_play_counts_after_the_chosen_share_of_the_track() {
+        // Half of a 20 second track is 10 seconds (the first tick is the "started" one, so 10 ticks in all).
         let mut c = PlayCounter::default();
-        let t = cur(1, Some(200.0));
-        assert_eq!(c.tick(Some(&t), true, 0.0, 1.0), started());
-        for i in 1..29 {
-            assert_eq!(c.tick(Some(&t), true, i as f64, 1.0), PlayTick::default(), "{i}");
-        }
-        assert_eq!(c.tick(Some(&t), true, 30.0, 1.0), counted());
-        assert_eq!(c.tick(Some(&t), true, 31.0, 1.0), PlayTick::default(), "only once");
-        // A 20 second track needs 10 (its first tick is the "started" one, so 10 ticks in all).
-        let short = cur(2, Some(20.0));
+        let t = cur(1, Some(20.0));
         let mut at = None;
         for i in 0..12 {
-            if c.tick(Some(&short), true, i as f64, 1.0).counted {
+            if c.tick(Some(&t), true, i as f64, 1.0, 0.5).counted {
                 at = Some(i);
             }
         }
         assert_eq!(at, Some(9));
+        // The same track at 90% needs 18 seconds; at 1% it needs only the one-second floor.
+        for (fraction, tick) in [(0.9, 17), (0.01, 0)] {
+            let mut c = PlayCounter::default();
+            let mut at = None;
+            for i in 0..22 {
+                if c.tick(Some(&t), true, i as f64, 1.0, fraction).counted {
+                    at.get_or_insert(i);
+                }
+            }
+            assert_eq!(at, Some(tick), "{fraction}");
+        }
+        // Counted once per listen, however long it plays on.
+        let mut c = PlayCounter::default();
+        let long = cur(2, Some(200.0));
+        let n = (0..150).filter(|i| c.tick(Some(&long), true, *i as f64, 1.0, 0.5).counted).count();
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn how_long_a_track_needs_follows_the_setting() {
+        assert_eq!(secs_needed(Some(200.0), 0.5), 100.0);
+        assert_eq!(secs_needed(Some(200.0), 1.0), 200.0);
+        assert_eq!(secs_needed(Some(200.0), 0.1), 20.0);
+        assert_eq!(secs_needed(Some(10.0), 0.01), 1.0, "never less than a second");
+        assert_eq!(secs_needed(Some(0.5), 0.5), 0.5, "and never more than the track");
+        assert_eq!(secs_needed(Some(200.0), 5.0), 200.0, "out-of-range settings are held in range");
+        assert_eq!(secs_needed(None, 0.5), 30.0);
+        assert_eq!(secs_needed(Some(f64::NAN), 0.5), 30.0);
     }
 
     #[test]
@@ -247,22 +280,22 @@ mod tests {
         let mut c = PlayCounter::default();
         let t = cur(1, Some(200.0));
         for _ in 0..100 {
-            assert!(!c.tick(Some(&t), false, 0.0, 1.0).counted);
+            assert!(!c.tick(Some(&t), false, 0.0, 1.0, 0.5).counted);
         }
         for i in 0..10 {
-            assert!(!c.tick(Some(&t), true, i as f64, 1.0).counted);
+            assert!(!c.tick(Some(&t), true, i as f64, 1.0, 0.5).counted);
         }
         // Skipping to the next entry starts over.
         let next = cur(2, Some(200.0));
-        assert_eq!(c.tick(Some(&next), true, 0.0, 1.0), started());
-        assert_eq!(c.tick(None, false, 0.0, 1.0), PlayTick::default());
+        assert_eq!(c.tick(Some(&next), true, 0.0, 1.0, 0.5), started());
+        assert_eq!(c.tick(None, false, 0.0, 1.0, 0.5), PlayTick::default());
     }
 
     #[test]
     fn a_very_short_track_reports_start_and_count_together() {
         let mut c = PlayCounter::default();
         let t = cur(1, Some(1.0));
-        assert_eq!(c.tick(Some(&t), true, 0.0, 2.0), PlayTick { started: true, counted: true });
+        assert_eq!(c.tick(Some(&t), true, 0.0, 2.0, 0.5), PlayTick { started: true, counted: true });
     }
 
     #[test]
@@ -272,7 +305,7 @@ mod tests {
         let mut n = 0;
         for lap in 0..2 {
             for i in 0..10 {
-                n += c.tick(Some(&t), true, i as f64, 1.0).counted as usize;
+                n += c.tick(Some(&t), true, i as f64, 1.0, 0.5).counted as usize;
             }
             assert_eq!(n, lap + 1);
         }

@@ -165,6 +165,8 @@ pub struct Settings {
     pub watch_folders: bool,
     /// Keep a log of what you listen to, for the Stats screen and the mixes.
     pub record_history: bool,
+    /// How much of a song has to be heard to count as a play, in percent (1 to 100).
+    pub count_percent: u8,
     /// Owned by the front end (theme, layout, customisation); stored as is.
     pub ui: Value,
 }
@@ -187,6 +189,7 @@ impl Default for Settings {
             restore_session: true,
             watch_folders: true,
             record_history: true,
+            count_percent: 50,
             ui: Value::Null,
         }
     }
@@ -865,7 +868,7 @@ impl App {
             let mut guard = self.counter.lock();
             let dt = guard.1.map_or(0.0, |t| now.duration_since(t).as_secs_f64());
             guard.1 = Some(now);
-            (guard.0.tick(current.as_ref(), playing, pos, dt), dt)
+            (guard.0.tick(current.as_ref(), playing, pos, dt, f64::from(self.settings.lock().count_percent.clamp(1, 100)) / 100.0), dt)
         };
         if let Some(cur) = &current {
             if playing && self.settings.lock().record_history {
@@ -907,6 +910,10 @@ impl App {
             return Err(e);
         }
         Ok(())
+    }
+    /// How much of a song has to be heard to count as a play (percent, held between 1 and 100).
+    pub fn set_count_percent(&self, percent: u8) {
+        self.update(|s| s.count_percent = percent.clamp(1, 100));
     }
     pub fn set_record_history(&self, on: bool) {
         self.update(|s| s.record_history = on);
@@ -1852,5 +1859,19 @@ mod tests {
         assert_eq!(r.plays, 0);
         assert!(r.top_tracks.is_empty());
         assert!(app.mixes().is_empty());
+    }
+
+    #[test]
+    fn the_share_needed_for_a_play_is_a_setting() {
+        let state = tempfile::tempdir().unwrap();
+        let app = open(state.path());
+        assert_eq!(app.settings().count_percent, 50, "half is the default");
+        app.set_count_percent(0);
+        assert_eq!(app.settings().count_percent, 1, "held in range");
+        app.set_count_percent(250);
+        assert_eq!(app.settings().count_percent, 100);
+        app.set_count_percent(80);
+        drop(app);
+        assert_eq!(open(state.path()).settings().count_percent, 80, "kept across a restart");
     }
 }

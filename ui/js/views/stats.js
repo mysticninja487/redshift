@@ -9,6 +9,7 @@ import { h, plural, toast } from '../util.js';
 import { button, iconButton } from '../ui/controls.js';
 import { promptText } from '../ui/dialog.js';
 import { icon } from '../ui/icons.js';
+import { playStory } from '../ui/story.js';
 
 // ---------- time ----------
 
@@ -109,6 +110,8 @@ export function tasteLine(genres) {
 export function mountStats(root) {
   let period = 'week';
   let token = 0, timer = 0, loaded = false;
+  let last = null; // what the story is made from: the shown period's numbers
+  let mixList = [];
 
   const back = iconButton('chevronLeft', 'Back to now playing', () => setView('now'), { cls: 'v-back' });
   const head = h('header', { class: 'v-head' }, back, h('h1', { class: 'v-title' }, 'Stats'));
@@ -161,6 +164,8 @@ export function mountStats(root) {
         t.dl.replaceChildren(...[deltaEl(delta(c.secs, pv.secs), p.prev)].filter(Boolean));
       });
       const everything = totals.some((t) => t.secs > 0);
+      last = { report, bars, buckets, prev: totals[PERIODS.findIndex((p) => p.id === period) * 2 + 1] };
+      mixList = mixes;
       paintDetail(report, bars, buckets, totals[PERIODS.findIndex((p) => p.id === period) * 2 + 1], everything);
       paintMixes(mixes);
       foot.textContent = recording()
@@ -190,9 +195,24 @@ export function mountStats(root) {
         h('p', { class: 'st-facts' }, [
           plural(r.plays, 'play'), plural(r.tracks_heard, 'song'), plural(r.artists_heard, 'artist'),
           r.new_tracks ? `${r.new_tracks} new to you` : null,
-        ].filter(Boolean).join(' · '))),
+        ].filter(Boolean).join(' · ')),
+        r.plays >= 3 ? button('Play story', () => story(), { cls: 'primary st-story', iconName: 'play' }) : null),
       chart(bars, buckets));
     detail.replaceChildren(hero, tops(r), taste(r));
+  }
+
+  function story() {
+    if (!last) return;
+    const { report: r, bars, buckets, prev } = last, p = PERIODS.find((x) => x.id === period);
+    const dl = delta(r.secs, prev.secs), best = bars.reduce((m, b, i) => (b.secs > bars[m].secs ? i : m), 0);
+    const repeat = mixList.find((m) => m.kind === 'repeat') ?? mixList[0];
+    playStory({
+      eyebrow: period === 'day' ? 'Today' : p.label, title: { day: 'Your day in music', week: 'Your week in music', month: 'Your month in music', year: 'Your year in music' }[period],
+      secs: r.secs, fmt: fmtDuration, deltaText: dl?.text, deltaDir: dl?.dir, vs: `vs ${p.prev}`, report: r,
+      part: partOfDay(r.hours), taste: tasteLine(r.genres),
+      bestDay: bars[best]?.secs ? { title: buckets[best].title, secs: bars[best].secs } : null, bestLabel: period === 'day' ? 'hour' : period === 'year' ? 'month' : 'day',
+      onPlayMix: repeat ? () => playPaths(repeat.tracks, 0) : null,
+    });
   }
 
   function chart(bars, buckets) {

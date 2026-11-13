@@ -378,7 +378,10 @@ export function mountSettings(root) {
           { hint: 'What double-clicking a track or pressing its play button does. The right-click menu always offers both.' }),
         row('Watch music folders', toggle({ label: 'Watch music folders', value: state.settings?.watch_folders ?? true, onChange: async (v) => { await act(api.setWatchFolders(v)); await refreshSettings(); render(); } }),
           { hint: 'Looks at your library folders about once a minute and adds, updates or removes songs when files change. Turn it off to rescan only by hand.' })),
-      group('Listening history',
+      group('Play counts and history',
+        row('A song counts as played after', slider({ min: 1, max: 100, step: 1, value: state.settings?.count_percent ?? 50, reset: 50, label: 'Percentage of a song to hear before it counts as played', format: (v) => `${Math.round(v)}%`,
+          onChange: async (v) => { await act(api.setCountPercent(v)); await refreshSettings(); } }),
+          { hint: 'How much of a song you need to hear for it to count as a play, as a share of its length. It sets the play counts, the Most played lists, the Stats screen and your mixes. Skipping past a song doesn\'t count. Double-click the slider to go back to 50%. Songs that are already counted stay counted.' }),
         row('Keep a listening history', toggle({ label: 'Keep a listening history', value: state.settings?.record_history ?? true, onChange: async (v) => { await act(api.setRecordHistory(v)); await refreshSettings(); render(); } }),
           { hint: 'Remembers when and for how long you listen, for the Stats screen and your mixes. It is stored on this computer only and never sent anywhere.' }),
         h('div', { class: 'set-row set-actions' }, button('Clear listening history…', async () => {
