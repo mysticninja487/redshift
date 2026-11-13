@@ -31,6 +31,8 @@ use crate::playlists::{ImportReport, Playlist, PlaylistId, PlaylistStore, Playli
 use crate::queue::RepeatMode;
 use crate::thumb;
 use crate::resolve::Resolver;
+use crate::history::{Heard, History};
+use crate::insights::{self, Mix, MixInput, Report};
 use crate::stats::{now_secs, PlayCounter, Stats};
 use crate::waveform::{self, Overview};
 
@@ -47,6 +49,9 @@ pub const SETTINGS_FILE: &str = "settings.json";
 pub const LIBRARY_FILE: &str = "library.json";
 pub const PLAYLISTS_FILE: &str = "playlists.json";
 pub const STATS_FILE: &str = "stats.json";
+pub const HISTORY_FILE: &str = "history.json";
+/// The listening history is written at most this often while playing (and when the app closes).
+const HISTORY_SAVE_SECS: u64 = 60;
 pub const SESSION_FILE: &str = "session.json";
 /// The longest queue that is remembered between runs.
 const SESSION_MAX_TRACKS: usize = 20_000;
@@ -158,6 +163,8 @@ pub struct Settings {
     /// Look for new, changed and removed songs in the library folders now and then, and update the
     /// library when there are some.
     pub watch_folders: bool,
+    /// Keep a log of what you listen to, for the Stats screen and the mixes.
+    pub record_history: bool,
     /// Owned by the front end (theme, layout, customisation); stored as is.
     pub ui: Value,
 }
@@ -179,6 +186,7 @@ impl Default for Settings {
             tray: TraySettings::default(),
             restore_session: true,
             watch_folders: true,
+            record_history: true,
             ui: Value::Null,
         }
     }
@@ -271,6 +279,9 @@ pub struct App {
     playlists: Mutex<PlaylistStore>,
     stats: Mutex<Stats>,
     stats_dirty: AtomicBool,
+    history: Mutex<History>,
+    history_dirty: AtomicBool,
+    history_saved: Mutex<Instant>,
     /// Decides when a play counts, and when [`poll_playback`](App::poll_playback) last ran.
     counter: Mutex<(PlayCounter, Option<Instant>)>,
     scanning: AtomicBool,
@@ -328,6 +339,9 @@ impl App {
             playlists: Mutex::new(PlaylistStore::open(data_dir.join(PLAYLISTS_FILE))?),
             stats: Mutex::new(Stats::open(data_dir.join(STATS_FILE))?),
             stats_dirty: AtomicBool::new(false),
+            history: Mutex::new(History::open(data_dir.join(HISTORY_FILE))?),
+            history_dirty: AtomicBool::new(false),
+            history_saved: Mutex::new(Instant::now()),
             counter: Mutex::new((PlayCounter::default(), None)),
             player,
             settings_dirty: AtomicBool::new(settings.device != saved_device),
@@ -363,6 +377,7 @@ impl App {
     /// dragging a slider doesn't write a file per mouse move.
     pub fn flush(&self) -> Result<()> {
         self.save_session(false)?;
+        self.save_history(false)?;
         if self.stats_dirty.swap(false, Ordering::AcqRel) {
             if let Err(e) = self.stats.lock().save() {
                 self.stats_dirty.store(true, Ordering::Release);
@@ -846,12 +861,18 @@ impl App {
             let st = self.player.status();
             (self.player.current_track(), st == crate::engine::Status::Playing, self.player.position_secs())
         };
-        let tick = {
+        let (tick, dt) = {
             let mut guard = self.counter.lock();
             let dt = guard.1.map_or(0.0, |t| now.duration_since(t).as_secs_f64());
             guard.1 = Some(now);
-            guard.0.tick(current.as_ref(), playing, pos, dt)
+            (guard.0.tick(current.as_ref(), playing, pos, dt), dt)
         };
+        if let Some(cur) = &current {
+            if playing && self.settings.lock().record_history {
+                self.history.lock().add(&cur.path, now_secs(), dt.clamp(0.0, 5.0), u16::from(tick.counted));
+                self.history_dirty.store(true, Ordering::Release);
+            }
+        }
         if let Some(cur) = current {
             if tick.started || tick.counted {
                 self.with_stats(|s| {
@@ -864,6 +885,57 @@ impl App {
                 });
             }
         }
+    }
+
+    // ---- listening history, stats and mixes ----
+
+    /// Writes the listening history if it changed: at most once a minute, or at once with `force`.
+    pub fn save_history(&self, force: bool) -> Result<()> {
+        if !self.history_dirty.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        {
+            let mut last = self.history_saved.lock();
+            if !force && last.elapsed() < Duration::from_secs(HISTORY_SAVE_SECS) {
+                return Ok(());
+            }
+            *last = Instant::now();
+        }
+        self.history_dirty.store(false, Ordering::Release);
+        if let Err(e) = self.history.lock().save() {
+            self.history_dirty.store(true, Ordering::Release);
+            return Err(e);
+        }
+        Ok(())
+    }
+    pub fn set_record_history(&self, on: bool) {
+        self.update(|s| s.record_history = on);
+    }
+    /// Forgets the whole listening log (play counts and favourites stay).
+    pub fn clear_history(&self) -> Result<()> {
+        self.history.lock().clear();
+        self.history_dirty.store(true, Ordering::Release);
+        self.save_history(true)
+    }
+    /// How much was heard in each of the ranges, given as `(from, to)` seconds since the epoch, `to` excluded.
+    pub fn listening_totals(&self, ranges: &[(u64, u64)]) -> Vec<Heard> {
+        let h = self.history.lock();
+        ranges.iter().take(400).map(|&(a, b)| h.total(a, b)).collect()
+    }
+    /// The report for one range; `tz_offset_min` is the person's clock offset from UTC in minutes.
+    pub fn listening_report(&self, from: u64, to: u64, tz_offset_min: i32) -> Report {
+        let lib = self.library.lock();
+        let tracks = lib.tracks();
+        let by: std::collections::HashMap<&Path, &TrackMeta> = tracks.iter().map(|t| (t.path.as_path(), *t)).collect();
+        insights::report(&self.history.lock(), &by, from, to, tz_offset_min.clamp(-14 * 60, 14 * 60))
+    }
+    /// Mixes made from the history, the play counts and the favourites, for today.
+    pub fn mixes(&self) -> Vec<Mix> {
+        let favourites: std::collections::HashSet<PathBuf> = self.stats.lock().favourites().into_iter().collect();
+        let stats = self.stats.lock().all().clone();
+        let lib = self.library.lock();
+        let tracks = lib.tracks();
+        insights::mixes(&MixInput { history: &self.history.lock(), lib: &tracks, stats: &stats, favourites: &favourites, now: now_secs() })
     }
 
     /// Play counts and last-played times of every track that has been played.
@@ -1072,6 +1144,7 @@ impl App {
 
 impl Drop for App {
     fn drop(&mut self) {
+        let _ = self.save_history(true);
         let _ = self.flush();
     }
 }
@@ -1725,5 +1798,59 @@ mod tests {
         assert_eq!(open(state.path()).play_stats()[0].plays, 1);
         app.reset_play_stats(None);
         assert!(app.play_stats().is_empty());
+    }
+
+    #[test]
+    fn listening_is_logged_summed_and_can_be_switched_off_or_cleared() {
+        let state = tempfile::tempdir().unwrap();
+        let slow = PlayerConfig { device: None, offline: Some(OfflineConfig { sample_rate: 48_000, sink: Arc::new(Mutex::new(Vec::new())), speed: 1.0 }) };
+        let app = App::new(state.path(), slow).unwrap().0;
+        let f = fixture("chirp_44k_stereo.flac");
+        app.player.set_queue(vec![f.clone()], 0, true);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            app.poll_playback();
+            if app.listening_totals(&[(0, u64::MAX)])[0].plays == 1 {
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline, "listening never logged");
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let all = app.listening_totals(&[(0, u64::MAX), (0, 1)]);
+        assert!(all[0].secs > 0.5, "{:?}", all[0]);
+        assert_eq!(all[1].secs, 0.0, "nothing before 1970");
+        // It reaches the disk when forced, and comes back after a restart.
+        app.save_history(true).unwrap();
+        assert!(state.path().join(HISTORY_FILE).exists());
+        let again = open(state.path());
+        assert_eq!(again.listening_totals(&[(0, u64::MAX)])[0].plays, 1);
+        // Off: no more is logged.
+        app.set_record_history(false);
+        let before = app.listening_totals(&[(0, u64::MAX)])[0].secs;
+        for _ in 0..15 {
+            app.poll_playback();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(app.listening_totals(&[(0, u64::MAX)])[0].secs, before);
+        app.player.stop();
+        // Clearing leaves play counts alone.
+        app.clear_history().unwrap();
+        assert_eq!(app.listening_totals(&[(0, u64::MAX)])[0], Heard::default());
+        assert!(!app.play_stats().is_empty());
+        assert_eq!(open(state.path()).listening_totals(&[(0, u64::MAX)])[0], Heard::default());
+    }
+
+    #[test]
+    fn mixes_and_reports_work_from_the_library() {
+        let state = tempfile::tempdir().unwrap();
+        let m = music();
+        let app = open(state.path());
+        app.add_library_folder(m.path()).unwrap();
+        app.scan_library(&mut |_| {}).unwrap();
+        // No history yet: nothing to report, and no mixes.
+        let r = app.listening_report(0, u64::MAX, 0);
+        assert_eq!(r.plays, 0);
+        assert!(r.top_tracks.is_empty());
+        assert!(app.mixes().is_empty());
     }
 }

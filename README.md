@@ -15,7 +15,7 @@ Redshift reads the music you already have. No account, no streaming, no tracking
 
 ## Download
 
-Get the latest installer or the portable `.exe` from the [Releases page](https://github.com/mysticninja487/redshift/releases). It runs on Windows 10 and 11 (it uses WebView2, which is already part of both). Windows may show a "protected your PC" warning because the app isn't code-signed yet; choose "More info" then "Run anyway".
+Get the latest installer or the portable `.exe` from the [Releases page](https://github.com/mysticninja487/redshift/releases). It runs on Windows 10 and 11 (it uses WebView2, which is already part of both). The installer registers Redshift as an option for opening audio files and playlists (right-click a song > Open with). Windows may show a "protected your PC" warning because the app isn't code-signed yet; choose "More info" then "Run anyway".
 
 This is an early version. If something breaks, please [open an issue](https://github.com/mysticninja487/redshift/issues).
 
@@ -63,6 +63,7 @@ This is an early version. If something breaks, please [open an issue](https://gi
 - Minimise to the system tray, with play/pause/next/previous in the tray menu.
 - Redshift picks up where you left off: the queue, the song and the position come back after a restart (switch it off in Settings > Playback).
 - Watches your music folders: songs you add, change or remove show up within about a minute, without a manual rescan (switch it off in Settings > Playback). Scrolling in a long library isn't disturbed when a new song starts.
+- **Stats** (`4`): how long you've listened today, this week, this month and this year, each compared with the stretch before it; a chart for the one you pick; your most played song, artist and album; what your taste looks like (genres, time of day, how much was new to you, which era); and **mixes for you** made from your listening: On repeat, Take me back (songs you loved and haven't heard lately), a mix for each of your top genres and artists, Fresh picks (unplayed songs you'd probably like) and your favourites. Mixes change every day and can be played, queued or saved as a playlist. It is all counted on this computer and never sent anywhere; you can turn the history off or clear it in Settings > Playback.
 - A sleep timer in the top bar: stop in 15 minutes to 2 hours, or at the end of the current song. The volume fades out over the last ten seconds and returns to where it was.
 
 **Fits into Windows**

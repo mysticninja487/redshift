@@ -29,6 +29,8 @@ use redshift_core::library::{Album, Artist, ScanReport};
 use redshift_core::lyrics::Lyrics;
 use redshift_core::meta::TrackMeta;
 use redshift_core::fonts::FontEntry;
+use redshift_core::history::Heard;
+use redshift_core::insights::{Mix, Report};
 use redshift_core::playlists::{ImportReport, Playlist, PlaylistId, PlaylistSummary, RelinkReport};
 use redshift_core::queue::{EntryId, RepeatMode};
 use redshift_core::util::percent_decode;
@@ -430,6 +432,30 @@ fn set_favourite(app: AppHandle, state: State<AppState>, paths: Vec<PathBuf>, on
     let _ = app.emit("favourites-changed", n);
     n
 }
+// ---- listening history, stats and mixes ----
+
+/// How much was heard in each `[from, to)` range (seconds since the epoch).
+#[tauri::command(async)]
+fn listening_totals(state: State<AppState>, ranges: Vec<(u64, u64)>) -> Vec<Heard> {
+    state.0.listening_totals(&ranges)
+}
+#[tauri::command(async)]
+fn listening_report(state: State<AppState>, from: u64, to: u64, tz_offset_min: i32) -> Report {
+    state.0.listening_report(from, to, tz_offset_min)
+}
+#[tauri::command(async)]
+fn mixes(state: State<AppState>) -> Vec<Mix> {
+    state.0.mixes()
+}
+#[tauri::command(async)]
+fn clear_history(state: State<AppState>) -> CmdResult<()> {
+    state.0.clear_history().map_err(err)
+}
+#[tauri::command]
+fn set_record_history(state: State<AppState>, on: bool) {
+    state.0.set_record_history(on);
+}
+
 #[tauri::command(async)]
 fn play_stats(state: State<AppState>) -> Vec<PlayStat> {
     state.0.play_stats()
@@ -888,6 +914,7 @@ fn main() {
             output_devices, set_output_device,
             eq_info, set_eq_enabled, set_eq_preamp_db, set_eq_band_db, set_eq_gains_db, apply_eq_preset, eq_curve,
             save_eq_preset, delete_eq_preset, set_tray, toggle_mini_player, mini_size, mini_on_top, favourite_paths, favourites, set_favourite, play_stats,
+            listening_totals, listening_report, mixes, clear_history, set_record_history,
             reset_play_stats, fonts, import_font, remove_font, relink_playlist, paths_exist,
             viz_frame, configure_viz, ui_state, set_ui_state,
             library_folders, add_library_folder, remove_library_folder, scan_library, is_scanning,
@@ -902,6 +929,7 @@ fn main() {
         if let RunEvent::Exit = event {
             if let Some(state) = handle.try_state::<AppState>() {
                 let _ = state.0.save_session(true);
+                let _ = state.0.save_history(true);
                 let _ = state.0.flush();
             }
         }

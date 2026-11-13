@@ -93,6 +93,11 @@ export const api = {
   playPlaylist: (id, start = 0) => invoke('play_playlist', { id, start }),
   relinkPlaylist: (id) => invoke('relink_playlist', { id }), pathsExist: (paths) => invoke('paths_exist', { paths }),
   // favourites and play history
+  listeningTotals: (ranges) => invoke('listening_totals', { ranges }),
+  listeningReport: (from, to, tzOffsetMin) => invoke('listening_report', { from, to, tzOffsetMin }),
+  mixes: () => invoke('mixes'),
+  clearHistory: () => invoke('clear_history'),
+  setRecordHistory: (on) => invoke('set_record_history', { on }),
   favouritePaths: () => invoke('favourite_paths'), setFavourite: (paths, on) => invoke('set_favourite', { paths, on }),
   playStats: () => invoke('play_stats'), resetPlayStats: (path = null) => invoke('reset_play_stats', { path }),
   // fonts and tray

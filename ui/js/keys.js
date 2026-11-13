@@ -28,6 +28,7 @@ export const ACTIONS = [
   { id: 'repeat', label: 'Repeat', key: 'R', run: () => act(api.setRepeat({ off: 'all', all: 'one', one: 'off' }[state.queue.repeat] ?? 'off')) },
   { id: 'now', label: 'Now playing', key: '1', run: () => setView('now') },
   { id: 'library', label: 'Library', key: '2', run: () => setView('library') },
+  { id: 'stats', label: 'Stats', key: '4', run: () => setView('stats') },
   { id: 'settings', label: 'Settings', key: '3', run: () => toggleSettings() },
   { id: 'search', label: 'Search library', key: 'Ctrl+F', run: () => { setView('library'); setTimeout(() => document.querySelector('.lib-search')?.focus(), 30); } },
   { id: 'skinnext', label: 'Next skin', key: ']', run: () => { const s = cycle(skins.map((x) => x.id), getPrefs().skin, 1); setSkin(s); toast(`Skin: ${skins.find((x) => x.id === s).name}`); } },

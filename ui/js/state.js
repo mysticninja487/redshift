@@ -14,7 +14,7 @@ export const state = {
   favs: new Set(),         // favourite track paths
   favOrder: [],            // the same, most recently added first
   stats: new Map(),        // path -> { plays, last_played } for tracks that have been played
-  view: 'now',             // 'now' | 'library' | 'settings'
+  view: 'now',             // 'now' | 'library' | 'stats' | 'settings'
   scan: null,              // library scan progress while one runs
   stamp: 0,                // performance.now() when player.position_secs was read
 };

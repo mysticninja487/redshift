@@ -9,6 +9,8 @@ pub mod dsp;
 pub mod engine;
 pub mod error;
 pub mod fonts;
+pub mod history;
+pub mod insights;
 pub mod library;
 pub mod lyrics;
 pub mod meta;

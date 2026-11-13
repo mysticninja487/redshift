@@ -18,7 +18,7 @@ import { debounce, h, toast } from './util.js';
 import { iconButton, select } from './ui/controls.js';
 import { icon } from './ui/icons.js';
 
-const NAV = [['now', 'Now playing', 'record'], ['library', 'Library', 'library'], ['settings', 'Settings', 'settings']];
+const NAV = [['now', 'Now playing', 'record'], ['library', 'Library', 'library'], ['stats', 'Stats', 'stats'], ['settings', 'Settings', 'settings']];
 
 function buildChrome() {
   const nav = h('nav', { class: 'nav', 'aria-label': 'Sections' }, NAV.map(([id, label, ic]) =>
@@ -95,12 +95,13 @@ function buildDecor() {
 function buildViews(app) {
   const now = h('div', { id: 'now', class: 'view stage-grid' });
   const library = h('div', { id: 'library', class: 'view', hidden: true });
+  const stats = h('div', { id: 'stats', class: 'view', hidden: true });
   const settings = h('div', { id: 'settings', class: 'view', hidden: true });
-  const main = h('main', { class: 'views' }, now, library, settings);
+  const main = h('main', { class: 'views' }, now, library, stats, settings);
   app.append(main);
   mountLayout(now);
   const mounted = {};
-  const loaders = { library: () => import('./views/library.js').then((m) => m.mountLibrary(library)), settings: () => import('./views/settings.js').then((m) => m.mountSettings(settings)) };
+  const loaders = { library: () => import('./views/library.js').then((m) => m.mountLibrary(library)), stats: () => import('./views/stats.js').then((m) => m.mountStats(stats)), settings: () => import('./views/settings.js').then((m) => m.mountSettings(settings)) };
   // On a wide window Settings sits beside the live Now Playing view, so a change can be seen as it is made.
   // On a narrow one it fills the window, and "Hold to compare" shows Now Playing for as long as it is held.
   const SPLIT_MIN = 1020;
@@ -111,7 +112,7 @@ function buildViews(app) {
     root.dataset.view = split || peek ? 'now' : v;
     root.dataset.split = String(split);
     root.dataset.compare = String(isComparing());
-    now.hidden = !(v === 'now' || split || peek); library.hidden = v !== 'library'; settings.hidden = v !== 'settings';
+    now.hidden = !(v === 'now' || split || peek); library.hidden = v !== 'library'; stats.hidden = v !== 'stats'; settings.hidden = v !== 'settings';
     if (v !== 'now' && !mounted[v]) {
       mounted[v] = true;
       try { mounted[v] = await loaders[v](); } catch (e) { console.error(e); toast(`Could not open ${v}`, 'error'); mounted[v] = false; }

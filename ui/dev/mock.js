@@ -261,7 +261,78 @@ if (!params.has('empty') && !params.has('fresh')) {
 
 // ---------------------------------------------------------------- commands
 const ui = () => { try { return JSON.parse(localStorage.getItem('redshift-mock-ui') ?? 'null'); } catch { return null; } };
-const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, viz: {}, custom_eq_presets: CUSTOM_PRESETS, tray: TRAY, restore_session: S.restore !== false, watch_folders: S.watch !== false, ui: ui() });
+// ---------------------------------------------------------------- listening history (invented)
+// ?nohistory starts with none. The real thing is computed in Rust (insights.rs); this only gives the screen something to show.
+let HISTORY = null;
+function history() {
+  if (HISTORY) return HISTORY;
+  HISTORY = [];
+  if (params.has('nohistory') || params.has('empty')) return HISTORY;
+  const r = rnd(hash('history') + SEED), mid = new Date(); mid.setHours(0, 0, 0, 0);
+  const liked = tracks.filter((_, i) => i % 3 === 0), hours = [7, 8, 13, 18, 19, 20, 21, 22, 22, 23];
+  const add = (t, path, dur) => { const secs = Math.round(dur * (0.4 + r() * 0.6)); HISTORY.push({ t, path, secs, plays: secs >= dur / 2 ? 1 : 0 }); };
+  for (let d = 0; d < 400; d++) {
+    if (d > 0 && r() < 0.18) continue;
+    for (let s = 0, n = 1 + Math.floor(r() * 3); s < n; s++) {
+      let t = Math.floor(mid.getTime() / 1000) - d * 86400 + hours[Math.floor(r() * hours.length)] * 3600 + Math.floor(r() * 3000);
+      for (let k = 0, m = 3 + Math.floor(r() * 8); k < m; k++) {
+        const pool = r() < 0.65 ? liked : tracks, tr = pool[Math.floor(r() * pool.length)];
+        if (t < NOW - 60) add(t, tr.path, tr.duration_secs);
+        t += tr.duration_secs;
+      }
+    }
+  }
+  if (!HISTORY.some((x) => x.t > Math.floor(mid.getTime() / 1000))) for (let i = 0; i < 4; i++) add(NOW - 600 - i * 400, tracks[i].path, tracks[i].duration_secs);
+  return HISTORY;
+}
+const heardIn = (from, to) => history().filter((x) => x.t >= from && x.t < to);
+function listeningReport(from, to, tz) {
+  const rows = heardIn(from, to), per = new Map(), first = new Map(), hours = new Array(24).fill(0);
+  for (const x of history()) first.set(x.path, Math.min(first.get(x.path) ?? Infinity, x.t));
+  for (const x of rows) {
+    const e = per.get(x.path) ?? per.set(x.path, { secs: 0, plays: 0 }).get(x.path); e.secs += x.secs; e.plays += x.plays;
+    hours[Math.floor((x.t + tz * 60) / 3600) % 24 < 0 ? 0 : Math.floor((x.t + tz * 60) / 3600) % 24] += x.secs;
+  }
+  const lib = new Map(tracks.map((t) => [t.path, t]));
+  const art = new Map(), alb = new Map(), gen = new Map(), dec = new Map(), list = [];
+  let newT = 0;
+  for (const [path, h] of per) {
+    if (first.get(path) >= from && first.get(path) < to) newT++;
+    const t = lib.get(path); if (!t) continue;
+    list.push({ path, title: t.title, artist: t.artist, album: t.album, secs: h.secs, plays: h.plays });
+    const a = art.get(t.artist.toLowerCase()) ?? art.set(t.artist.toLowerCase(), { name: t.artist, secs: 0, plays: 0, tracks: 0, path, best: -1 }).get(t.artist.toLowerCase());
+    a.secs += h.secs; a.plays += h.plays; a.tracks++; if (h.secs > a.best) { a.best = h.secs; a.path = path; }
+    const k = `${t.album}|${t.album_artist}`, b = alb.get(k) ?? alb.set(k, { album: t.album, artist: t.album_artist, secs: 0, plays: 0, path, best: -1 }).get(k);
+    b.secs += h.secs; b.plays += h.plays; if (h.secs > b.best) { b.best = h.secs; b.path = path; }
+    const gs = (t.genre || 'Unknown').split(';').map((g) => g.trim()).filter(Boolean);
+    for (const g of gs) gen.set(g, (gen.get(g) ?? 0) + h.secs / gs.length);
+    if (t.year) dec.set(Math.floor(t.year / 10) * 10, (dec.get(Math.floor(t.year / 10) * 10) ?? 0) + h.secs);
+  }
+  list.sort((a, b) => b.plays - a.plays || b.secs - a.secs);
+  const strip = ({ best, ...x }) => x;
+  return {
+    secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0), tracks_heard: per.size, artists_heard: art.size, new_tracks: newT,
+    top_tracks: list.slice(0, 10), top_artists: [...art.values()].sort((a, b) => b.secs - a.secs).slice(0, 10).map(strip), top_albums: [...alb.values()].sort((a, b) => b.secs - a.secs).slice(0, 10).map(strip),
+    genres: [...gen].map(([name, secs]) => ({ name, secs })).sort((a, b) => b.secs - a.secs), hours, decades: [...dec].map(([decade, secs]) => ({ decade, secs })).sort((a, b) => a.decade - b.decade),
+  };
+}
+function mockMixes() {
+  const rep = listeningReport(NOW - 30 * 86400, NOW + 1, 0), out = [];
+  const shuffle = (a) => { const r = rnd(hash(`mix${Math.floor(NOW / 86400)}`)); return [...a].sort(() => r() - 0.5); };
+  if (rep.top_tracks.length >= 6) out.push({ id: 'repeat', kind: 'repeat', name: 'On repeat', blurb: 'What you\'ve played most in the last month.', tracks: rep.top_tracks.map((t) => t.path) });
+  const g = rep.genres.find((x) => x.name !== 'Unknown');
+  if (g) { const of = tracks.filter((t) => t.genre?.split(';').map((x) => x.trim()).includes(g.name)); if (of.length >= 6) out.push({ id: `genre-${g.name.toLowerCase()}`, kind: 'genre', name: `${g.name} mix`, blurb: `The ${g.name} you play, with a few you haven't heard yet.`, tracks: shuffle(of).slice(0, 40).map((t) => t.path) }); }
+  const a = rep.top_artists[0];
+  if (a) { const of = tracks.filter((t) => t.artist === a.name); if (of.length >= 3) out.push({ id: `artist-${a.name.toLowerCase().replace(/\W+/g, '-')}`, kind: 'artist', name: `${a.name} & more`, blurb: `${a.name}, with songs from the same world.`, tracks: shuffle(tracks).filter((t, i) => t.artist === a.name || i % 4 === 0).slice(0, 40).map((t) => t.path) }); }
+  const heard = new Set(history().map((x) => x.path)), fresh = tracks.filter((t) => !heard.has(t.path));
+  if (fresh.length >= 6) out.push({ id: 'fresh', kind: 'fresh', name: 'Fresh picks', blurb: 'Songs in your library you haven\'t played yet, picked from what you like.', tracks: shuffle(fresh).slice(0, 40).map((t) => t.path) });
+  const old = [...new Set(history().filter((x) => x.t < NOW - 45 * 86400).map((x) => x.path))].filter((p) => !history().some((x) => x.path === p && x.t >= NOW - 45 * 86400));
+  if (old.length >= 6) out.push({ id: 'rediscover', kind: 'rediscover', name: 'Take me back', blurb: 'Songs you\'ve loved, that you haven\'t played for a while.', tracks: shuffle(old).slice(0, 40) });
+  if (FAVS.length >= 6) out.push({ id: 'favourites', kind: 'favourites', name: 'Your favourites', blurb: 'Songs you\'ve hearted, in a fresh order.', tracks: shuffle(FAVS).slice(0, 40) });
+  return history().length ? out : out.filter((m) => m.kind === 'favourites');
+}
+
+const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, viz: {}, custom_eq_presets: CUSTOM_PRESETS, tray: TRAY, restore_session: S.restore !== false, watch_folders: S.watch, record_history: S.record !== false !== false, ui: ui() });
 const addEntries = (paths, at = S.entries.length) => S.entries.splice(at, 0, ...paths.map((path) => ({ id: S.seq++, path })));
 const cmds = {
   set_queue: ({ paths, start, autoplay }) => { S.entries = []; addEntries(paths); S.cur = S.entries[start]?.id ?? null; S.pos = 0; S.t0 = performance.now(); S.status = autoplay && S.cur ? 'playing' : 'stopped'; if (S.status === 'playing') noteStart(curEntry()?.path); emit('player-event', { type: 'queue_changed' }); emit('player-event', { type: 'track_changed', entry_id: S.cur }); },
@@ -303,6 +374,11 @@ const cmds = {
   set_sleep_timer: ({ minutes }) => { SLEEP = minutes == null ? { kind: 'song' } : minutes ? { kind: 'time', end: performance.now() + minutes * 60000 } : null; return sleepStatus(); },
   cancel_sleep_timer: () => { SLEEP = null; },
   sleep_status: () => sleepStatus(),
+  listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
+  listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
+  mixes: () => mockMixes(),
+  clear_history: () => { HISTORY = []; },
+  set_record_history: ({ on }) => { S.record = on; },
   set_watch_folders: ({ on }) => { S.watch = on; },
   set_restore_session: ({ on }) => { S.restore = on; },
   set_tray: ({ minimizeToTray, closeToTray }) => { TRAY.minimize_to_tray = minimizeToTray; TRAY.close_to_tray = closeToTray; },

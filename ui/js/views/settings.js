@@ -378,6 +378,13 @@ export function mountSettings(root) {
           { hint: 'What double-clicking a track or pressing its play button does. The right-click menu always offers both.' }),
         row('Watch music folders', toggle({ label: 'Watch music folders', value: state.settings?.watch_folders ?? true, onChange: async (v) => { await act(api.setWatchFolders(v)); await refreshSettings(); render(); } }),
           { hint: 'Looks at your library folders about once a minute and adds, updates or removes songs when files change. Turn it off to rescan only by hand.' })),
+      group('Listening history',
+        row('Keep a listening history', toggle({ label: 'Keep a listening history', value: state.settings?.record_history ?? true, onChange: async (v) => { await act(api.setRecordHistory(v)); await refreshSettings(); render(); } }),
+          { hint: 'Remembers when and for how long you listen, for the Stats screen and your mixes. It is stored on this computer only and never sent anywhere.' }),
+        h('div', { class: 'set-row set-actions' }, button('Clear listening history…', async () => {
+          if (!await confirmDialog('Clear listening history?', 'The Stats screen and your mixes start again from nothing. Play counts, favourites and playlists are not touched.', { ok: 'Clear history' })) return;
+          try { await act(api.clearHistory()); toast('Listening history cleared'); } catch (e) { toast(`Could not clear it: ${e}`, 'error'); }
+        }, { cls: 'danger' }))),
       group('Startup', startup()),
       group('Window', tray()));
   }
