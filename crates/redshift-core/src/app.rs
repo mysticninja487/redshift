@@ -929,6 +929,12 @@ impl App {
         let h = self.history.lock();
         ranges.iter().take(400).map(|&(a, b)| h.total(a, b)).collect()
     }
+    /// Days in a row with a played song, in the person's own time zone.
+    pub fn listening_streak(&self, tz_offset_min: i32) -> insights::Streak {
+        let tz = tz_offset_min.clamp(-14 * 60, 14 * 60);
+        let today = (now_secs() as i64 + tz as i64 * 60).div_euclid(86_400);
+        insights::streak(&self.history.lock().play_days(tz), today)
+    }
     /// The report for one range; `tz_offset_min` is the person's clock offset from UTC in minutes.
     pub fn listening_report(&self, from: u64, to: u64, tz_offset_min: i32) -> Report {
         let lib = self.library.lock();

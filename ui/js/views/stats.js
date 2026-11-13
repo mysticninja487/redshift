@@ -124,10 +124,11 @@ export function mountStats(root) {
     return { id: p.id, el, val: el.querySelector('.st-tile-val'), dl: el.querySelector('.st-tile-delta') };
   });
   const tabs = h('div', { class: 'st-tiles', role: 'tablist', 'aria-label': 'Period' }, tiles.map((t) => t.el));
+  const streakBox = h('section', { class: 'st-sec st-streak', 'aria-labelledby': 'st-streak-h', hidden: true });
   const detail = h('div', { class: 'st-detail', role: 'tabpanel' });
   const mixBox = h('section', { class: 'st-sec st-mixes', 'aria-labelledby': 'st-mix-h' });
   const foot = h('p', { class: 'hint st-foot' });
-  body.append(tabs, detail, mixBox, foot);
+  body.append(tabs, streakBox, detail, mixBox, foot);
 
   function paintTabs() {
     for (const t of tiles) { t.el.setAttribute('aria-selected', String(t.id === period)); t.el.tabIndex = t.id === period ? 0 : -1; }
@@ -150,11 +151,12 @@ export function mountStats(root) {
     const ranges = PERIODS.map((p) => periodRange(p.id, now));
     const cur = periodRange(period, now), buckets = chartBuckets(period, now);
     try {
-      const [totals, report, bars, mixes] = await Promise.all([
+      const [totals, report, bars, mixes, streak] = await Promise.all([
         api.listeningTotals(ranges.flatMap((r) => [[r.from, r.to], [r.prevFrom, r.prevTo]])),
         api.listeningReport(cur.from, cur.to, tz),
         api.listeningTotals(buckets.map((b) => [b.from, b.to])),
         api.mixes(),
+        api.listeningStreak(tz).catch(() => null),
       ]);
       if (mine !== token) return;
       loaded = true;
@@ -166,6 +168,7 @@ export function mountStats(root) {
       const everything = totals.some((t) => t.secs > 0);
       last = { report, bars, buckets, prev: totals[PERIODS.findIndex((p) => p.id === period) * 2 + 1] };
       mixList = mixes;
+      paintStreak(streak);
       paintDetail(report, bars, buckets, totals[PERIODS.findIndex((p) => p.id === period) * 2 + 1], everything);
       paintMixes(mixes);
       foot.textContent = recording()
@@ -176,6 +179,31 @@ export function mountStats(root) {
       console.error(e);
       detail.replaceChildren(h('div', { class: 'empty st-empty' }, icon('record', 36), h('p', null, 'Could not load your stats.')));
     }
+  }
+
+  // ---- streak ----
+
+  const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  function paintStreak(sk) {
+    if (!sk || !sk.total_days) { streakBox.hidden = true; streakBox.replaceChildren(); return; }
+    streakBox.hidden = false;
+    const played = new Set(sk.recent);
+    const dots = Array.from({ length: 14 }, (_, i) => {
+      const day = sk.today - 13 + i, weekday = new Date(day * 86400000).getUTCDay();
+      return h('li', { class: `st-dot${played.has(day) ? ' is-on' : ''}${day === sk.today ? ' is-today' : ''}`, title: `${new Date(day * 86400000).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'UTC' })}${played.has(day) ? '' : ' · no songs'}` },
+        h('i'), h('span', null, DAY_LETTERS[weekday]));
+    });
+    const alive = sk.current > 0 && !sk.played_today;
+    const note = sk.current === 0 ? 'Play a song today to start a streak.'
+      : alive ? 'Play something today to keep it going.' : sk.current >= sk.longest && sk.current > 1 ? 'Your longest yet.' : `Longest: ${plural(sk.longest, 'day')}.`;
+    streakBox.replaceChildren(
+      h('h2', { class: 'st-h2', id: 'st-streak-h' }, 'Listening streak'),
+      h('div', { class: 'st-streak-row' },
+        h('div', { class: 'st-streak-main' },
+          h('p', { class: 'st-streak-num', 'aria-label': plural(sk.current, 'day') }, h('b', null, String(sk.current)), h('small', null, sk.current === 1 ? 'day' : 'days')),
+          h('p', { class: 'st-streak-note' }, note),
+          h('p', { class: 'st-facts' }, `${plural(sk.total_days, 'day')} with music in total`)),
+        h('ol', { class: 'st-dots', 'aria-label': 'Last 14 days' }, dots)));
   }
 
   // ---- the chosen period ----
@@ -258,10 +286,14 @@ export function mountStats(root) {
     const line = tasteLine(r.genres), part = partOfDay(r.hours);
     const top = r.decades.reduce((m, d) => (!m || d.secs > m.secs ? d : m), null);
     const decadeTotal = r.decades.reduce((a, d) => a + d.secs, 0);
-    const bars = real.slice(0, 6).map((g) => h('li', { class: 'st-genre' },
+    // Songs with no usable genre tag sit in one dimmed "Unknown" row; the percentages are of everything listened to, so the bars add up.
+    const unknown = r.genres.find((g) => g.name === 'Unknown');
+    const all = total + (unknown?.secs ?? 0);
+    const row = (g, cls = '') => h('li', { class: `st-genre${cls}` },
       h('span', { class: 'st-genre-name' }, g.name),
-      h('span', { class: 'st-genre-bar', role: 'presentation' }, h('i', { style: { width: `${Math.max(3, (g.secs / total) * 100)}%` } })),
-      h('span', { class: 'st-genre-pct' }, `${Math.round((g.secs / total) * 100)}%`)));
+      h('span', { class: 'st-genre-bar', role: 'presentation' }, h('i', { style: { width: `${Math.max(3, (g.secs / all) * 100)}%` } })),
+      h('span', { class: 'st-genre-pct' }, `${Math.round((g.secs / all) * 100)}%`));
+    const bars = [...real.slice(0, 6).map((g) => row(g)), ...(unknown?.secs ? [row(unknown, ' is-unknown')] : [])];
     const facts = [];
     if (part) facts.push(['Time of day', part.nick, `${Math.round(part.share * 100)}% of your listening is in the ${part.name}`]);
     if (r.tracks_heard >= 3) facts.push(['Discovery', `${Math.round((r.new_tracks / r.tracks_heard) * 100)}% new`, `${r.new_tracks} of the ${r.tracks_heard} songs were new to you`]);
@@ -271,7 +303,7 @@ export function mountStats(root) {
       h('h2', { class: 'st-h2', id: 'st-taste-h' }, 'Your taste'),
       line ? h('p', { class: 'st-taste-line' }, line) : null,
       h('div', { class: 'st-taste-grid' },
-        bars.length ? h('ul', { class: 'st-genres', 'aria-label': 'Genres' }, bars) : h('p', { class: 'hint' }, 'Your songs have no genre tags, so there is nothing to break down. The tag editor can add them.'),
+        bars.length ? h('ul', { class: 'st-genres', 'aria-label': 'Genres' }, bars) : h('p', { class: 'hint' }, 'No genre tags to break down yet. The tag editor can add them.'),
         facts.length ? h('dl', { class: 'st-factlist' }, facts.map(([k, v, s]) => h('div', { class: 'st-fact' }, h('dt', null, k), h('dd', null, h('b', null, v), h('span', null, s))))) : null));
   }
 

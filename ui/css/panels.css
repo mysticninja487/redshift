@@ -40,6 +40,8 @@
 .seek { display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; }
 .s-cur, .s-dur { font-family: var(--font-mono); font-size: .78rem; color: var(--fg2); min-width: 4ch; font-variant-numeric: tabular-nums; }
 .s-dur { text-align: right; }
+.s-dur.s-clickable { cursor: pointer; border-radius: 4px; }
+.s-dur.s-clickable:hover { color: var(--fg); }
 .s-track { position: relative; flex: 1; height: 40px; cursor: pointer; touch-action: none; min-width: 0; }
 .s-canvas { position: absolute; left: 0; top: 0; }
 .s-tip { position: absolute; bottom: calc(100% + 4px); transform: translateX(-50%); padding: 2px 7px; background: var(--fg); color: var(--bg); border-radius: 4px; font-family: var(--font-mono); font-size: .7rem; pointer-events: none; }

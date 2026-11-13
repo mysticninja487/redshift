@@ -2,7 +2,7 @@
 
 import { api } from '../api.js';
 import { act } from '../controller.js';
-import { get } from '../prefs.js';
+import { featureOn, get, getPrefs, setPref } from '../prefs.js';
 import { duration, position, state } from '../state.js';
 import { tokens } from '../theme.js';
 import { clamp, fmtTime, h } from '../util.js';
@@ -12,7 +12,7 @@ import { lifecycle } from './common.js';
 export function mount(el) {
   const L = lifecycle();
   const cur = h('span', { class: 's-cur' }, '0:00');
-  const total = h('span', { class: 's-dur' }, '0:00');
+  const total = h('span', { class: 's-dur', title: 'Click to switch between total and time left' }, '0:00');
   const cv = h('canvas', { class: 's-canvas' });
   const tip = h('div', { class: 's-tip', hidden: true });
   const wrap = h('div', { class: 's-track', role: 'slider', tabindex: '0', 'aria-label': 'Position', 'aria-valuemin': '0' }, cv, tip);
@@ -46,10 +46,23 @@ export function mount(el) {
     if (key === lastKey) { setText(); return; }
     draw();
   };
+  // The right-hand time shows the track length, or what is left of it after a click (when that is switched on in Settings).
+  const showLeft = () => featureOn('timeLeft') && !!getPrefs().timeLeft;
+  const totalText = (secs) => (showLeft() ? `-${fmtTime(Math.max(0, duration() - secs))}` : fmtTime(duration()));
   const setText = () => {
     const secs = scrub != null ? scrub * duration() : position();
     cur.textContent = fmtTime(secs);
+    total.textContent = totalText(secs);
   };
+  const syncTotal = () => {
+    const on = featureOn('timeLeft');
+    total.classList.toggle('s-clickable', on);
+    total.setAttribute('role', on ? 'button' : 'presentation');
+    if (on) { total.tabIndex = 0; total.setAttribute('aria-pressed', String(showLeft())); } else total.removeAttribute('tabindex');
+  };
+  const flip = () => { if (featureOn('timeLeft')) { setPref('timeLeft', !getPrefs().timeLeft); syncTotal(); setText(); } };
+  total.addEventListener('click', flip);
+  total.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); flip(); } });
 
   function draw() {
     const style = get('seek.style'), p = progress(), t = tokens;
@@ -95,7 +108,7 @@ export function mount(el) {
     if (hover != null && scrub == null && style !== 'ticks') { ctx.strokeStyle = rgba(t.fg, 0.4); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(hover * W, 0); ctx.lineTo(hover * W, H); ctx.stroke(); }
     const secs = scrub != null ? scrub * duration() : position();
     cur.textContent = fmtTime(secs);
-    total.textContent = fmtTime(duration());
+    total.textContent = totalText(secs);
     wrap.setAttribute('aria-valuenow', String(Math.round(secs))); wrap.setAttribute('aria-valuemax', String(Math.round(duration())));
     wrap.setAttribute('aria-valuetext', `${fmtTime(secs)} of ${fmtTime(duration())}`);
   }
@@ -128,7 +141,9 @@ export function mount(el) {
 
   L.frame(tick, { whenPlaying: true });
   L.on(['status', 'track', 'waveform', 'ui', 'theme', 'player'], () => { if (state.player.status !== 'playing') draw(); });
+  L.on('ui', () => { syncTotal(); if (state.player.status !== 'playing') draw(); });
   L.on('ui', () => { el.dataset.style = get('seek.style'); wrap.parentElement.classList.toggle('no-times', !get('seek.times')); });
+  syncTotal();
   el.dataset.style = get('seek.style');
   wrap.parentElement.classList.toggle('no-times', !get('seek.times'));
   return { destroy: () => L.destroy() };

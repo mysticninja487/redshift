@@ -40,7 +40,9 @@ export const DEFAULT_PREFS = {
   keys: {},
   library: { tab: 'albums', sort: 'default', albumSize: 190, playMode: 'single' },
   // On/off switches that apply to every skin.
-  features: { lyrics: true, viz: true, queue: true },
+  features: { lyrics: true, viz: true, queue: true, timeLeft: true },
+  // Whether the right-hand time shows time left (a click on it flips this; the switch above allows the click).
+  timeLeft: false,
   // Cost of looks: `lite` drops blur, blend and grain effects; `background` slows animation while the window isn't focused.
   perf: { lite: false, background: true },
   // The mini player. `open` is which size it starts at ('last' remembers the one you used); `list` what the expanded card shows beside the cover.

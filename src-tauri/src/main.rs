@@ -30,7 +30,7 @@ use redshift_core::lyrics::Lyrics;
 use redshift_core::meta::TrackMeta;
 use redshift_core::fonts::FontEntry;
 use redshift_core::history::Heard;
-use redshift_core::insights::{Mix, Report};
+use redshift_core::insights::{Mix, Report, Streak};
 use redshift_core::playlists::{ImportReport, Playlist, PlaylistId, PlaylistSummary, RelinkReport};
 use redshift_core::queue::{EntryId, RepeatMode};
 use redshift_core::util::percent_decode;
@@ -442,6 +442,10 @@ fn listening_totals(state: State<AppState>, ranges: Vec<(u64, u64)>) -> Vec<Hear
 #[tauri::command(async)]
 fn listening_report(state: State<AppState>, from: u64, to: u64, tz_offset_min: i32) -> Report {
     state.0.listening_report(from, to, tz_offset_min)
+}
+#[tauri::command(async)]
+fn listening_streak(state: State<AppState>, tz_offset_min: i32) -> Streak {
+    state.0.listening_streak(tz_offset_min)
 }
 #[tauri::command(async)]
 fn mixes(state: State<AppState>) -> Vec<Mix> {
@@ -918,7 +922,7 @@ fn main() {
             output_devices, set_output_device,
             eq_info, set_eq_enabled, set_eq_preamp_db, set_eq_band_db, set_eq_gains_db, apply_eq_preset, eq_curve,
             save_eq_preset, delete_eq_preset, set_tray, toggle_mini_player, mini_size, mini_on_top, favourite_paths, favourites, set_favourite, play_stats,
-            listening_totals, listening_report, mixes, clear_history, set_record_history, set_count_percent,
+            listening_totals, listening_report, listening_streak, mixes, clear_history, set_record_history, set_count_percent,
             reset_play_stats, fonts, import_font, remove_font, relink_playlist, paths_exist,
             viz_frame, configure_viz, ui_state, set_ui_state,
             library_folders, add_library_folder, remove_library_folder, scan_library, is_scanning,

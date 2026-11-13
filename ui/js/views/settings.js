@@ -454,7 +454,8 @@ export function mountSettings(root) {
         row('Small cover', toggle({ label: 'Small cover', value: c.info.cover, onChange: (v) => set('info.cover', v) }), { path: 'info.cover', redo: again })),
       group('Progress bar',
         row('Style', segmented({ label: 'Progress bar style', options: [{ value: 'line', label: 'Line' }, { value: 'wave', label: 'Waveform' }, { value: 'ticks', label: 'Ruler' }, { value: 'dots', label: 'Dots' }], value: c.seek.style, onChange: (v) => set('seek.style', v) }), { path: 'seek.style', redo: again }),
-        row('Show times', toggle({ label: 'Show times', value: c.seek.times, onChange: (v) => set('seek.times', v) }), { path: 'seek.times', redo: again })),
+        row('Show times', toggle({ label: 'Show times', value: c.seek.times, onChange: (v) => set('seek.times', v) }), { path: 'seek.times', redo: again }),
+        row('Click total time for time left', toggle({ label: 'Click total time for time left', value: featureOn('timeLeft'), onChange: (v) => setPref('features.timeLeft', v) }), { hint: 'Clicking the right-hand time switches between the track length and the time remaining.' })),
       group('Controls',
         row('Volume control', segmented({ label: 'Volume control', options: [{ value: 'slider', label: 'Slider' }, { value: 'knob', label: 'Knob' }], value: c.transport.volume, onChange: (v) => set('transport.volume', v) }), { path: 'transport.volume', redo: again }),
         row('Mute button', toggle({ label: 'Mute button', value: c.transport.mute, onChange: (v) => set('transport.mute', v) }), { path: 'transport.mute', redo: again })));

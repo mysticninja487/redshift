@@ -186,6 +186,20 @@ impl History {
         out
     }
 
+    /// The days (as whole days since 1970, in a zone `tz_offset_min` minutes ahead of UTC) on which at
+    /// least one song was played past the threshold. Sorted, once each.
+    pub fn play_days(&self, tz_offset_min: i32) -> Vec<i64> {
+        let mut days: Vec<i64> = self
+            .rows
+            .iter()
+            .filter(|r| r.plays > 0)
+            .map(|r| (r.bucket as i64 * BUCKET_SECS as i64 + tz_offset_min as i64 * 60).div_euclid(86_400))
+            .collect();
+        days.sort_unstable();
+        days.dedup();
+        days
+    }
+
     /// Tracks heard before `before` (seconds since the epoch), with the time of the first listen.
     pub fn first_heard(&self) -> HashMap<&Path, u64> {
         let mut out: HashMap<&Path, u64> = HashMap::new();
@@ -251,6 +265,18 @@ mod tests {
         assert_eq!(h.by_hour(0, 10 * DAY, 360)[4], 120.0);
         // Behind UTC, across midnight the other way.
         assert_eq!(h.by_hour(0, 10 * DAY, -23 * 60)[23], 120.0);
+    }
+
+    #[test]
+    fn play_days_follow_the_time_zone_and_ignore_flicking_past() {
+        let d = tempfile::tempdir().unwrap();
+        let mut h = open(d.path());
+        h.add(Path::new("/a.flac"), 5 * DAY + 23 * 3600, 100.0, 1); // 23:00 UTC on day 5
+        h.add(Path::new("/a.flac"), 5 * DAY + 100, 100.0, 1);
+        h.add(Path::new("/b.flac"), 8 * DAY + 100, 3.0, 0); // only flicked past
+        assert_eq!(h.play_days(0), vec![5]);
+        assert_eq!(h.play_days(120), vec![5, 6], "two hours ahead, 23:00 UTC is already tomorrow");
+        assert_eq!(h.play_days(-60), vec![4, 5]);
     }
 
     #[test]

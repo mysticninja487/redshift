@@ -58,7 +58,7 @@ pub struct DecadeShare {
 pub struct Report {
     pub secs: f64,
     pub plays: u32,
-    /// Different songs and artists heard in the range.
+    /// Different songs and artists played (heard past the threshold) in the range.
     pub tracks_heard: u32,
     pub artists_heard: u32,
     /// Songs heard for the first time in the range.
@@ -77,13 +77,27 @@ fn clean(s: &str) -> &str {
     s.trim()
 }
 
-/// The genres in a tag, which may hold several ("Rock; Pop"). Never empty.
+/// Names that aren't genres of music. Files saved from video sites often carry the site's category in
+/// the genre tag ("Film & Animation", "People & Blogs"); those say nothing about taste in music.
+const NOT_A_GENRE: &[&str] = &[
+    "film and animation", "film", "animation", "autos and vehicles", "pets and animals", "sports", "travel and events", "gaming",
+    "people and blogs", "comedy", "entertainment", "news and politics", "howto and style", "education", "science and technology",
+    "nonprofits and activism", "music", "other", "unknown", "undefined", "none", "genre", "misc", "miscellaneous",
+];
+
+fn is_a_genre(name: &str) -> bool {
+    let key = name.to_lowercase().replace('&', " and ").split_whitespace().collect::<Vec<_>>().join(" ");
+    !key.is_empty() && !NOT_A_GENRE.contains(&key.as_str())
+}
+
+/// The genres in a tag, which may hold several ("Rock; Pop"). Names that aren't music genres are
+/// left out. Never empty: a song with no usable genre is "Unknown".
 fn genres_of(t: &TrackMeta) -> Vec<String> {
     let v: Vec<String> = t
         .genre
         .split([';', '\0'])
         .map(|g| g.trim())
-        .filter(|g| !g.is_empty())
+        .filter(|g| is_a_genre(g))
         .map(str::to_owned)
         .collect();
     if v.is_empty() {
@@ -111,6 +125,11 @@ pub fn report(history: &History, lib: &HashMap<&Path, &TrackMeta>, from: u64, to
     let mut tracks: Vec<(f64, u32, &TrackMeta)> = Vec::new();
 
     for (path, heard) in &per {
+        // Heard, but not enough to count as played (flicking through songs): it adds to the listening
+        // time, and to the recently played list, but not to what was played.
+        if heard.plays == 0 {
+            continue;
+        }
         out.tracks_heard += 1;
         if first.get(path).is_some_and(|&t| t >= from && t < to) {
             out.new_tracks += 1;
@@ -179,6 +198,43 @@ pub fn report(history: &History, lib: &HashMap<&Path, &TrackMeta>, from: u64, to
     let mut d: Vec<DecadeShare> = decades.into_iter().map(|(decade, secs)| DecadeShare { decade, secs }).collect();
     d.sort_by_key(|x| x.decade);
     out.decades = d;
+    out
+}
+
+// ---------------------------------------------------------------------------------------------
+// Streaks
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Default, PartialEq)]
+pub struct Streak {
+    /// Days in a row up to today, or up to yesterday while today has no play yet.
+    pub current: u32,
+    pub longest: u32,
+    /// Days with at least one play, ever.
+    pub total_days: u32,
+    pub played_today: bool,
+    /// Today as a whole-day number in the person's zone, and the days of the last fortnight with a play.
+    pub today: i64,
+    pub recent: Vec<i64>,
+}
+
+/// Streaks from the sorted, distinct days with a play (see `History::play_days`).
+pub fn streak(days: &[i64], today: i64) -> Streak {
+    let mut out = Streak { today, total_days: days.len() as u32, ..Default::default() };
+    let (mut run, mut prev) = (0u32, None::<i64>);
+    for &d in days {
+        run = if prev == Some(d - 1) { run + 1 } else { 1 };
+        out.longest = out.longest.max(run);
+        prev = Some(d);
+    }
+    out.played_today = days.binary_search(&today).is_ok();
+    // Count back from today, or from yesterday if today hasn't had a play yet: the streak is still alive.
+    let mut day = if out.played_today { today } else { today - 1 };
+    while days.binary_search(&day).is_ok() {
+        out.current += 1;
+        day -= 1;
+    }
+    out.recent = days.iter().copied().filter(|d| *d > today - 14 && *d <= today).collect();
     out
 }
 
@@ -265,7 +321,7 @@ pub fn mixes(input: &MixInput) -> Vec<Mix> {
 
     // --- On repeat: what you've played most in the last month.
     let recent = history.per_track(now.saturating_sub(30 * DAY), now + 1);
-    let mut rep: Vec<(&TrackMeta, Heard)> = recent.iter().filter_map(|(p, h)| known.get(p).map(|t| (*t, *h))).filter(|(_, h)| h.plays > 0 || h.secs >= 60.0).collect();
+    let mut rep: Vec<(&TrackMeta, Heard)> = recent.iter().filter_map(|(p, h)| known.get(p).map(|t| (*t, *h))).filter(|(_, h)| h.plays > 0).collect();
     rep.sort_by(|a, b| b.1.plays.cmp(&a.1.plays).then(b.1.secs.total_cmp(&a.1.secs)).then(a.0.path.cmp(&b.0.path)));
     rep.truncate(MIX_MAX);
     if rep.len() >= MIX_MIN {
@@ -283,6 +339,9 @@ pub fn mixes(input: &MixInput) -> Vec<Mix> {
     let mut artist_secs: HashMap<String, (String, f64)> = HashMap::new();
     for (p, h) in &window {
         let Some(t) = known.get(p) else { continue };
+        if h.plays == 0 {
+            continue; // flicked past, not played
+        }
         let w = h.secs.max(1.0) + h.plays as f64 * 30.0;
         let gs = genres_of(t);
         for g in &gs {
@@ -387,7 +446,7 @@ pub fn mixes(input: &MixInput) -> Vec<Mix> {
         let mut fresh: Vec<&TrackMeta> = lib
             .iter()
             .copied()
-            .filter(|t| familiarity(&t.path) == 0 && last_of(&t.path) == 0)
+            .filter(|t| familiarity(&t.path) == 0)
             .filter(|t| liked_artists.contains(clean(&t.artist).to_lowercase().as_str()) || genres_of(t).iter().any(|g| liked_genres.contains(g.to_lowercase().as_str())))
             .collect();
         fresh.sort_by(|a, b| a.path.cmp(&b.path));
@@ -475,7 +534,7 @@ mod tests {
             h.add(Path::new("/rock/0.flac"), NOW - 100, 100.0, 1);
             h.add(Path::new("/rock/1.flac"), NOW - 100, 100.0, 1);
             h.add(Path::new("/jazz/0.flac"), NOW - 100, 400.0, 1);
-            h.add(Path::new("/misc/x.flac"), NOW - 100, 50.0, 0);
+            h.add(Path::new("/misc/x.flac"), NOW - 100, 50.0, 1);
         });
         let r = report(&h, &by, 0, NOW, 0);
         assert_eq!(r.top_artists[0].name, "Blue Room");
@@ -600,5 +659,85 @@ mod tests {
         let g = m.iter().find(|m| m.id == "genre-rock").unwrap();
         let amps = g.tracks.iter().filter(|p| lib.iter().find(|t| &t.path == *p).unwrap().artist == "The Amps").count();
         assert!(amps <= 4);
+    }
+
+    #[test]
+    fn songs_only_flicked_past_are_not_played_songs() {
+        let lib = library();
+        let by: HashMap<&Path, &TrackMeta> = lib.iter().map(|t| (t.path.as_path(), t)).collect();
+        let h = history_with(|h| {
+            h.add(Path::new("/rock/0.flac"), NOW - 500, 200.0, 1); // really played
+            for i in 1..6 {
+                h.add(Path::new(&format!("/jazz/{i}.flac")), NOW - 400, 3.0, 0); // changing through tracks
+            }
+            h.add(Path::new("/rock/7.flac"), NOW - 300, 90.0, 0); // heard a good part, under the threshold
+        });
+        let r = report(&h, &by, 0, NOW, 0);
+        assert!((r.secs - 305.0).abs() < 0.5, "the time still counts as listening time: {}", r.secs);
+        assert_eq!(r.plays, 1);
+        assert_eq!(r.tracks_heard, 1);
+        assert_eq!(r.new_tracks, 1);
+        assert_eq!(r.top_tracks.len(), 1);
+        assert_eq!(r.top_tracks[0].title, "Rock 0");
+        assert_eq!(r.top_artists.len(), 1);
+        assert_eq!(r.top_albums.len(), 1);
+        assert_eq!(r.genres.len(), 1, "taste comes from what was played: {:?}", r.genres);
+        // And they don't make mixes either.
+        let all = refs(&lib);
+        let (stats, favs) = (HashMap::new(), HashSet::new());
+        let h = history_with(|h| {
+            for i in 0..14 {
+                h.add(Path::new(&format!("/rock/{i}.flac")), NOW - DAY, 2.0, 0);
+            }
+        });
+        assert!(mixes(&input(&h, &all, &stats, &favs)).is_empty());
+    }
+
+    #[test]
+    fn skipped_songs_still_count_as_not_played_for_fresh_picks() {
+        let lib = library();
+        let all = refs(&lib);
+        let h = history_with(|h| {
+            for i in 0..4 {
+                h.add(Path::new(&format!("/rock/{i}.flac")), NOW - DAY, 200.0, 1);
+            }
+            for i in 8..14 {
+                h.add(Path::new(&format!("/rock/{i}.flac")), NOW - DAY, 2.0, 0); // just flicked past
+            }
+        });
+        let (stats, favs) = (HashMap::new(), HashSet::new());
+        let m = mixes(&input(&h, &all, &stats, &favs));
+        let fresh = m.iter().find(|m| m.id == "fresh").expect("fresh picks");
+        assert!(fresh.tracks.iter().any(|p| p.ends_with("8.flac") || p.ends_with("9.flac") || p.ends_with("10.flac") || p.ends_with("11.flac") || p.ends_with("12.flac") || p.ends_with("13.flac")));
+    }
+
+    #[test]
+    fn video_site_categories_are_not_genres() {
+        let mut a = t("/a.flac", "A", "X", "Y", "Film & Animation", 2020);
+        assert_eq!(genres_of(&a), vec!["Unknown"]);
+        for g in ["People & Blogs", "people and blogs", "Music", "Gaming; Comedy", "  ", "Howto & Style", "News & Politics", "Entertainment"] {
+            a.genre = g.into();
+            assert_eq!(genres_of(&a), vec!["Unknown"], "{g}");
+        }
+        a.genre = "Film & Animation; Indie Rock".into();
+        assert_eq!(genres_of(&a), vec!["Indie Rock"]);
+        a.genre = "Hip-Hop; Rap".into();
+        assert_eq!(genres_of(&a), vec!["Hip-Hop", "Rap"]);
+    }
+
+    #[test]
+    fn streaks_count_back_from_today_or_yesterday() {
+        let s = streak(&[1, 2, 3, 7, 8, 9, 10], 10);
+        assert_eq!((s.current, s.longest, s.total_days, s.played_today), (4, 4, 7, true));
+        // Nothing yet today: the streak is alive until the day is over.
+        let s = streak(&[7, 8, 9], 10);
+        assert_eq!((s.current, s.played_today), (3, false));
+        // A missed day ends it.
+        let s = streak(&[5, 6, 7, 8], 10);
+        assert_eq!((s.current, s.longest), (0, 4));
+        assert_eq!(streak(&[], 10), Streak { today: 10, ..Default::default() });
+        // The fortnight is what the screen draws.
+        let s = streak(&[-5, 0, 4, 9, 10], 10);
+        assert_eq!(s.recent, vec![0, 4, 9, 10].into_iter().filter(|d| *d > -4).collect::<Vec<_>>());
     }
 }

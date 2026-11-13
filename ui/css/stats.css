@@ -54,7 +54,7 @@ button.st-li:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); 
 
 /* taste */
 .st-taste-line { font-family: var(--font-display); font-size: clamp(1.5rem, 3.4vw, 2.2rem); font-weight: 700; letter-spacing: -.02em; }
-.st-taste-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 22px; align-items: start; }
+.st-taste-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 22px; align-items: start; }
 .st-genres { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
 .st-genre { display: grid; grid-template-columns: minmax(70px, 120px) 1fr 3em; align-items: center; gap: 10px; font-size: .86rem; }
 .st-genre-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -120,3 +120,19 @@ button.st-li:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); 
 .sty-genres li { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 16px; border-radius: var(--r-ctl); background: color-mix(in srgb, var(--fg) 9%, transparent); font-size: 1.05rem; }
 .sty-genres small { color: var(--fg2); font-family: var(--font-mono); font-size: .85rem; }
 .sty-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+
+.st-genre.is-unknown { opacity: .6; }
+.st-genre.is-unknown .st-genre-bar i { background: var(--fg3); }
+.st-streak-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 28px; }
+.st-streak-main { display: grid; gap: 4px; min-width: 0; }
+.st-streak-num { margin: 0; display: flex; align-items: baseline; gap: 8px; }
+.st-streak-num b { font-size: 2.6rem; line-height: 1; font-weight: 600; font-variant-numeric: tabular-nums; }
+.st-streak-num small { color: var(--fg2); font-size: .95rem; }
+.st-streak-note { margin: 0; color: var(--fg2); font-size: .88rem; }
+.st-dots { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px; }
+.st-dot { display: grid; justify-items: center; gap: 5px; font-size: .62rem; color: var(--fg3); font-family: var(--font-mono); }
+.st-dot i { width: 16px; height: 16px; border-radius: 50%; background: color-mix(in srgb, var(--fg) 12%, transparent); display: block; }
+.st-dot.is-on i { background: var(--accent); }
+.st-dot.is-today i { outline: 2px solid color-mix(in srgb, var(--fg) 45%, transparent); outline-offset: 2px; }
+@media (max-width: 520px) { .st-dots { gap: 3px; } .st-dot i { width: 12px; height: 12px; } }
+.st-streak-main .st-facts { margin-top: 4px; }

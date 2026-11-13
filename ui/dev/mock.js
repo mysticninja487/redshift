@@ -298,6 +298,7 @@ function listeningReport(from, to, tz) {
   let newT = 0;
   for (const [path, h] of per) {
     if (first.get(path) >= from && first.get(path) < to) newT++;
+    if (h.plays === 0) continue; // only flicked past: counts as time, not as a played song
     const t = lib.get(path); if (!t) continue;
     list.push({ path, title: t.title, artist: t.artist, album: t.album, secs: h.secs, plays: h.plays });
     const a = art.get(t.artist.toLowerCase()) ?? art.set(t.artist.toLowerCase(), { name: t.artist, secs: 0, plays: 0, tracks: 0, path, best: -1 }).get(t.artist.toLowerCase());
@@ -376,6 +377,15 @@ const cmds = {
   sleep_status: () => sleepStatus(),
   listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
   listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
+  listening_streak: ({ tzOffsetMin }) => {
+    const day = (t) => Math.floor((t + tzOffsetMin * 60) / 86400), today = day(NOW);
+    const days = [...new Set(history().filter((x) => x.plays > 0).map((x) => day(x.t)))].sort((a, b) => a - b);
+    let run = 0, longest = 0, prev = null;
+    for (const d of days) { run = prev === d - 1 ? run + 1 : 1; longest = Math.max(longest, run); prev = d; }
+    const playedToday = days.includes(today); let d = playedToday ? today : today - 1, current = 0;
+    while (days.includes(d)) { current++; d--; }
+    return { current, longest, total_days: days.length, played_today: playedToday, today, recent: days.filter((x) => x > today - 14 && x <= today) };
+  },
   mixes: () => mockMixes(),
   clear_history: () => { HISTORY = []; },
   set_count_percent: ({ percent }) => { S.countPercent = Math.max(1, Math.min(100, percent)); },

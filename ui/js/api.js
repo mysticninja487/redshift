@@ -95,6 +95,7 @@ export const api = {
   // favourites and play history
   listeningTotals: (ranges) => invoke('listening_totals', { ranges }),
   listeningReport: (from, to, tzOffsetMin) => invoke('listening_report', { from, to, tzOffsetMin }),
+  listeningStreak: (tzOffsetMin) => invoke('listening_streak', { tzOffsetMin }),
   mixes: () => invoke('mixes'),
   clearHistory: () => invoke('clear_history'),
   setRecordHistory: (on) => invoke('set_record_history', { on }),
