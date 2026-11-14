@@ -45,6 +45,14 @@ pub struct Heard {
     pub plays: u32,
 }
 
+/// What the log holds about a single track.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
+pub struct TrackHistory {
+    pub secs: f64,
+    pub first: Option<u64>,
+    pub last: Option<u64>,
+}
+
 pub struct History {
     path: PathBuf,
     paths: Vec<PathBuf>,
@@ -200,6 +208,19 @@ impl History {
         days
     }
 
+    /// Everything the log holds about one track: total time heard, and when it was first and last heard.
+    pub fn of_track(&self, path: &Path) -> TrackHistory {
+        let Some(&idx) = self.index.get(path) else { return TrackHistory::default() };
+        let mut out = TrackHistory::default();
+        for r in self.rows.iter().filter(|r| r.track == idx) {
+            let t = r.bucket as u64 * BUCKET_SECS;
+            out.secs += r.secs as f64;
+            out.first = Some(out.first.map_or(t, |f| f.min(t)));
+            out.last = Some(out.last.map_or(t, |l| l.max(t)));
+        }
+        out
+    }
+
     /// Tracks heard before `before` (seconds since the epoch), with the time of the first listen.
     pub fn first_heard(&self) -> HashMap<&Path, u64> {
         let mut out: HashMap<&Path, u64> = HashMap::new();
@@ -277,6 +298,19 @@ mod tests {
         assert_eq!(h.play_days(0), vec![5]);
         assert_eq!(h.play_days(120), vec![5, 6], "two hours ahead, 23:00 UTC is already tomorrow");
         assert_eq!(h.play_days(-60), vec![4, 5]);
+    }
+
+    #[test]
+    fn one_track_history_adds_up() {
+        let d = tempfile::tempdir().unwrap();
+        let mut h = open(d.path());
+        let a = Path::new("/a.flac");
+        h.add(a, 3 * DAY, 10.0, 1);
+        h.add(a, 9 * DAY, 20.0, 0);
+        h.add(Path::new("/b.flac"), 5 * DAY, 99.0, 1);
+        let t = h.of_track(a);
+        assert_eq!((t.secs, t.first, t.last), (30.0, Some(3 * DAY), Some(9 * DAY)));
+        assert_eq!(h.of_track(Path::new("/never.flac")), TrackHistory::default());
     }
 
     #[test]

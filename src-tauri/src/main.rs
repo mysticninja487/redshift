@@ -20,7 +20,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use redshift_core::app::{App, CustomPreset, EqSettings, PlayStat, Settings, TraySettings};
+use redshift_core::app::{App, CustomPreset, EqSettings, PlayStat, Settings, SongInfo, TraySettings};
 use redshift_core::dsp::eq::{BAND_COUNT, BAND_FREQS, PRESETS};
 use redshift_core::dsp::spectrum::{SpectrumConfig, VizFrame};
 use redshift_core::engine::output::{list_output_devices, DeviceInfo};
@@ -467,6 +467,31 @@ fn set_record_history(state: State<AppState>, on: bool) {
 #[tauri::command(async)]
 fn play_stats(state: State<AppState>) -> Vec<PlayStat> {
     state.0.play_stats()
+}
+/// What the Help & about page shows about this install.
+#[derive(serde::Serialize)]
+struct AppInfo {
+    version: &'static str,
+    data_dir: PathBuf,
+    os: &'static str,
+}
+#[tauri::command]
+fn app_info(state: State<AppState>) -> AppInfo {
+    AppInfo { version: env!("CARGO_PKG_VERSION"), data_dir: state.0.data_dir().to_path_buf(), os: std::env::consts::OS }
+}
+/// Opens the folder holding Redshift's own files (library, playlists, settings) in the file manager.
+#[tauri::command]
+fn open_data_folder(state: State<AppState>) -> CmdResult<()> {
+    let dir = state.0.data_dir().to_path_buf();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let opener = if cfg!(windows) { "explorer" } else if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    // Explorer reports failure even when it opened the folder, so only a failure to start counts.
+    std::process::Command::new(opener).arg(&dir).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command(async)]
+fn song_info(state: State<AppState>, path: PathBuf) -> CmdResult<SongInfo> {
+    state.0.song_info(&path).map_err(err)
 }
 #[tauri::command(async)]
 fn reset_play_stats(state: State<AppState>, path: Option<PathBuf>) {
@@ -923,7 +948,7 @@ fn main() {
             eq_info, set_eq_enabled, set_eq_preamp_db, set_eq_band_db, set_eq_gains_db, apply_eq_preset, eq_curve,
             save_eq_preset, delete_eq_preset, set_tray, toggle_mini_player, mini_size, mini_on_top, favourite_paths, favourites, set_favourite, play_stats,
             listening_totals, listening_report, listening_streak, mixes, clear_history, set_record_history, set_count_percent,
-            reset_play_stats, fonts, import_font, remove_font, relink_playlist, paths_exist,
+            reset_play_stats, song_info, app_info, open_data_folder, fonts, import_font, remove_font, relink_playlist, paths_exist,
             viz_frame, configure_viz, ui_state, set_ui_state,
             library_folders, add_library_folder, remove_library_folder, scan_library, is_scanning,
             library_tracks, search_library, library_albums, library_artists, recently_added, track_meta, lyrics, tag_form, write_tags, save_lyrics_file, write_look_file, read_look_file, image_preview, waveform,

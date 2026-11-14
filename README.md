@@ -68,6 +68,8 @@ This is an early version. If something breaks, please [open an issue](https://gi
 - Choose how much of a song counts as a play: **Settings > Playback > A song counts as played after**, from 1% to 100% of its length (50% by default). Skipping past a song doesn't count. It drives the play counts, Most played, Stats and the mixes. Songs you only flick past (under the threshold) still show in recently played and in your listening time, but never in most played, taste or mixes.
 - **Listening streak** on the Stats screen: how many days in a row you've played something, your longest run, and the last two weeks at a glance. A song only counts once it passes the play threshold above.
 - **Taste** only lists real genres. Video-site categories such as "Film & Animation" or "People & Blogs" are ignored, and songs without a genre tag show up as a dimmed **Unknown** row.
+- **Song info**: right-click a song > **Song info…**, press `I` for the one playing, or use the info button beside the title on Now Playing (right-clicking the title opens the same menu as a song in the library). It shows the tags, the format, bitrate, sample rate and bit depth, ReplayGain, how often and when you played it, and where the file is.
+- **Help & about** (`F1`, or Settings > Help & about): a short guide, every shortcut with whatever you've changed it to, the version, and a button that opens the folder where Redshift keeps its files.
 - Click the **total time** next to the progress bar to show the time left instead (turn it off in **Settings > Appearance > Progress bar**).
 - A sleep timer in the top bar: stop in 15 minutes to 2 hours, or at the end of the current song. The volume fades out over the last ten seconds and returns to where it was.
 
@@ -93,7 +95,8 @@ This is an early version. If something breaks, please [open an issue](https://gi
 | `←` `→` | Seek 5 s | `Shift` + `V` | Visualisers on / off |
 | `↑` `↓` | Volume | `L` | Lyrics on / off |
 | `S` `R` `M` | Shuffle, repeat, mute | `E` | Equaliser |
-| `T` | Edit tags of the current song | | |
+| `T` | Edit tags of the current song | `I` | Song info of the current song |
+| `F1` | Help & about | | |
 | `1` `2` `3` | Now playing, Library, Settings | `D` | Light / dark |
 | `Ctrl` + `F` | Search the library | `F` | Fullscreen |
 

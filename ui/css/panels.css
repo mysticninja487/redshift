@@ -162,6 +162,9 @@
 .i-title-row .i-title { min-width: 0; }
 .i-fav { opacity: 1; flex: none; width: 34px; height: 34px; }
 .i-fav:not(.on) { color: var(--fg3); }
+.i-infobtn { display: grid; place-items: center; flex: none; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--fg3); cursor: pointer; transition: color .12s, transform .12s; }
+.i-infobtn:hover { color: var(--accent); transform: scale(1.1); }
+.i-infobtn[hidden] { display: none; }
 
 /* ---------- quiet hero (visualisers off) ---------- */
 .hero[data-mode="none"] { display: none; }

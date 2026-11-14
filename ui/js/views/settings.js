@@ -19,11 +19,12 @@ import { mountViz } from '../viz/engine.js';
 import { button, colorInput, iconButton, segmented, select, slider as bareSlider, toggle } from '../ui/controls.js';
 import { mount as mountEq } from '../panels/eq.js';
 import { confirmDialog } from '../ui/dialog.js';
+import { aboutBlock, openHelp } from '../ui/help.js';
 
 // [id, label, icon]. The 'skin' entry only exists for skins that have options of their own.
 const TABS = [
   ['appearance', 'Appearance', 'palette'], ['skin', '', 'record'], ['playback', 'Playback', 'play'], ['eq', 'Equaliser', 'eq'], ['lyrics', 'Lyrics & info', 'lyrics'],
-  ['visual', 'Visualisers', 'viz'], ['layout', 'Layout', 'layout'], ['ambient', 'Ambient mode', 'ambient'], ['mini', 'Mini player', 'pip'], ['keys', 'Shortcuts', 'keyboard'], ['data', 'Data & reset', 'database'],
+  ['visual', 'Visualisers', 'viz'], ['layout', 'Layout', 'layout'], ['ambient', 'Ambient mode', 'ambient'], ['mini', 'Mini player', 'pip'], ['keys', 'Shortcuts', 'keyboard'], ['data', 'Data & reset', 'database'], ['help', 'Help & about', 'info'],
 ];
 const HERO_MODES = [{ value: 'art', label: 'Cover art' }, { value: 'turntable', label: 'Turntable' }, { value: 'viz', label: 'Visualiser' }, { value: 'none', label: 'Nothing' }];
 const SLOT_NAMES = { top: 'Top', left: 'Left', stage: 'Centre', right: 'Right', bottom: 'Bottom' };
@@ -483,6 +484,16 @@ export function mountSettings(root) {
     return h('div', { class: 'set-page' }, group('Keyboard', h('p', { class: 'hint' }, 'Click a shortcut, then press the keys you want. Escape cancels.'), ...rows, h('div', { class: 'set-row' }, button('Restore all defaults', () => { import('../prefs.js').then((m) => { m.setPref('keys', {}); render(); }); }))));
   }
 
+  // ---------- Help ----------
+  function helpTab() {
+    return h('div', { class: 'set-page' },
+      group('Help', h('p', { class: 'hint' }, 'A short guide to what Redshift can do, and every keyboard shortcut. F1 opens it from anywhere.'),
+        h('div', { class: 'set-row set-actions' },
+          button('Open the guide', () => openHelp('guide')),
+          button('Shortcut list', () => openHelp('keys')))),
+      group('About', aboutBlock()));
+  }
+
   // ---------- Data ----------
   function data() {
     return h('div', { class: 'set-page' },
@@ -511,7 +522,7 @@ export function mountSettings(root) {
       group('Reset', row('Everything', button('Reset all appearance settings', async () => { if (await confirmDialog('Reset everything?', 'Every skin goes back to its defaults and shortcuts are restored. Your music, playlists and playback settings are untouched.', { ok: 'Reset all' })) { const { setPref } = await import('../prefs.js'); setPref('skins', {}); setPref('keys', {}); render(); } }, { cls: 'danger' }))));
   }
 
-  const TAB_BUILDERS = { appearance, skin: skinTab, layout, visual, playback, eq: eqTab, lyrics: lyricsTab, ambient: ambientPage, mini: miniPage, keys: keysTab, data };
+  const TAB_BUILDERS = { appearance, skin: skinTab, layout, visual, playback, eq: eqTab, lyrics: lyricsTab, ambient: ambientPage, mini: miniPage, keys: keysTab, data, help: helpTab };
   on('ui', () => { if (state.view === 'settings' && getPrefs().skin !== renderedSkin) render(); });
   on('view', (v) => { if (v === 'settings') render(); else { previews.forEach((p) => p.destroy?.()); previews = []; } });
   render();

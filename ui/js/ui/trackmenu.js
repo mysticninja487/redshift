@@ -18,6 +18,7 @@ export async function trackMenuItems(paths, extra = []) {
     { label: 'Play next', onClick: () => queueNext(paths) },
     { label: 'Add to queue', onClick: () => queueAdd(paths) },
     { sep: true },
+    ...(paths.length === 1 ? [{ label: 'Song info…', onClick: async () => { const { openSongInfo } = await import('./songinfo.js'); openSongInfo(paths[0]); } }] : []),
     { label: paths.length > 1 ? `Edit tags (${paths.length} songs)…` : 'Edit tags…', disabled: !paths.length, onClick: async () => { const { openTagEditor } = await import('./tageditor.js'); openTagEditor(paths); } },
     { label: paths.every((p) => state.favs.has(p)) ? 'Remove from favourites' : 'Add to favourites', onClick: () => toggleFavourite(paths) },
     {

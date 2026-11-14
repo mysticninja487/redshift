@@ -377,6 +377,15 @@ const cmds = {
   sleep_status: () => sleepStatus(),
   listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
   listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
+  app_info: () => ({ version: '0.5.3', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
+  open_data_folder: () => null,
+  song_info: ({ path }) => {
+    const t = tracks.find((x) => x.path === path); if (!t) throw new Error('That file isn\u2019t there any more');
+    const h = history().filter((x) => x.path === path);
+    return { meta: { ...t, size: 31_400_000, modified: NOW - 86400 * 40, added: NOW - 86400 * 30, replaygain_track_db: -6.4, replaygain_album_db: null, has_embedded_lyrics: false, bitrate_kbps: 962, bit_depth: 16, channels: 2, sample_rate: 44100, format: t.format ?? 'flac' },
+      in_library: true, favourite: false, plays: h.reduce((n, x) => n + x.plays, 0), last_played: h.length ? Math.max(...h.map((x) => x.t)) : 0,
+      listened_secs: h.reduce((n, x) => n + x.secs, 0), first_heard: h.length ? Math.min(...h.map((x) => x.t)) : null, lyrics: 'none' };
+  },
   listening_streak: ({ tzOffsetMin }) => {
     const day = (t) => Math.floor((t + tzOffsetMin * 60) / 86400), today = day(NOW);
     const days = [...new Set(history().filter((x) => x.plays > 0).map((x) => day(x.t)))].sort((a, b) => a - b);

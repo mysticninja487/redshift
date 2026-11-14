@@ -3179,7 +3179,7 @@ dependencies = [
 
 [[package]]
 name = "redshift"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "redshift-core",
  "serde",
@@ -3195,7 +3195,7 @@ dependencies = [
 
 [[package]]
 name = "redshift-core"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "audiopus",
  "cpal",

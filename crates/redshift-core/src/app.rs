@@ -263,6 +263,24 @@ impl Drop for ScanGuard<'_> {
     }
 }
 
+/// Everything the song info dialog shows about one song.
+#[derive(Debug, Clone, Serialize)]
+pub struct SongInfo {
+    pub meta: TrackMeta,
+    pub in_library: bool,
+    pub favourite: bool,
+    /// Times listened to past the play threshold.
+    pub plays: u32,
+    /// Seconds since the epoch of the last start; 0 if never played.
+    pub last_played: u64,
+    /// Total seconds spent listening to it, from the history log.
+    pub listened_secs: f64,
+    /// When the history log first heard it (to within 15 minutes).
+    pub first_heard: Option<u64>,
+    /// "file" (an .lrc or .txt next to the song), "embedded" (in the tags) or "none".
+    pub lyrics: &'static str,
+}
+
 /// How often and how recently a track was played.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PlayStat {
@@ -963,6 +981,32 @@ impl App {
         v.sort_by(|a, b| a.path.cmp(&b.path));
         v
     }
+    /// Everything known about one song, for its info dialog: tags, audio and file details, and how
+    /// it has been listened to.
+    pub fn song_info(&self, path: &Path) -> Result<SongInfo> {
+        let in_library = self.library.lock().get(path).is_some();
+        let meta = self.track_meta(path)?;
+        let stat = self.stats.lock().get(path);
+        let heard = self.history.lock().of_track(path);
+        let lyrics = if lyrics::sidecar_path(path).is_some() {
+            "file"
+        } else if meta.has_embedded_lyrics {
+            "embedded"
+        } else {
+            "none"
+        };
+        Ok(SongInfo {
+            favourite: self.stats.lock().is_favourite(path),
+            plays: stat.plays,
+            last_played: stat.last_played,
+            listened_secs: heard.secs,
+            first_heard: heard.first,
+            lyrics,
+            in_library,
+            meta,
+        })
+    }
+
     /// Forgets the play history of one track, or of everything if `path` is `None`.
     pub fn reset_play_stats(&self, path: Option<&Path>) {
         self.with_stats(|s| s.reset(path));
@@ -1194,6 +1238,38 @@ mod tests {
             assert!(std::time::Instant::now() < deadline, "timed out waiting for {what}");
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn song_info_gathers_tags_plays_favourite_and_lyrics() {
+        let m = music();
+        let d = tempfile::tempdir().unwrap();
+        let app = open(d.path());
+        app.add_library_folder(m.path()).unwrap();
+        app.scan_library(&mut |_| {}).unwrap();
+        let a = m.path().join("a.flac");
+
+        let info = app.song_info(&a).unwrap();
+        assert!(info.in_library && !info.favourite);
+        assert_eq!((info.plays, info.last_played, info.first_heard), (0, 0, None));
+        assert_eq!(info.lyrics, if info.meta.has_embedded_lyrics { "embedded" } else { "none" });
+        assert_eq!(info.meta.format, "flac");
+
+        app.set_favourite(&[a.clone()], true);
+        app.history.lock().add(&a, now_secs(), 42.0, 1);
+        fs::write(m.path().join("a.lrc"), "[00:01.00]hi").unwrap();
+        let info = app.song_info(&a).unwrap();
+        assert!(info.favourite);
+        assert_eq!(info.listened_secs, 42.0);
+        assert!(info.first_heard.is_some());
+        assert_eq!(info.lyrics, "file");
+
+        // A file outside the library still gets its details from disk.
+        let outside = tempfile::tempdir().unwrap();
+        fs::copy(fixture("tagged.mp3"), outside.path().join("x.mp3")).unwrap();
+        let info = app.song_info(&outside.path().join("x.mp3")).unwrap();
+        assert!(!info.in_library);
+        assert!(app.song_info(&outside.path().join("missing.mp3")).is_err());
     }
 
     #[test]

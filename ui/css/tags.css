@@ -62,3 +62,46 @@
 /* Your own skins */
 .sc-mine { margin-left: .5em; padding: .05em .5em; border-radius: 999px; font: 600 .66rem var(--font-body); letter-spacing: .04em; text-transform: uppercase; color: var(--accent-fg, var(--fg)); background: color-mix(in srgb, var(--accent) 22%, transparent); vertical-align: .1em; }
 .set-actions { flex-wrap: wrap; gap: .5rem; }
+
+/* song info */
+.dialog.si-dialog { width: min(520px, 94vw); max-height: min(88vh, 760px); grid-template-rows: auto minmax(0, 1fr) auto; }
+.si-head { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.si-art { position: relative; flex: none; width: 64px; height: 64px; border-radius: 8px; overflow: hidden; display: grid; place-items: center; background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg3); }
+.si-art .si-cover { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
+.si-art.has-cover .si-cover { opacity: 1; }
+.si-art.has-cover > svg { display: none; }
+.si-who { min-width: 0; }
+.si-who .dialog-title { overflow-wrap: anywhere; }
+.si-sub { margin: 2px 0 0; color: var(--fg2); font-size: .88rem; overflow-wrap: anywhere; }
+.si-body { overflow: auto; display: grid; gap: 16px; align-content: start; padding-right: 4px; }
+.si-h { margin: 0 0 6px; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--fg3); font-weight: 600; }
+.si-list { margin: 0; display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 5px 16px; font-size: .88rem; }
+.si-list dt { color: var(--fg2); }
+.si-list dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.si-list dd.si-path { font-family: var(--font-mono); font-size: .8rem; user-select: text; }
+.si-dialog .dialog-actions { flex-wrap: wrap; }
+
+/* help & about */
+.dialog.hp-dialog { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.hp-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line, color-mix(in srgb, var(--fg) 14%, transparent)); }
+.hp-tab { border: 0; background: none; color: var(--fg2); padding: 8px 12px; font: inherit; font-size: .9rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.hp-tab:hover { color: var(--fg); }
+.hp-tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+.hp-guide { display: grid; gap: 18px; }
+.hp-list { margin: 0; display: grid; gap: 10px; font-size: .88rem; }
+.hp-guide .hp-list { gap: 0; }
+.hp-guide .hp-list dt { font-weight: 600; }
+.hp-guide .hp-list dd { margin: 2px 0 12px; color: var(--fg2); line-height: 1.45; }
+.hp-keylist { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 6px 18px; font-size: .88rem; }
+.hp-keylist dd { margin: 0; justify-self: end; }
+.hp-keylist kbd, .hp-keys kbd { font-family: var(--font-mono); font-size: .78rem; padding: 2px 7px; border-radius: 5px; background: color-mix(in srgb, var(--fg) 9%, transparent); }
+.hp-about { display: grid; gap: 12px; }
+.hp-name { margin: 0; display: flex; align-items: baseline; gap: 10px; }
+.hp-name b { font-size: 1.15rem; font-family: var(--font-display); }
+.hp-name span { color: var(--fg2); font-size: .9rem; }
+.hp-about .hp-list { grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; }
+.hp-about .hp-list dt { color: var(--fg2); }
+.hp-about .hp-list dd { margin: 0; display: grid; gap: 3px; overflow-wrap: anywhere; }
+.hp-hint { color: var(--fg3); font-size: .8rem; }
+.hp-actions { justify-content: flex-start; flex-wrap: wrap; }
+.hp-about .si-path { font-family: var(--font-mono); font-size: .8rem; user-select: text; }

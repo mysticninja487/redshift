@@ -41,6 +41,8 @@ export const ACTIONS = [
   { id: 'eqdrawer', label: 'Equaliser', key: 'E', run: () => toggleEqDrawer() },
   { id: 'scheme', label: 'Light / dark', key: 'D', run: () => { const cur = document.documentElement.dataset.scheme; set('color.scheme', cur === 'dark' ? 'light' : 'dark'); } },
   { id: 'tags', label: 'Edit tags of the current track', key: 'T', run: async () => { if (!state.trackPath) return; const { openTagEditor } = await import('./ui/tageditor.js'); openTagEditor([state.trackPath]); } },
+  { id: 'songinfo', label: 'Song info of the current track', key: 'I', run: async () => { const { openCurrentSongInfo } = await import('./ui/songinfo.js'); openCurrentSongInfo(); } },
+  { id: 'help', label: 'Help & about', key: 'F1', run: async () => { const { openHelp } = await import('./ui/help.js'); openHelp(); } },
   { id: 'ambient', label: 'Ambient mode', key: 'A', run: () => toggleAmbient() },
   { id: 'fullscreen', label: 'Fullscreen', key: 'F', run: () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.().catch(() => {}); } },
 ];
