@@ -207,6 +207,38 @@ fn seeking_jumps_to_the_requested_position() {
     assert!(hz < 1_700.0, "after seeking back the chirp should be low again, got {hz} Hz");
 }
 
+/// A seek reopens the playing track, which used to leave the already preloaded next track with an older
+/// load id than the current one. When the song then ended, the player took the join into the next track
+/// for stale news and ignored it: the screen stayed on the old song, and the next seek restarted it.
+#[test]
+fn the_queue_follows_the_music_into_the_next_track_after_a_seek() {
+    for crossfade in [0.0, 0.5] {
+        let mut r = rig(4.0);
+        r.player.set_crossfade_secs(crossfade);
+        r.player.set_queue(paths(&["chirp_44k_stereo.flac", "chirp_48k_stereo.opus"]), 0, true);
+        r.wait_event("start", |e| matches!(e, PlayerEvent::TrackChanged { entry_id: Some(_) }));
+        let ids = r.entry_ids();
+        r.wait_position("playback", |p| p > 0.3);
+        let first_secs = r.player.queue().current.unwrap().duration_secs.unwrap();
+        r.player.seek(0.5);
+        r.player.seek(0.8);
+        r.wait_event(&format!("the second track to be announced (crossfade {crossfade})"), |e| *e == PlayerEvent::TrackChanged { entry_id: Some(ids[1]) });
+        // It has to be announced when the music moves on, not later when the player notices that the
+        // second track ran out: by now only the first track (plus the stretch replayed by the seeks)
+        // and the start of the second can have come out of the speakers.
+        let played = r.sink.lock().len() as f64 / 2.0 / RATE as f64;
+        assert!(played < first_secs + 2.0, "announced {played:.1} s into the output, the first track is {first_secs:.1} s long");
+        let q = r.player.queue();
+        assert_eq!(q.current_entry, Some(ids[1]), "the queue says the second track is playing");
+        assert!(q.current.as_ref().is_some_and(|c| c.path.ends_with("chirp_48k_stereo.opus")));
+        // And a seek now acts on the track that is really playing.
+        r.player.seek(0.5);
+        r.wait_position("the second track to play on", |p| p > 0.45);
+        assert_eq!(r.player.queue().current_entry, Some(ids[1]));
+        r.wait_ended();
+    }
+}
+
 #[test]
 fn pause_silences_and_holds_the_position_then_resume_continues() {
     let r = rig(2.0);

@@ -602,9 +602,19 @@ impl Core {
             };
             match self.load(&entry, start_secs) {
                 Ok(track) => {
-                    self.current_load = Some(track.id);
+                    let id = track.id;
+                    self.current_load = Some(id);
                     self.failed_next = None;
                     self.send(Command::Start { track, fade_frames });
+                    // The mixer keeps a preloaded follow-up across a Start, but load ids only ever go
+                    // up (see `on_mixer_event`). A follow-up loaded before this track would look like
+                    // stale news when the music joins into it: the queue would stay on this track while
+                    // the next one played, and a seek would then restart this one. So drop it; the
+                    // `refresh_next` below loads it again with a newer id.
+                    if self.next_load.is_some_and(|(n, _)| n < id) {
+                        self.send(Command::SetNext(None));
+                        self.next_load = None;
+                    }
                     if autoplay {
                         self.send(Command::Play);
                     }
