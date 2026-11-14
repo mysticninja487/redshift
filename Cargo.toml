@@ -7,7 +7,7 @@ members = ["crates/redshift-core", "src-tauri"]
 default-members = ["crates/redshift-core"]
 
 [workspace.package]
-version = "0.5.3"
+version = "0.5.4"
 edition = "2021"
 license = "MIT"
 rust-version = "1.85"

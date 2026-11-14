@@ -158,11 +158,11 @@
 @container (max-width: 360px) { .eq-band:nth-child(even) .eq-freq { visibility: hidden; } .eq-val { font-size: .55rem; } .eq-head { gap: 6px; } }
 
 /* favourite heart next to the playing title */
-.i-title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.i-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .i-title-row .i-title { min-width: 0; }
 .i-fav { opacity: 1; flex: none; width: 34px; height: 34px; }
 .i-fav:not(.on) { color: var(--fg3); }
-.i-infobtn { display: grid; place-items: center; flex: none; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--fg3); cursor: pointer; transition: color .12s, transform .12s; }
+.i-infobtn { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin-left: -4px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--fg3); cursor: pointer; transition: color .12s, transform .12s; }
 .i-infobtn:hover { color: var(--accent); transform: scale(1.1); }
 .i-infobtn[hidden] { display: none; }
 

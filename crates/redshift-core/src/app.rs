@@ -28,7 +28,7 @@ use crate::library::{write_json_atomic, Album, Artist, Library, ScanProgress, Sc
 use crate::lyrics::{self, Lyrics};
 use crate::meta::{self, Cover, TrackMeta};
 use crate::playlists::{ImportReport, Playlist, PlaylistId, PlaylistStore, PlaylistSummary, RelinkReport};
-use crate::queue::RepeatMode;
+use crate::queue::{QueuePolicy, RepeatMode};
 use crate::thumb;
 use crate::resolve::Resolver;
 use crate::history::{Heard, History};
@@ -167,6 +167,16 @@ pub struct Settings {
     pub record_history: bool,
     /// How much of a song has to be heard to count as a play, in percent (1 to 100).
     pub count_percent: u8,
+    /// Songs already in the queue are not added again.
+    pub queue_no_duplicates: bool,
+    /// Shuffle stays on when you open another album or playlist. Off, opening one turns shuffle off
+    /// so it plays in order.
+    pub keep_shuffle: bool,
+    /// With shuffle on, "Add to queue" mixes songs into the ones still to play. Off, they play after
+    /// them, in the order added.
+    pub shuffle_whole_queue: bool,
+    /// Show a notification when a new song starts while no Redshift window is in front.
+    pub notify_on_track: bool,
     /// Owned by the front end (theme, layout, customisation); stored as is.
     pub ui: Value,
 }
@@ -190,6 +200,10 @@ impl Default for Settings {
             watch_folders: true,
             record_history: true,
             count_percent: 50,
+            queue_no_duplicates: false,
+            keep_shuffle: true,
+            shuffle_whole_queue: true,
+            notify_on_track: false,
             ui: Value::Null,
         }
     }
@@ -346,6 +360,7 @@ impl App {
         player.set_volume(settings.volume);
         player.set_muted(settings.muted);
         player.set_shuffle(settings.shuffle);
+        player.set_queue_policy(QueuePolicy { no_duplicates: settings.queue_no_duplicates, mix_added: settings.shuffle_whole_queue });
         player.set_repeat(settings.repeat);
         player.set_crossfade_secs(settings.crossfade_secs);
         player.set_replaygain(settings.replaygain, settings.replaygain_preamp_db);
@@ -579,6 +594,34 @@ impl App {
     pub fn set_shuffle(&self, on: bool) {
         self.player.set_shuffle(on);
         self.update(|s| s.shuffle = on);
+    }
+    pub fn set_notify_on_track(&self, on: bool) {
+        self.update(|s| s.notify_on_track = on);
+    }
+    pub fn notify_on_track(&self) -> bool {
+        self.settings.lock().notify_on_track
+    }
+    /// The three queue switches: no duplicates, keep shuffle across queues, shuffle the whole queue.
+    pub fn set_queue_options(&self, no_duplicates: bool, keep_shuffle: bool, shuffle_whole_queue: bool) {
+        self.update(|s| {
+            s.queue_no_duplicates = no_duplicates;
+            s.keep_shuffle = keep_shuffle;
+            s.shuffle_whole_queue = shuffle_whole_queue;
+        });
+        self.player.set_queue_policy(QueuePolicy { no_duplicates, mix_added: shuffle_whole_queue });
+    }
+    /// Replaces the queue with something the user just chose to play (an album, a playlist, a file
+    /// opened from outside). Unless "keep shuffle" is on, a shuffle left over from the last queue is
+    /// turned off first, so the new one plays in order; a shuffle play asks for shuffle again after.
+    pub fn play_queue(&self, paths: Vec<PathBuf>, start: usize, autoplay: bool) {
+        let (keep, shuffled) = {
+            let s = self.settings.lock();
+            (s.keep_shuffle, s.shuffle)
+        };
+        if shuffled && !keep {
+            self.set_shuffle(false);
+        }
+        self.player.set_queue(paths, start, autoplay);
     }
     pub fn set_repeat(&self, mode: RepeatMode) {
         self.player.set_repeat(mode);
@@ -854,7 +897,7 @@ impl App {
         let songs = crate::open::expand(inputs);
         let n = songs.len();
         if n > 0 {
-            self.player.set_queue(songs, 0, true);
+            self.play_queue(songs, 0, true);
         }
         n
     }
@@ -1194,7 +1237,7 @@ impl App {
         let start = start.min(tracks.len() - 1);
         let new_start = exists[..start].iter().filter(|&&e| e).count().min(playable - 1);
         let tracks: Vec<PathBuf> = tracks.into_iter().zip(exists).filter_map(|(t, e)| e.then_some(t)).collect();
-        self.player.set_queue(tracks, new_start, true);
+        self.play_queue(tracks, new_start, true);
         Ok(())
     }
 }
@@ -1238,6 +1281,34 @@ mod tests {
             assert!(std::time::Instant::now() < deadline, "timed out waiting for {what}");
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn opening_a_queue_turns_shuffle_off_unless_it_is_kept() {
+        let m = music();
+        let d = tempfile::tempdir().unwrap();
+        let app = open(d.path());
+        let two = vec![m.path().join("a.flac"), m.path().join("b.mp3")];
+        assert!(app.settings().keep_shuffle, "kept by default");
+
+        app.set_shuffle(true);
+        app.play_queue(two.clone(), 0, false);
+        wait_for("the queue to load", || app.player.queue().entries.len() == 2);
+        assert!(app.player.queue().shuffle && app.settings().shuffle, "kept across queues");
+
+        app.set_queue_options(false, false, true);
+        app.play_queue(two.clone(), 0, false);
+        wait_for("shuffle to turn off", || !app.player.queue().shuffle);
+        assert!(!app.settings().shuffle, "the saved setting follows");
+
+        // Asking for shuffle after opening it (what the Shuffle buttons do) still works.
+        app.set_shuffle(true);
+        wait_for("shuffle back on", || app.player.queue().shuffle);
+        assert!(app.settings().shuffle);
+
+        // The switches are remembered.
+        let s = app.settings();
+        assert!(!s.queue_no_duplicates && !s.keep_shuffle && s.shuffle_whole_queue);
     }
 
     #[test]

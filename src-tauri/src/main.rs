@@ -50,7 +50,7 @@ fn err(e: impl std::fmt::Display) -> String {
 
 #[tauri::command(async)]
 fn set_queue(state: State<AppState>, paths: Vec<PathBuf>, start: usize, autoplay: bool) {
-    state.0.player.set_queue(paths, start, autoplay);
+    state.0.play_queue(paths, start, autoplay);
 }
 #[tauri::command(async)]
 fn play_entry(state: State<AppState>, id: EntryId) {
@@ -739,6 +739,50 @@ fn set_watch_folders(state: State<AppState>, on: bool) {
     state.0.set_watch_folders(on);
 }
 #[tauri::command]
+fn set_queue_options(state: State<AppState>, no_duplicates: bool, keep_shuffle: bool, shuffle_whole_queue: bool) {
+    state.0.set_queue_options(no_duplicates, keep_shuffle, shuffle_whole_queue);
+}
+#[tauri::command]
+fn set_notify_on_track(state: State<AppState>, on: bool) {
+    state.0.set_notify_on_track(on);
+}
+/// Whether Windows starts Redshift when you sign in. Read from the system each time, since it can also be
+/// changed outside the app (Task Manager > Startup).
+#[tauri::command]
+fn launch_on_startup(app: AppHandle) -> bool {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+#[tauri::command]
+fn set_launch_on_startup(app: AppHandle, on: bool) -> CmdResult<bool> {
+    use tauri_plugin_autostart::ManagerExt;
+    let launcher = app.autolaunch();
+    if on { launcher.enable() } else { launcher.disable() }.map_err(err)?;
+    Ok(launcher.is_enabled().unwrap_or(on))
+}
+
+/// A notification for the song that just started, when the player is out of sight: no Redshift window
+/// is focused (it is minimised, in the tray, behind another app, or you are in the mini player's shadow).
+/// Waits a moment so a song that was only just started has begun playing; a queue restored paused at
+/// launch stays quiet that way.
+fn notify_track(app: AppHandle, core: Arc<App>) {
+    use tauri_plugin_notification::NotificationExt;
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(250));
+        if !core.notify_on_track() || core.player.status() != redshift_core::engine::Status::Playing {
+            return;
+        }
+        if app.webview_windows().values().any(|w| w.is_focused().unwrap_or(false)) {
+            return;
+        }
+        let Some(current) = core.player.queue().current else { return };
+        let Ok(meta) = core.track_meta(&current.path) else { return };
+        let who = [meta.artist.as_str(), meta.album.as_str()].into_iter().filter(|s| !s.is_empty() && !s.starts_with("Unknown ")).collect::<Vec<_>>().join(" \u{2014} ");
+        let _ = app.notification().builder().title(&meta.title).body(who).show();
+    });
+}
+
+#[tauri::command]
 fn set_restore_session(state: State<AppState>, on: bool) {
     state.0.set_restore_session(on);
 }
@@ -816,6 +860,8 @@ fn run_off_thread(job: impl FnOnce() + Send + 'static) {
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None::<Vec<&str>>))
         // These answer on a worker thread: reading a cover means parsing a whole audio file's tags,
         // which would otherwise freeze the window while it happens.
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
@@ -881,9 +927,13 @@ fn main() {
 
             // Player events go to the UI as they happen.
             let handle = app.handle().clone();
+            let notifier = core.clone();
             std::thread::Builder::new().name("player-events".into()).spawn(move || {
                 for event in events {
                     let _ = handle.emit("player-event", &event);
+                    if matches!(event, redshift_core::engine::PlayerEvent::TrackChanged { entry_id: Some(_) }) && notifier.notify_on_track() {
+                        notify_track(handle.clone(), notifier.clone());
+                    }
                 }
             })?;
             // Settings changed by sliders are written in batches rather than once per mouse move.
@@ -941,7 +991,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            set_queue, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
+            set_queue, set_queue_options, set_notify_on_track, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
             queue_append, queue_play_next, queue_remove, queue_move, queue_clear, player_state, queue_view,
             get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_replaygain,
             output_devices, set_output_device,

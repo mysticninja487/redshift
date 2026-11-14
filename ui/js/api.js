@@ -111,6 +111,10 @@ export const api = {
   setSleepTimer: (minutes) => invoke('set_sleep_timer', { minutes }), cancelSleepTimer: () => invoke('cancel_sleep_timer'), sleepStatus: () => invoke('sleep_status'),
   setCountPercent: (percent) => invoke('set_count_percent', { percent: Math.round(percent) }),
   setWatchFolders: (on) => invoke('set_watch_folders', { on }),
+  setQueueOptions: (noDuplicates, keepShuffle, shuffleWholeQueue) => invoke('set_queue_options', { noDuplicates, keepShuffle, shuffleWholeQueue }),
+  setNotifyOnTrack: (on) => invoke('set_notify_on_track', { on }),
+  launchOnStartup: () => invoke('launch_on_startup'),
+  setLaunchOnStartup: (on) => invoke('set_launch_on_startup', { on }),
   setRestoreSession: (on) => invoke('set_restore_session', { on }),
   setTray: (minimizeToTray, closeToTray) => invoke('set_tray', { minimizeToTray, closeToTray }),
 };

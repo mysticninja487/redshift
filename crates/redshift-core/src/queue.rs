@@ -18,6 +18,22 @@ pub struct QueueEntry {
     pub path: PathBuf,
 }
 
+/// How songs added to a running queue are treated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QueuePolicy {
+    /// Songs already in the queue are not added again. "Play next" moves the existing one up instead.
+    pub no_duplicates: bool,
+    /// With shuffle on, "Add to queue" mixes the songs in among the ones still to play. Off, they
+    /// play after everything already queued, in the order they were added.
+    pub mix_added: bool,
+}
+
+impl Default for QueuePolicy {
+    fn default() -> Self {
+        Self { no_duplicates: false, mix_added: true }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RepeatMode {
@@ -64,6 +80,7 @@ pub struct Queue {
     pos: Option<usize>,
     shuffle: bool,
     repeat: RepeatMode,
+    policy: QueuePolicy,
     next_id: EntryId,
     rng: Rng,
 }
@@ -87,6 +104,7 @@ impl Queue {
             pos: None,
             shuffle: false,
             repeat: RepeatMode::Off,
+            policy: QueuePolicy::default(),
             next_id: 1,
             rng: seed.map_or_else(Rng::from_clock, Rng),
         }
@@ -106,6 +124,23 @@ impl Queue {
     }
     pub fn repeat(&self) -> RepeatMode {
         self.repeat
+    }
+    pub fn set_policy(&mut self, policy: QueuePolicy) {
+        self.policy = policy;
+    }
+    pub fn policy(&self) -> QueuePolicy {
+        self.policy
+    }
+
+    /// The paths of `paths` that may be added: all of them, or with `no_duplicates` only those not
+    /// queued yet (and each once).
+    fn addable(&self, paths: Vec<PathBuf>) -> Vec<PathBuf> {
+        if !self.policy.no_duplicates {
+            return paths;
+        }
+        let mut seen: std::collections::HashSet<&PathBuf> = self.entries.iter().map(|e| &e.path).collect();
+        let keep: Vec<bool> = paths.iter().map(|p| seen.insert(p)).collect();
+        paths.into_iter().zip(keep).filter_map(|(p, k)| k.then_some(p)).collect()
     }
 
     pub fn current(&self) -> Option<&QueueEntry> {
@@ -231,11 +266,12 @@ impl Queue {
 
     /// Appends to the end of the queue.
     pub fn append(&mut self, paths: Vec<PathBuf>) -> Vec<EntryId> {
+        let paths = self.addable(paths);
         let cur = self.current_index();
         let first_new = self.entries.len();
         let ids: Vec<_> = paths.into_iter().map(|p| self.push_entry(p)).collect();
         let mut new_idx: Vec<usize> = (first_new..self.entries.len()).collect();
-        if self.shuffle {
+        if self.shuffle && self.policy.mix_added {
             // New entries land at random places in the part of the order still to be played.
             for i in new_idx.drain(..) {
                 let lo = self.pos.map_or(0, |p| p + 1);
@@ -253,6 +289,7 @@ impl Queue {
 
     /// Inserts right after the current entry ("play next"), in the given order.
     pub fn insert_next(&mut self, paths: Vec<PathBuf>) -> Vec<EntryId> {
+        let paths = if self.policy.no_duplicates { self.take_for_next(paths) } else { paths };
         let at_pos = self.pos.map_or(0, |p| p + 1);
         let mut ids = Vec::new();
         for (k, path) in paths.into_iter().enumerate() {
@@ -274,6 +311,22 @@ impl Queue {
             self.order.insert(at_pos + k, list_at);
         }
         ids
+    }
+
+    /// For "play next" without duplicates: drops repeats within `paths` and the song that is playing
+    /// right now, and takes any other copy already in the queue out of its old place, so that it is
+    /// queued once, right after the current entry.
+    fn take_for_next(&mut self, paths: Vec<PathBuf>) -> Vec<PathBuf> {
+        let playing = self.current().map(|e| e.path.clone());
+        let mut seen = std::collections::HashSet::new();
+        let paths: Vec<PathBuf> = paths.into_iter().filter(|p| Some(p) != playing.as_ref() && seen.insert(p.clone())).collect();
+        for p in &paths {
+            let old: Vec<EntryId> = self.entries.iter().filter(|e| &e.path == p).map(|e| e.id).collect();
+            for id in old {
+                self.remove(id);
+            }
+        }
+        paths
     }
 
     /// Removes an entry. If it was current, the following entry becomes current (the player decides
@@ -395,6 +448,72 @@ mod tests {
         let mut q = Queue::with_seed(Some(7));
         q.set(paths(names), start);
         q
+    }
+
+    #[test]
+    fn duplicates_are_kept_out_when_asked() {
+        let mut q = queue(&["a", "b"], 0);
+        q.append(paths(&["b", "c", "c", "a"]));
+        assert_eq!(q.len(), 6, "off by default: everything is added");
+        q.set_policy(QueuePolicy { no_duplicates: true, ..QueuePolicy::default() });
+        let ids = q.append(paths(&["a", "d", "d", "c", "e"]));
+        assert_eq!(ids.len(), 2, "only d and e are new");
+        assert_eq!(q.len(), 8);
+        assert!(q.append(paths(&["a", "e"])).is_empty());
+        // Replacing the whole queue is not "adding".
+        q.set(paths(&["x", "x", "y"]), 0);
+        assert_eq!(q.len(), 3);
+    }
+
+    #[test]
+    fn play_next_without_duplicates_moves_the_existing_copy_up() {
+        let mut q = queue(&["a", "b", "c", "d"], 0);
+        q.set_policy(QueuePolicy { no_duplicates: true, ..QueuePolicy::default() });
+        q.insert_next(paths(&["d"]));
+        assert_eq!(upcoming(&q), ["d", "b", "c"]);
+        assert_eq!(q.len(), 4);
+        assert_eq!(cur(&q).as_deref(), Some("a"));
+        // The song that is playing is left alone.
+        assert!(q.insert_next(paths(&["a"])).is_empty());
+        assert_eq!((q.len(), cur(&q).as_deref()), (4, Some("a")));
+        // A batch keeps its order and loses its own repeats.
+        q.insert_next(paths(&["c", "b", "c"]));
+        assert_eq!(upcoming(&q), ["c", "b", "d"]);
+        // Moving a song that sits before the current one keeps the current entry current.
+        let mut q = queue(&["a", "b", "c"], 2);
+        q.set_policy(QueuePolicy { no_duplicates: true, ..QueuePolicy::default() });
+        q.insert_next(paths(&["a"]));
+        assert_eq!((cur(&q).as_deref(), upcoming(&q)), (Some("c"), vec!["a".to_string()]));
+        assert_eq!(q.len(), 3);
+    }
+
+    #[test]
+    fn added_songs_can_play_after_the_shuffled_queue_instead_of_mixing_in() {
+        let names: Vec<String> = (0..40).map(|i| format!("t{i}")).collect();
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        let extra = paths(&["x1", "x2", "x3"]);
+
+        let mut mixed = queue(&refs, 0);
+        mixed.set_shuffle(true);
+        mixed.append(extra.clone());
+        let at: Vec<usize> = upcoming(&mixed).iter().enumerate().filter(|(_, n)| n.starts_with('x')).map(|(i, _)| i).collect();
+        assert!(at.iter().any(|&i| i < 39), "mixing in puts some among the shuffled songs: {at:?}");
+
+        let mut after = queue(&refs, 0);
+        after.set_shuffle(true);
+        after.set_policy(QueuePolicy { mix_added: false, ..QueuePolicy::default() });
+        after.append(extra.clone());
+        let up = upcoming(&after);
+        assert_eq!(&up[up.len() - 3..], ["x1", "x2", "x3"], "they follow the shuffled songs in the order added");
+        assert_eq!(up.len(), 42);
+
+        // With shuffle off it never mattered, and Play next always goes next.
+        let mut plain = queue(&["a", "b"], 0);
+        plain.set_policy(QueuePolicy { mix_added: false, ..QueuePolicy::default() });
+        plain.append(paths(&["c"]));
+        after.insert_next(paths(&["n1"]));
+        assert_eq!(upcoming(&plain), ["b", "c"]);
+        assert_eq!(upcoming(&after)[0], "n1");
     }
 
     #[test]

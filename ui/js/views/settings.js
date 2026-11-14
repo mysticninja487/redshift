@@ -389,15 +389,49 @@ export function mountSettings(root) {
           if (!await confirmDialog('Clear listening history?', 'The Stats screen and your mixes start again from nothing. Play counts, favourites and playlists are not touched.', { ok: 'Clear history' })) return;
           try { await act(api.clearHistory()); toast('Listening history cleared'); } catch (e) { toast(`Could not clear it: ${e}`, 'error'); }
         }, { cls: 'danger' }))),
+      group('Queue', queueOptions()),
       group('Startup', startup()),
+      group('Notifications', row('Song notifications', toggle({ label: 'Song notifications', value: state.settings?.notify_on_track ?? false, onChange: async (v) => { await act(api.setNotifyOnTrack(v)); await refreshSettings(); render(); } }),
+        { hint: 'Shows a notification with the title and artist when a new song starts while Redshift is minimised, in the tray or behind another window.' })),
       group('Window', tray()));
+  }
+
+  /** How songs get added to, and replace, the queue. */
+  function queueOptions() {
+    const s = state.settings ?? {};
+    const cur = { no: s.queue_no_duplicates ?? false, keep: s.keep_shuffle ?? true, whole: s.shuffle_whole_queue ?? true };
+    const save = async (patch) => {
+      const n = { ...cur, ...patch };
+      await act(api.setQueueOptions(n.no, n.keep, n.whole));
+      await refreshSettings();
+      render();
+    };
+    return h('div', null,
+      row('Prevent duplicate songs in the queue', toggle({ label: 'Prevent duplicate songs in the queue', value: cur.no, onChange: (v) => save({ no: v }) }),
+        { hint: 'Avoids adding songs that are already in the current queue. Play next moves a song that is already queued up to the front instead.' }),
+      row('Keep shuffle on across queues', toggle({ label: 'Keep shuffle on across queues', value: cur.keep, onChange: (v) => save({ keep: v }) }),
+        { hint: 'Leave off and shuffle applies only to what is playing: opening an album or playlist afterwards plays it in order. The Shuffle buttons on albums and playlists still shuffle.' }),
+      row('Shuffle the whole queue', toggle({ label: 'Shuffle the whole queue', value: cur.whole, onChange: (v) => save({ whole: v }) }),
+        { hint: 'With shuffle on, songs you add with Add to queue are mixed in with the playlist. Leave off and they play after it, in the order you added them. Play next always plays next.' }));
   }
 
   /** What Redshift does when it opens. */
   function startup() {
     const on = state.settings?.restore_session ?? true;
-    return row('Continue where you left off', toggle({ label: 'Continue where you left off', value: on, onChange: async (v) => { await act(api.setRestoreSession(v)); await refreshSettings(); render(); } }),
-      { hint: 'Opens with your last queue loaded and the song you were on paused at the place you stopped. Nothing plays until you press play.' });
+    // Whether Windows launches Redshift at sign-in is the system's to say (it can be changed in Task Manager too).
+    const login = h('div', { class: 'set-row-inline' });
+    const paintLogin = (enabled) => {
+      const t = toggle({ label: 'Launch on startup', value: enabled, onChange: async (v) => {
+        try { t.set(await api.setLaunchOnStartup(v)); } catch (e) { toast(`Couldn’t change that: ${e}`, 'error'); t.set(!v); }
+      } });
+      login.replaceChildren(t);
+    };
+    paintLogin(false);
+    api.launchOnStartup().then((v) => paintLogin(!!v)).catch(() => login.replaceChildren(h('span', { class: 'hint' }, 'Unavailable here.')));
+    return h('div', null,
+      row('Continue where you left off', toggle({ label: 'Continue where you left off', value: on, onChange: async (v) => { await act(api.setRestoreSession(v)); await refreshSettings(); render(); } }),
+        { hint: 'Opens with your last queue loaded and the song you were on paused at the place you stopped. Nothing plays until you press play.' }),
+      row('Launch on startup', login, { hint: 'Automatically start Redshift when you sign in to Windows.' }));
   }
 
   /** Minimise-to-tray options. They're saved by the app and also tell it to show or hide the tray icon. */

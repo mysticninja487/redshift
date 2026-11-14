@@ -26,7 +26,7 @@ use crate::dsp::eq::EqParams;
 use crate::dsp::spectrum::{Analyzer, SpectrumConfig, VizFrame, VizTap};
 use crate::error::Result;
 use crate::meta::{self, TrackMeta};
-use crate::queue::{EntryId, Queue, QueueEntry, RepeatMode};
+use crate::queue::{EntryId, Queue, QueueEntry, QueuePolicy, RepeatMode};
 
 /// Largest ReplayGain pre-amp either way, in dB.
 pub const MAX_PREAMP_DB: f32 = 12.0;
@@ -188,6 +188,7 @@ enum Msg {
     Stop,
     Seek(f64),
     SetShuffle(bool),
+    SetQueuePolicy(QueuePolicy),
     SetRepeat(RepeatMode),
     SetDevice(Option<String>),
     /// The ReplayGain settings changed: reload what's loaded so the new gain applies now.
@@ -353,6 +354,10 @@ impl Player {
     }
     pub fn set_shuffle(&self, on: bool) {
         self.send(Msg::SetShuffle(on));
+    }
+    /// How songs added to the queue are treated (duplicates, mixing into a shuffle).
+    pub fn set_queue_policy(&self, policy: QueuePolicy) {
+        self.send(Msg::SetQueuePolicy(policy));
     }
     pub fn set_repeat(&self, mode: RepeatMode) {
         self.send(Msg::SetRepeat(mode));
@@ -796,6 +801,7 @@ impl Core {
                 self.queue.set_shuffle(on);
                 self.queue_changed();
             }
+            Msg::SetQueuePolicy(policy) => self.queue.set_policy(policy),
             Msg::SetRepeat(mode) => {
                 self.queue.set_repeat(mode);
                 self.queue_changed();

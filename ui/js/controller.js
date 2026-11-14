@@ -6,7 +6,7 @@ import { asleep as hostAsleep } from './host.js';
 import { emit } from './bus.js';
 import { state } from './state.js';
 import { updateArt } from './theme.js';
-import { toast } from './util.js';
+import { plural, toast } from './util.js';
 
 const metaCache = new Map();
 
@@ -182,11 +182,27 @@ export const playPaths = (paths, start = 0) => act(api.setQueue(paths, start, tr
 /** Plays the given tracks in random order (turning shuffle on). */
 export async function shufflePlay(paths) {
   if (!paths.length) return;
-  await act(api.setShuffle(true));
-  return playPaths(paths, Math.floor(Math.random() * paths.length));
+  // Start the queue first: unless "keep shuffle" is on, opening a queue turns shuffle off.
+  await playPaths(paths, Math.floor(Math.random() * paths.length));
+  return act(api.setShuffle(true));
 }
-export const queueNext = (paths) => act(api.queuePlayNext(paths)).then(() => toast('Added to play next'));
-export const queueAdd = (paths) => act(api.queueAppend(paths)).then(() => toast(paths.length > 1 ? `Added ${paths.length} tracks to the queue` : 'Added to the queue'));
+// With "no duplicates" on, songs already queued are skipped; say so rather than claim they were added.
+const alreadyQueued = (paths) => {
+  if (!(state.settings?.queue_no_duplicates ?? false)) return 0;
+  const have = new Set((state.queue?.entries ?? []).map((e) => e.path)), seen = new Set();
+  return paths.filter((p) => have.has(p) || seen.has(p) || !seen.add(p)).length;
+};
+export const queueNext = (paths) => {
+  const dup = alreadyQueued(paths);
+  return act(api.queuePlayNext(paths)).then(() => toast(dup === paths.length && paths.length === 1 ? 'Already in the queue, moved to play next' : 'Added to play next'));
+};
+export const queueAdd = (paths) => {
+  const dup = alreadyQueued(paths), added = paths.length - dup;
+  return act(api.queueAppend(paths)).then(() => toast(
+    added === 0 ? (paths.length > 1 ? 'Those are all in the queue already' : 'Already in the queue')
+      : dup ? `Added ${plural(added, 'track')} to the queue (${dup} already there)`
+        : paths.length > 1 ? `Added ${paths.length} tracks to the queue` : 'Added to the queue'));
+};
 
 export async function rescanLibrary() {
   if (state.scan?.running) return;
