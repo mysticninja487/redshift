@@ -43,6 +43,8 @@ export const DEFAULT_PREFS = {
   features: { lyrics: true, viz: true, queue: true, timeLeft: true },
   // Whether the right-hand time shows time left (a click on it flips this; the switch above allows the click).
   timeLeft: false,
+  // 'auto' follows the system language; otherwise a language id from i18n.js.
+  language: 'auto',
   // Cost of looks: `lite` drops blur, blend and grain effects; `background` slows animation while the window isn't focused.
   perf: { lite: false, background: true },
   // The mini player. `open` is which size it starts at ('last' remembers the one you used); `list` what the expanded card shows beside the cover.

@@ -5,6 +5,7 @@ import { api, listen } from './api.js';
 import { initController, setView, toggleSettings } from './controller.js';
 import { loadImportedFonts } from './fonts.js';
 import { eqDrawerOpen, onEqDrawer, toggleEqDrawer } from './ui/eqdrawer.js';
+import { initI18n } from './i18n.js';
 import { initKeys } from './keys.js';
 import { mountLayout } from './layout.js';
 import { toggleAmbient } from './ambient.js';
@@ -136,6 +137,7 @@ async function bootMini() {
 async function boot() {
   if (!window.__TAURI__) await import('../dev/mock.js');
   await loadPrefs();
+  await initI18n();
   try { followOtherWindows(listen); } catch { /* plain browser: there is no other window */ }
   await loadImportedFonts();
   applyTheme();

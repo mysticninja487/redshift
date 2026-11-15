@@ -20,6 +20,7 @@ import { button, colorInput, iconButton, segmented, select, slider as bareSlider
 import { mount as mountEq } from '../panels/eq.js';
 import { confirmDialog } from '../ui/dialog.js';
 import { aboutBlock, openHelp } from '../ui/help.js';
+import { LANGUAGES } from '../i18n.js';
 
 // [id, label, icon]. The 'skin' entry only exists for skins that have options of their own.
 const TABS = [
@@ -152,6 +153,10 @@ export function mountSettings(root) {
     buildColorBits();
 
     return h('div', { class: 'set-page' },
+      group('Language', row('Language', select({ label: 'Language', value: getPrefs().language ?? 'auto',
+        options: [{ value: 'auto', label: 'Automatic (follow the system)' }, ...LANGUAGES.map(([value, label]) => ({ value, label }))],
+        onChange: (v) => setPref('language', v) }),
+      { hint: 'Menus and labels are translated as you go; anything that isn\u2019t translated yet stays in English. Song titles and lyrics are never changed.' })),
       group('Skin', h('p', { class: 'hint' }, 'A skin is a whole look: layout, type, decoration and a default visualiser. Your changes are remembered separately for each one. Like how this one turned out? Save it as a skin of your own.'), cards, mineRow,
         h('div', { class: 'set-row' }, button(isCustomSkin() ? 'Undo my changes to this skin' : 'Reset this skin to its defaults', async () => { if (await confirmDialog('Reset skin?', `All your changes to ${skin.name} since you ${isCustomSkin() ? 'saved it' : 'started'} will be forgotten.`, { ok: 'Reset' })) { resetSkin(); render(); } }))),
       group('Colour',

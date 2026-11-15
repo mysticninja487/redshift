@@ -23,6 +23,9 @@ const listened = (secs) => (secs < 60 ? `${Math.round(secs)} s` : secs < 3600 ? 
 const gain = (db) => (db == null ? '' : `${db > 0 ? '+' : ''}${db.toFixed(2)} dB`);
 
 /** The rows of the dialog, as [section title, [[label, value], …]] with empty values left out. */
+// Values taken from the song's own tags are never translated.
+const USER_TEXT = new Set(['Title', 'Artist', 'Album', 'Album artist', 'Composer', 'Genre', 'Comment', 'Location']);
+
 export function infoSections(info) {
   const m = info.meta;
   const known = (v, bad = []) => (v && !bad.includes(v) ? String(v) : '');
@@ -80,7 +83,7 @@ export async function openSongInfo(path) {
     const copy = async (text, what) => { try { await navigator.clipboard.writeText(text); toast(`${what} copied`); } catch { toast('Couldn’t copy that'); } };
     const sections = infoSections(info).map(([title, rows]) => h('section', { class: 'si-sec' },
       h('h4', { class: 'si-h' }, title),
-      h('dl', { class: 'si-list' }, rows.map(([k, v]) => [h('dt', null, k), h('dd', { class: k === 'Location' ? 'si-path' : '' }, String(v))]))));
+      h('dl', { class: 'si-list' }, rows.map(([k, v]) => [h('dt', null, k), h('dd', { class: k === 'Location' ? 'si-path' : '', translate: USER_TEXT.has(k) ? 'no' : null }, String(v))]))));
     box.append(
       h('div', { class: 'si-head' }, frame,
         h('div', { class: 'si-who' }, h('h3', { class: 'dialog-title', id: 'si-title' }, m.title), h('p', { class: 'si-sub' }, [m.artist, m.album].filter((x) => x && !x.startsWith('Unknown ')).join(' · ')))),
