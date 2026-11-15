@@ -105,3 +105,19 @@
 .hp-hint { color: var(--fg3); font-size: .8rem; }
 .hp-actions { justify-content: flex-start; flex-wrap: wrap; }
 .hp-about .si-path { font-family: var(--font-mono); font-size: .8rem; user-select: text; }
+
+/* ---------- speed and pitch ---------- */
+.rate-pop { position: fixed; z-index: 60; width: min(320px, calc(100vw - 16px)); display: grid; gap: 10px; padding: 14px 16px 12px; border-radius: var(--r-card, 10px);
+  background: var(--bg2); border: var(--bw) solid var(--line); box-shadow: 0 14px 40px rgba(0, 0, 0, .45); }
+.rate-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rate-label { font-size: .84rem; color: var(--fg2); }
+.rate-pop .set-val { font-family: var(--font-mono); font-size: .82rem; min-width: 4.2em; text-align: right; }
+.rate-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rate-chip { border: var(--bw) solid var(--line); background: none; color: var(--fg2); padding: 4px 9px; border-radius: 999px; font-size: .78rem; font-family: var(--font-mono); }
+.rate-chip:hover { color: var(--fg); }
+.rate-chip[aria-pressed="true"] { color: var(--fg); border-color: color-mix(in srgb, var(--accent) 65%, transparent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.rate-pop .slider { width: 100%; max-width: none; }
+.rate-keep { padding-top: 2px; }
+.rate-foot { align-items: flex-end; }
+.rate-foot small { color: var(--fg3); font-size: .72rem; max-width: 20ch; }
+.rate-reset[disabled] { opacity: .45; pointer-events: none; }

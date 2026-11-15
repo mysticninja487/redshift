@@ -158,6 +158,36 @@ pub struct QueueView {
     pub repeat: RepeatMode,
 }
 
+/// Play speed and pitch as the person set them.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct Rate {
+    /// 0.5 to 2.0; 1.0 is normal.
+    pub speed: f32,
+    /// -12 to +12 semitones on top of whatever the speed does.
+    pub pitch_semitones: f32,
+    /// On: speed changes the tempo only. Off ("tape style"): the pitch follows the speed, like a record.
+    pub keep_pitch: bool,
+}
+
+impl Default for Rate {
+    fn default() -> Self {
+        Self { speed: 1.0, pitch_semitones: 0.0, keep_pitch: true }
+    }
+}
+
+impl Rate {
+    pub fn clamped(self) -> Self {
+        let fin = |v: f32, d: f32| if v.is_finite() { v } else { d };
+        Self { speed: fin(self.speed, 1.0).clamp(0.5, 2.0), pitch_semitones: fin(self.pitch_semitones, 0.0).clamp(-12.0, 12.0), keep_pitch: self.keep_pitch }
+    }
+    /// (tempo, pitch ratio) for the audio thread.
+    fn stretch(self) -> (f32, f32) {
+        let pitch = 2f32.powf(self.pitch_semitones / 12.0) * if self.keep_pitch { 1.0 } else { self.speed };
+        (self.speed, pitch)
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PlayerState {
     pub status: Status,
@@ -165,6 +195,7 @@ pub struct PlayerState {
     pub volume: f32,
     pub muted: bool,
     pub crossfade_secs: f32,
+    pub rate: Rate,
     pub replaygain: ReplayGainMode,
     pub replaygain_preamp_db: f32,
     pub device_name: String,
@@ -206,6 +237,7 @@ pub struct Player {
     sample_rate: Arc<AtomicU32>,
     device_name: Arc<RwLock<String>>,
     crossfade_secs: Arc<AtomicU32>,
+    rate: Mutex<Rate>,
     replaygain: Arc<ReplayGainSettings>,
     thread: Mutex<Option<JoinHandle<()>>>,
 }
@@ -271,6 +303,7 @@ impl Player {
             sample_rate,
             device_name,
             crossfade_secs,
+            rate: Mutex::new(Rate::default()),
             replaygain,
             thread: Mutex::new(Some(thread)),
         };
@@ -391,6 +424,16 @@ impl Player {
     pub fn crossfade_secs(&self) -> f32 {
         f32::from_bits(self.crossfade_secs.load(Ordering::Relaxed))
     }
+    /// Play speed and pitch. Takes effect at once, on what is playing.
+    pub fn set_rate(&self, rate: Rate) {
+        let rate = rate.clamped();
+        *self.rate.lock() = rate;
+        let (tempo, pitch) = rate.stretch();
+        self.shared.set_stretch(tempo, pitch);
+    }
+    pub fn rate(&self) -> Rate {
+        *self.rate.lock()
+    }
     /// Loudness normalisation from ReplayGain tags. `preamp_db` (clamped to ±12) is added to the
     /// tagged gain. Takes effect immediately, including on what's playing and the preloaded next
     /// track, with a very short fade.
@@ -428,6 +471,7 @@ impl Player {
             volume: self.volume(),
             muted: self.shared.muted(),
             crossfade_secs: self.crossfade_secs(),
+            rate: self.rate(),
             replaygain: self.replaygain().0,
             replaygain_preamp_db: self.replaygain().1,
             device_name: self.device_name.read().clone(),

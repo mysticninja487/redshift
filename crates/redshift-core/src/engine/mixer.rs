@@ -5,7 +5,7 @@
 //! (finished tracks are sent back to the control thread instead). It knows nothing about devices or
 //! files, only [`FrameSource`]s, which makes it fully testable with synthetic sources.
 //!
-//! Signal path: `sources -> crossfade -> EQ -> visualiser tap -> volume & pause ramp -> soft clip`.
+//! Signal path: `sources -> crossfade -> speed & pitch -> EQ -> visualiser tap -> volume & pause ramp -> soft clip`.
 
 use std::f32::consts::FRAC_PI_2;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -15,6 +15,7 @@ use crossbeam_channel::{Receiver, Sender};
 
 use crate::dsp::eq::{EqParams, Equalizer};
 use crate::dsp::spectrum::VizTap;
+use crate::dsp::stretch::Stretcher;
 
 /// Frames mixed per step. Crossfades and track changes are decided at this granularity (~5 ms).
 pub const CHUNK: usize = 256;
@@ -69,6 +70,9 @@ pub struct Shared {
     volume: AtomicU32,
     muted: AtomicBool,
     crossfade_frames: AtomicU32,
+    /// Play speed and pitch as ratios (f32 bits); 1.0 for both leaves the audio untouched.
+    tempo: AtomicU32,
+    pitch: AtomicU32,
     position_frames: AtomicU64,
     current_id: AtomicU64,
     playing: AtomicBool,
@@ -81,6 +85,8 @@ impl Shared {
             volume: AtomicU32::new(1.0f32.to_bits()),
             muted: AtomicBool::new(false),
             crossfade_frames: AtomicU32::new(0),
+            tempo: AtomicU32::new(1.0f32.to_bits()),
+            pitch: AtomicU32::new(1.0f32.to_bits()),
             position_frames: AtomicU64::new(0),
             current_id: AtomicU64::new(0),
             playing: AtomicBool::new(false),
@@ -104,6 +110,18 @@ impl Shared {
     }
     pub fn set_crossfade_frames(&self, f: u32) {
         self.crossfade_frames.store(f, Ordering::Relaxed);
+    }
+    /// How fast the song plays (1.0 = normal) and the pitch ratio (1.0 = unchanged). They are independent:
+    /// a tempo of 1.5 with a pitch of 1.0 is the same notes, faster.
+    pub fn set_stretch(&self, tempo: f32, pitch: f32) {
+        self.tempo.store(tempo.clamp(0.25, 4.0).to_bits(), Ordering::Relaxed);
+        self.pitch.store(pitch.clamp(0.25, 4.0).to_bits(), Ordering::Relaxed);
+    }
+    pub fn tempo(&self) -> f32 {
+        f32::from_bits(self.tempo.load(Ordering::Relaxed))
+    }
+    pub fn pitch(&self) -> f32 {
+        f32::from_bits(self.pitch.load(Ordering::Relaxed))
     }
     /// Playback position within the current track, in frames at the mixer's rate.
     pub fn position_frames(&self) -> u64 {
@@ -160,6 +178,11 @@ pub struct Mixer {
     eq: Equalizer,
     tap: VizTap,
 
+    /// Speed and pitch. Only in the signal path once something has asked for a change, and then until
+    /// the next track starts with both back at normal, so the audio is untouched in the usual case.
+    stretch: Option<Box<Stretcher>>,
+    stretching: bool,
+
     playing: bool,
     /// 0..1, ramps towards 1 while playing and towards 0 while paused, to avoid clicks.
     play_gain: f32,
@@ -196,6 +219,8 @@ impl Mixer {
             fade: None,
             eq: Equalizer::new(eq, sample_rate),
             tap,
+            stretch: Some(Box::new(Stretcher::new(sample_rate))),
+            stretching: false,
             playing: false,
             play_gain: 0.0,
             volume: 1.0,
@@ -210,14 +235,45 @@ impl Mixer {
     /// chunk boundary, and a source must never be read for audio that is then thrown away.
     pub fn render(&mut self, out: &mut [f32]) {
         self.drain_commands();
+        let (tempo, pitch) = (self.shared.tempo(), self.shared.pitch());
+        if tempo != 1.0 || pitch != 1.0 {
+            self.stretching = true;
+        }
         for chunk in out.chunks_mut(CHUNK * 2) {
-            self.mix_chunk(chunk);
+            if self.stretching {
+                self.stretched_chunk(chunk, tempo, pitch);
+            } else {
+                self.mix_chunk(chunk, false);
+            }
             self.eq.process(chunk);
             self.tap.write(chunk);
             self.apply_output_stage(chunk);
         }
         self.shared.position_frames.store(self.current.as_ref().map_or(0, Active::position), Ordering::Relaxed);
         self.shared.current_id.store(self.current.as_ref().map_or(0, |a| a.track.id), Ordering::Relaxed);
+    }
+
+    /// One chunk through the speed and pitch stage. Paused, nothing is read: the stage only runs while
+    /// sound is audible (including the short fade-out of a pause), so the position stays put.
+    fn stretched_chunk(&mut self, chunk: &mut [f32], tempo: f32, pitch: f32) {
+        if !self.playing && self.play_gain <= 0.0 {
+            chunk.fill(0.0);
+            return;
+        }
+        let Some(mut st) = self.stretch.take() else { return };
+        st.set(tempo, pitch);
+        st.process(chunk, &mut |buf| self.mix_chunk(buf, true));
+        self.stretch = Some(st);
+    }
+
+    /// A new track, or no track: the stage forgets its audio, and leaves the signal path if nothing is asked of it.
+    fn reset_stretch(&mut self) {
+        if let Some(st) = self.stretch.as_mut() {
+            st.reset();
+        }
+        if self.shared.tempo() == 1.0 && self.shared.pitch() == 1.0 {
+            self.stretching = false;
+        }
     }
 
     fn drain_commands(&mut self) {
@@ -241,6 +297,7 @@ impl Mixer {
                         self.retire_active(Some(f.outgoing));
                     }
                     self.tap.clear();
+                    self.reset_stretch();
                 }
                 Command::Start { track, fade_frames } => {
                     if let Some(f) = self.fade.take() {
@@ -254,6 +311,7 @@ impl Mixer {
                         old => self.retire_active(old),
                     }
                     self.begin(Active::new(track));
+                    self.reset_stretch();
                 }
                 Command::SetNext(track) => {
                     let old = self.next.take();
@@ -318,10 +376,10 @@ impl Mixer {
         self.begin(next);
     }
 
-    /// Mixes the sources for one chunk. While pausing, only the frames the ramp still lets through
+    /// Mixes the sources for one chunk (`all`: even while pausing, because the speed and pitch stage decides what is heard). While pausing, only the frames the ramp still lets through
     /// are read from the sources, so pausing consumes exactly the audio that was heard.
-    fn mix_chunk(&mut self, chunk: &mut [f32]) {
-        let n = if self.playing {
+    fn mix_chunk(&mut self, chunk: &mut [f32], all: bool) {
+        let n = if self.playing || all {
             chunk.len() / 2
         } else {
             // play_gain is a multiple of 1/PAUSE_RAMP_FRAMES, so this is an exact frame count.

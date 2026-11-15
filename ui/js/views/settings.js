@@ -21,6 +21,7 @@ import { mount as mountEq } from '../panels/eq.js';
 import { confirmDialog } from '../ui/dialog.js';
 import { aboutBlock, openHelp } from '../ui/help.js';
 import { LANGUAGES } from '../i18n.js';
+import { MAX_PITCH, MAX_SPEED, MIN_SPEED, formatPitch, formatSpeed, getRate, isNormal, resetRate, setRate } from '../rate.js';
 
 // [id, label, icon]. A tab with `SUBS` shows those as a second row of choices above its page.
 const TABS = [
@@ -378,6 +379,15 @@ export function mountSettings(root) {
     }).catch(() => dev.replaceChildren(h('span', { class: 'hint' }, 'Devices unavailable.')));
     return h('div', { class: 'set-page' },
       group('Transitions', row('Crossfade', slider({ min: 0, max: 12, step: 0.5, value: p.crossfade_secs, label: 'Crossfade', onChange: (v) => act(api.setCrossfade(v)).then(refreshSettings), onInput: (v) => api.setCrossfade(v).catch(() => {}), format: (v) => (v ? `${v} s` : 'Off (gapless)') }), { hint: 'Songs overlap for this long. Off plays them gap-free.' })),
+      group('Speed and pitch',
+        row('Speed', slider({ min: MIN_SPEED, max: MAX_SPEED, step: 0.05, value: getRate().speed, reset: 1, label: 'Speed', format: formatSpeed, onInput: (v) => setRate({ speed: v }) }),
+          { hint: 'How fast songs play. Quick access: the gauge button in the top bar, and < and > on the keyboard.' }),
+        row('Pitch', slider({ min: -MAX_PITCH, max: MAX_PITCH, step: 0.5, value: getRate().pitch_semitones, center: true, reset: 0, label: 'Pitch in semitones', format: formatPitch, onInput: (v) => setRate({ pitch_semitones: v }) }),
+          { hint: 'Raises or lowers every note, in semitones (12 is an octave). Independent of speed.' }),
+        row('Keep pitch when changing speed', toggle({ label: 'Keep pitch when changing speed', value: getRate().keep_pitch, onChange: (v) => setRate({ keep_pitch: v }) }),
+          { hint: 'On: faster or slower, same notes. Off: tape style, where the pitch follows the speed like a record on a turntable.' }),
+        h('div', { class: 'set-row set-actions' }, button('Back to normal speed and pitch', async () => { await resetRate(); render(); })),
+        h('p', { class: 'hint' }, 'Speed and pitch apply to everything you play and are remembered. Time stretching is done by Redshift itself, so it works with every file type.')),
       group('Loudness',
         row('ReplayGain', segmented({ label: 'ReplayGain', options: [{ value: 'off', label: 'Off' }, { value: 'track', label: 'Track' }, { value: 'album', label: 'Album' }], value: p.replaygain, onChange: (v) => act(api.setReplayGain(v, state.player.replaygain_preamp_db)).then(refreshPlayer) }), { hint: 'Evens out loudness using tags in the files. Never pushes a song past clipping.' }),
         row('Pre-amp', slider({ min: -12, max: 12, step: 0.5, value: p.replaygain_preamp_db, center: true, reset: 0, label: 'ReplayGain pre-amp', onChange: (v) => act(api.setReplayGain(state.player.replaygain, v)).then(refreshPlayer), format: (v) => `${v > 0 ? '+' : ''}${v} dB` }))),

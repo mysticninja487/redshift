@@ -10,6 +10,7 @@ import { initKeys } from './keys.js';
 import { mountLayout } from './layout.js';
 import { toggleAmbient } from './ambient.js';
 import { sleepButton } from './sleep.js';
+import { speedButton } from './speed.js';
 import { initHost } from './host.js';
 import { cfg, featureOn, flushPrefs, followOtherWindows, getPrefs, isComparing, loadPrefs, set, setPref, setSkin, takeMigrated } from './prefs.js';
 import { skins } from './skins.js';
@@ -73,7 +74,7 @@ function buildChrome() {
   nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === state.view)));
   return h('header', { class: 'chrome' },
     h('div', { class: 'brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }), h('span', { class: 'brand-name' }, 'Redshift')),
-    nav, h('div', { class: 'chrome-tools' }, nowTools, skinSel, scheme, sleepButton(), ambient, mini, full));
+    nav, h('div', { class: 'chrome-tools' }, nowTools, skinSel, scheme, speedButton(), sleepButton(), ambient, mini, full));
 }
 
 /** Background layers that skins show or hide with CSS: ghost type, sun, rings, side labels. */

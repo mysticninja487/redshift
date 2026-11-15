@@ -2,7 +2,7 @@
 // subscribe to the bus topics that say when parts of it change.
 
 export const state = {
-  player: { status: 'stopped', position_secs: 0, volume: 1, muted: false, crossfade_secs: 0, replaygain: 'off', replaygain_preamp_db: 0, device_name: '', sample_rate: 48000 },
+  player: { status: 'stopped', position_secs: 0, volume: 1, muted: false, crossfade_secs: 0, rate: { speed: 1, pitch_semitones: 0, keep_pitch: true }, replaygain: 'off', replaygain_preamp_db: 0, device_name: '', sample_rate: 48000 },
   queue: { entries: [], current_entry: null, current: null, shuffle: false, repeat: 'off' },
   settings: null,          // saved core settings (volume, eq, ...)
   track: null,             // tags of the playing track

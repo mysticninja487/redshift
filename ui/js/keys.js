@@ -1,6 +1,7 @@
 // Keyboard shortcuts. Every action has a default key combo; the person can remap any of them in
 // Settings. Combos are written like "Shift+ArrowRight" (modifiers in the order Ctrl, Alt, Shift).
 
+import { formatSpeed, nudgeSpeed } from './rate.js';
 import { api } from './api.js';
 import { act, setView, toggleSettings } from './controller.js';
 import { featureOn, get, getPrefs, set, setPref, setSkin } from './prefs.js';
@@ -23,6 +24,8 @@ export const ACTIONS = [
   { id: 'back', label: 'Skip back 5 s', key: 'ArrowLeft', run: () => seekBy(-5) },
   { id: 'volup', label: 'Volume up', key: 'ArrowUp', run: () => volBy(0.05) },
   { id: 'voldown', label: 'Volume down', key: 'ArrowDown', run: () => volBy(-0.05) },
+  { id: 'speeddown', label: 'Slower', key: '<', run: () => nudgeSpeed(-1).then((r) => toast(`Speed ${formatSpeed(r.speed)}`)) },
+  { id: 'speedup', label: 'Faster', key: '>', run: () => nudgeSpeed(1).then((r) => toast(`Speed ${formatSpeed(r.speed)}`)) },
   { id: 'mute', label: 'Mute', key: 'M', run: () => act(api.setMuted(!state.player.muted)) },
   { id: 'shuffle', label: 'Shuffle', key: 'S', run: () => act(api.setShuffle(!state.queue.shuffle)) },
   { id: 'repeat', label: 'Repeat', key: 'R', run: () => act(api.setRepeat({ off: 'all', all: 'one', one: 'off' }[state.queue.repeat] ?? 'off')) },

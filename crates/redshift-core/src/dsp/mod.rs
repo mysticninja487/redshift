@@ -3,5 +3,6 @@
 pub mod eq;
 pub mod resample;
 pub mod spectrum;
+pub mod stretch;
 
 pub use eq::{EqParams, Equalizer, BAND_COUNT, BAND_FREQS};

@@ -132,7 +132,7 @@ const listeners = {};
 const emit = (name, payload) => (listeners[name] ?? []).forEach((cb) => setTimeout(() => cb({ payload })));
 const S = {
   entries: [], seq: 1, cur: null, status: 'stopped', pos: 0, t0: 0, volume: 0.8, muted: false, shuffle: false, repeat: 'off',
-  crossfade: 4, rg: 'track', rgPre: 0, device: null,
+  crossfade: 4, rate: { speed: 1, pitch_semitones: 0, keep_pitch: true }, rg: 'track', rgPre: 0, device: null,
   eq: { enabled: true, preamp_db: 0, gains_db: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
 };
 const EQ_FREQS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
@@ -197,7 +197,7 @@ const queueView = () => {
     current: t ? { entry_id: S.cur, path: t.path, codec: t.format, source_rate: t.sample_rate, source_channels: 2, bits_per_sample: t.bit_depth, duration_secs: t.duration_secs } : null,
   };
 };
-const playerState = () => ({ status: S.status, position_secs: Math.min(position(), curTrack()?.duration_secs ?? 0), volume: S.volume, muted: S.muted, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, device_name: 'Speakers (mock)', sample_rate: 48000 });
+const playerState = () => ({ status: S.status, position_secs: Math.min(position(), curTrack()?.duration_secs ?? 0), volume: S.volume, muted: S.muted, crossfade_secs: S.crossfade, rate: S.rate, replaygain: S.rg, replaygain_preamp_db: S.rgPre, device_name: 'Speakers (mock)', sample_rate: 48000 });
 
 // ---------------------------------------------------------------- analysis
 function vizFrame() {
@@ -351,7 +351,7 @@ const cmds = {
   player_state: playerState, queue_view: queueView, get_settings: settings,
   set_volume: ({ volume }) => { S.volume = volume; }, set_muted: ({ muted }) => { S.muted = muted; },
   set_shuffle: ({ on }) => { S.shuffle = on; if (on) reshuffle(); emit('player-event', { type: 'queue_changed' }); }, set_repeat: ({ mode }) => { S.repeat = mode; },
-  set_crossfade_secs: ({ secs }) => { S.crossfade = secs; }, set_replaygain: ({ mode, preampDb }) => { S.rg = mode; S.rgPre = preampDb; },
+  set_crossfade_secs: ({ secs }) => { S.crossfade = secs; }, set_rate: ({ speed, pitchSemitones, keepPitch }) => { S.rate = { speed, pitch_semitones: pitchSemitones, keep_pitch: keepPitch }; }, set_replaygain: ({ mode, preampDb }) => { S.rg = mode; S.rgPre = preampDb; },
   output_devices: () => [{ id: 'spk', name: 'Speakers (Mock Audio)', is_default: true }, { id: 'hp', name: 'Headphones (Mock USB DAC)', is_default: false }],
   set_output_device: ({ id }) => { S.device = id; },
   eq_info: () => ({ settings: S.eq, band_freqs_hz: EQ_FREQS, presets: PRESETS, custom_presets: CUSTOM_PRESETS }),
@@ -377,7 +377,7 @@ const cmds = {
   sleep_status: () => sleepStatus(),
   listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
   listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
-  app_info: () => ({ version: '0.5.8', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
+  app_info: () => ({ version: '0.5.9', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
   open_data_folder: () => null,
   song_info: ({ path }) => {
     const t = tracks.find((x) => x.path === path); if (!t) throw new Error('That file isn\u2019t there any more');

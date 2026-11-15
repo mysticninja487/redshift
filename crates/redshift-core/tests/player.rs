@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use common::*;
 use crossbeam_channel::Receiver;
 use parking_lot::Mutex;
-use redshift_core::engine::{OfflineConfig, Player, PlayerConfig, PlayerEvent, Status};
+use redshift_core::engine::{OfflineConfig, Player, PlayerConfig, PlayerEvent, Rate, Status};
 use redshift_core::queue::RepeatMode;
 
 const RATE: u32 = 48_000;
@@ -277,6 +277,102 @@ fn pause_silences_and_holds_the_position_then_resume_continues() {
     r.player.toggle_pause();
     std::thread::sleep(Duration::from_millis(200));
     assert_eq!(r.player.status(), Status::Paused);
+}
+
+// ---- speed and pitch --------------------------------------------------------------------------
+
+#[test]
+fn double_speed_halves_the_playing_time_and_leaves_the_pitch_alone() {
+    let mut r = rig(6.0);
+    r.player.set_rate(Rate { speed: 2.0, ..Rate::default() });
+    r.player.set_queue(paths(&["chirp_44k_stereo.flac"]), 0, true);
+    r.wait_ended();
+    let left = r.left();
+    let (first, last) = audible(&left);
+    // A 3 s song at twice the speed: 1.5 s of sound (a window or two of slack at the end).
+    assert!((last - first).abs_diff(72_000) < 4_000, "played for {} frames, expected about 72000", last - first);
+    // Half a second in, we are 1 s into the song: the chirp is at its 1.4 kHz, not at double that.
+    let at = RATE as usize / 2;
+    let hz = dominant_hz(&left[first + at..], RATE, 4096);
+    assert_close(hz, chirp_hz_at_window(at * 2, 4096 * 2, RATE), 110.0, "pitch at 2x speed");
+}
+
+#[test]
+fn an_octave_up_raises_the_pitch_and_keeps_the_length() {
+    let mut r = rig(6.0);
+    r.player.set_rate(Rate { pitch_semitones: 12.0, ..Rate::default() });
+    r.player.set_queue(paths(&["chirp_44k_stereo.flac"]), 0, true);
+    r.wait_ended();
+    let left = r.left();
+    let (first, last) = audible(&left);
+    assert!((last - first).abs_diff(144_000) < 4_000, "played for {} frames, expected about 144000", last - first);
+    let at = RATE as usize;
+    let hz = dominant_hz(&left[first + at..], RATE, 4096);
+    assert_close(hz, 2.0 * chirp_hz_at_window(at, 4096, RATE), 150.0, "pitch an octave up");
+}
+
+#[test]
+fn tape_style_speed_moves_pitch_and_time_together() {
+    let mut r = rig(6.0);
+    r.player.set_rate(Rate { speed: 1.5, keep_pitch: false, ..Rate::default() });
+    r.player.set_queue(paths(&["chirp_44k_stereo.flac"]), 0, true);
+    r.wait_ended();
+    let left = r.left();
+    let (first, last) = audible(&left);
+    assert!((last - first).abs_diff(96_000) < 3_000, "played for {} frames, expected about 96000", last - first);
+    let at = RATE as usize / 2;
+    let hz = dominant_hz(&left[first + at..], RATE, 4096);
+    assert_close(hz, 1.5 * chirp_hz_at_window(at * 3 / 2, 4096 * 3 / 2, RATE), 130.0, "pitch with tape style 1.5x");
+}
+
+#[test]
+fn pausing_while_slowed_holds_the_position_and_resumes_without_jumping() {
+    let mut r = rig(2.0);
+    r.player.set_rate(Rate { speed: 0.75, ..Rate::default() });
+    r.player.set_queue(paths(&["chirp_44k_stereo.flac"]), 0, true);
+    r.wait_position("playback", |p| p > 0.3);
+    r.player.pause();
+    std::thread::sleep(Duration::from_millis(300));
+    let held = r.player.position_secs();
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(r.player.position_secs(), held, "position must not move while paused");
+    let left = r.left();
+    assert!(left[left.len() - 3000..].iter().all(|&v| v == 0.0), "silence while paused");
+    r.player.resume();
+    r.wait_ended();
+    // The whole song still plays: 3 s of music at 0.75x is 4 s of sound.
+    let left = r.left();
+    let (first, last) = audible(&left);
+    // Not counting the stretch of silence while it was paused.
+    let (mut run, mut silent) = (0usize, 0usize);
+    for v in &left[first..last] {
+        run = if v.abs() < 1e-5 { run + 1 } else { 0 };
+        if run == 2_000 {
+            silent += 2_000;
+        } else if run > 2_000 {
+            silent += 1;
+        }
+    }
+    let played = last - first - silent;
+    assert!(played.abs_diff(192_000) < 6_000, "played for {played} frames, expected about 192000");
+}
+
+#[test]
+fn changing_back_to_normal_and_starting_a_new_track_restores_untouched_audio() {
+    let mut r = rig(6.0);
+    r.player.set_rate(Rate { speed: 1.3, ..Rate::default() });
+    r.player.set_queue(paths(&["chirp_44k_stereo.flac"]), 0, true);
+    r.wait_position("playback", |p| p > 0.2);
+    r.player.set_rate(Rate::default());
+    r.player.set_queue(paths(&["chirp_44k_stereo.flac"]), 0, true);
+    r.wait_ended();
+    let left = r.left();
+    // The new track starts after the old one was cut; find the last chirp start (a drop to silence then a restart)
+    // by checking the tail: the final 3 s of audible sound is exactly one untouched play of the file.
+    let tail = &left[left.len() - 144_000..];
+    let (first, last) = audible(tail);
+    assert!((last - first).abs_diff(144_000) < 2_000, "tail is {} frames", last - first);
+    assert_chirp_at(tail, first, 48_000, "untouched after returning to normal speed");
 }
 
 #[test]

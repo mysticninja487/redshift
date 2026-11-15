@@ -20,6 +20,7 @@ const GUIDE = [
     ['Favourites and playlists', 'Click the heart on any song, or right-click > Add to playlist. M3U and M3U8 playlists can be imported and exported.'],
     ['Lyrics', 'Synced lyrics come from a .lrc file next to the song or from its tags. In the tag editor you can add lyrics and time them line by line.'],
     ['Sleep timer', 'The clock in the top bar stops playback after a set time or at the end of the song, fading the volume out over the last ten seconds.'],
+    ['Speed and pitch', 'The gauge in the top bar (or < and > on the keyboard) plays songs from half speed to double, and shifts the pitch up or down by up to an octave. Turn off Keep pitch for a tape or record feel.'],
     ['Song info', 'Right-click a song > Song info, press I, or use the info button beside the title on Now Playing.'],
   ]],
   ['Your listening', [

@@ -74,6 +74,7 @@ This is an early version. If something breaks, please [open an issue](https://gi
 - **Languages**: Settings > Appearance > Language switches the interface between English, Bengali (বাংলা), Spanish (Español), French (Français), German (Deutsch), Japanese (日本語) and Simplified Chinese (简体中文), or follows the language of Windows (*Automatic*). The main screens, menus, dialogs and Stats sentences are translated; longer explanations that aren't yet stay in English. Song titles, artists, albums, genres, lyrics and playlist names are never translated. Translations live in `ui/js/i18n/<language>.js` as plain English-text-to-translation lists, so adding a phrase or a language is a one-file change.
 - Click the **total time** next to the progress bar to show the time left instead (turn it off in **Settings > Appearance > Now playing > Progress bar**).
 - A sleep timer in the top bar: stop in 15 minutes to 2 hours, or at the end of the current song. The volume fades out over the last ten seconds and returns to where it was.
+- Play speed and pitch: the gauge in the top bar opens speed presets (0.5× to 2×), a speed slider and a pitch slider (±12 semitones), and `<` / `>` nudge the speed by 0.05×. With Keep pitch on, Redshift time-stretches the sound (WSOLA) so songs get faster or slower without changing key; with it off you get tape style, where pitch follows speed like a record. The setting is remembered, works with every file type, and the stage is skipped entirely at normal speed so nothing changes the sound then. Extreme settings (below about 0.6× or above 1.6×) can sound slightly warbly on some material.
 
 **Fits into Windows**
 
@@ -101,7 +102,7 @@ This is an early version. If something breaks, please [open an issue](https://gi
 | `↑` `↓` | Volume | `L` | Lyrics on / off |
 | `S` `R` `M` | Shuffle, repeat, mute | `E` | Equaliser |
 | `T` | Edit tags of the current song | `I` | Song info of the current song |
-| `F1` | Help & about | | |
+| `F1` | Help & about | `<` `>` | Slower / faster |
 | `1` `2` `3` | Now playing, Library, Settings | `D` | Light / dark |
 | `Ctrl` + `F` | Search the library | `F` | Fullscreen |
 

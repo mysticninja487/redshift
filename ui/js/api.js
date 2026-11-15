@@ -58,6 +58,7 @@ export const api = {
   setVolume: (volume) => invoke('set_volume', { volume }), setMuted: (muted) => invoke('set_muted', { muted }),
   setShuffle: (on) => invoke('set_shuffle', { on }), setRepeat: (mode) => invoke('set_repeat', { mode }),
   setCrossfade: (secs) => invoke('set_crossfade_secs', { secs }),
+  setRate: (speed, pitchSemitones, keepPitch) => invoke('set_rate', { speed, pitchSemitones, keepPitch }),
   setReplayGain: (mode, preampDb) => invoke('set_replaygain', { mode, preampDb }),
   outputDevices: () => invoke('output_devices'), setOutputDevice: (id) => invoke('set_output_device', { id }),
   // eq

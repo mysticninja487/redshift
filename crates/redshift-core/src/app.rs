@@ -22,7 +22,7 @@ use serde_json::Value;
 use crate::dsp::eq::{EqParams, BAND_COUNT};
 use crate::dsp::spectrum::SpectrumConfig;
 use crate::engine::player::MAX_PREAMP_DB;
-use crate::engine::{Player, PlayerConfig, PlayerEvent, ReplayGainMode};
+use crate::engine::{Player, PlayerConfig, PlayerEvent, Rate, ReplayGainMode};
 use crate::error::{Error, Result};
 use crate::library::{write_json_atomic, Album, Artist, Library, ScanProgress, ScanReport};
 use crate::lyrics::{self, Lyrics};
@@ -150,6 +150,8 @@ pub struct Settings {
     pub shuffle: bool,
     pub repeat: RepeatMode,
     pub crossfade_secs: f32,
+    /// Play speed and pitch, kept between launches.
+    pub rate: Rate,
     pub replaygain: ReplayGainMode,
     pub replaygain_preamp_db: f32,
     pub eq: EqSettings,
@@ -189,6 +191,7 @@ impl Default for Settings {
             shuffle: false,
             repeat: RepeatMode::Off,
             crossfade_secs: 0.0,
+            rate: Rate::default(),
             replaygain: ReplayGainMode::Off,
             replaygain_preamp_db: 0.0,
             eq: EqSettings::default(),
@@ -225,6 +228,7 @@ impl Settings {
         let d = Settings::default();
         self.volume = finite_or(self.volume, d.volume).clamp(0.0, 1.0);
         self.crossfade_secs = finite_or(self.crossfade_secs, 0.0).clamp(0.0, 12.0);
+        self.rate = self.rate.clamped();
         self.replaygain_preamp_db = finite_or(self.replaygain_preamp_db, 0.0).clamp(-MAX_PREAMP_DB, MAX_PREAMP_DB);
         self.eq.preamp_db = finite_or(self.eq.preamp_db, 0.0);
         for g in &mut self.eq.gains_db {
@@ -363,6 +367,7 @@ impl App {
         player.set_queue_policy(QueuePolicy { no_duplicates: settings.queue_no_duplicates, mix_added: settings.shuffle_whole_queue });
         player.set_repeat(settings.repeat);
         player.set_crossfade_secs(settings.crossfade_secs);
+        player.set_rate(settings.rate);
         player.set_replaygain(settings.replaygain, settings.replaygain_preamp_db);
         player.configure_viz(settings.viz);
         let eq = player.eq();
@@ -631,6 +636,12 @@ impl App {
         let secs = finite_or(secs, 0.0).clamp(0.0, 12.0);
         self.player.set_crossfade_secs(secs);
         self.update(|s| s.crossfade_secs = secs);
+    }
+    /// Play speed and pitch (see [`Rate`]); out-of-range values are brought into range.
+    pub fn set_rate(&self, rate: Rate) {
+        let rate = rate.clamped();
+        self.player.set_rate(rate);
+        self.update(|s| s.rate = rate);
     }
     pub fn set_replaygain(&self, mode: ReplayGainMode, preamp_db: f32) {
         self.player.set_replaygain(mode, preamp_db);
