@@ -24,7 +24,7 @@ This is an early version. If something breaks, please [open an issue](https://gi
 **Plays your music properly**
 
 - FLAC up to 24-bit / 192 kHz, Opus, MP3, Ogg Vorbis, WAV and AAC/M4A/ALAC.
-- Gapless playback, or crossfade between tracks (0-12 s). Any sample rate is converted to what your sound device runs at.
+- Gapless playback, or crossfade between tracks (0-12 s). Gapless covers every format: FLAC, WAV and Opus join exactly, and MP3, Vorbis and AAC/M4A have their encoder's start and end padding cut (for M4A from the file's edit list), so albums that run into each other, live sets and DJ mixes play without a break. Any sample rate is converted to what your sound device runs at.
 - ReplayGain (track or album, with a pre-amp) and output device selection.
 
 **Sounds the way you like**

@@ -30,6 +30,9 @@ $F -f lavfi -i "aevalsrc='0.5*sin(2*PI*440*t)':s=48000:d=2" -c:a libopus -b:a 48
 # MP3 has encoder delay/padding, which exercises the packet trim logic.
 $F -f lavfi -i "$(chirp 44100)" -c:a libmp3lame -b:a 192k "$OUT/chirp_44k_stereo.mp3"
 
+# AAC in MP4: the encoder adds 1024 frames of priming and pads the end; the edit list says where the song is.
+$F -f lavfi -i "$(chirp 44100)" -c:a aac -b:a 128k "$OUT/chirp_44k_stereo.m4a"
+
 # --- tagged files for the metadata/library tests ---
 # A small cover image, embedded in the FLAC and the MP3.
 $F -f lavfi -i "color=c=0x3366cc:s=64x64:d=1" -frames:v 1 "$OUT/_cover.png"

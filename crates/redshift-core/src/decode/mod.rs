@@ -4,6 +4,7 @@
 //! goes through libopus (via `audiopus`) with the `ogg` crate doing the demuxing. [`open`] looks at
 //! the file's contents, not just its extension, because `.ogg` can hold either Vorbis or Opus.
 
+mod mp4_gapless;
 mod opus;
 mod symphonia_dec;
 

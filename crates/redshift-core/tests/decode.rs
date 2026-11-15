@@ -230,3 +230,43 @@ fn missing_and_garbage_files_error_instead_of_panicking() {
     std::fs::write(&junk_opus, b"OggS\0\x02garbage garbage garbage garbage").unwrap();
     assert!(decode::open(&junk_opus).is_err());
 }
+
+// ---- AAC in MP4: encoder delay and padding ---------------------------------------------------
+
+#[test]
+fn m4a_is_trimmed_to_the_song_so_aac_tracks_can_join_gaplessly() {
+    // The fixture is 3 s at 44.1 kHz. AAC adds 1024 frames of priming and pads the end; the edit list
+    // says where the song is, so exactly 132 300 frames should come out, as with FLAC.
+    let (info, pcm) = decode_file("chirp_44k_stereo.m4a");
+    assert_eq!((info.sample_rate, info.channels), (44_100, 2));
+    assert_eq!(info.total_frames, Some(132_300), "reported length");
+    assert_eq!(pcm.len() / 2, 132_300, "decoded length: priming and padding must be cut");
+}
+
+#[test]
+fn m4a_timeline_matches_chirp_from_the_very_first_frame() {
+    let (info, pcm) = decode_file("chirp_44k_stereo.m4a");
+    let left = channel(&pcm, 2, 0);
+    // Untrimmed, everything would sit about 1024 frames (23 ms, ~23 Hz of chirp) late.
+    for start in [0, 30_000, 120_000] {
+        let hz = dominant_hz(&left[start..], info.sample_rate, WINDOW);
+        let expected = chirp_hz_at_window(start, WINDOW, info.sample_rate);
+        assert_close(hz, expected, CHIRP_TOLERANCE_HZ / 2.0, &format!("frequency at frame {start}"));
+    }
+}
+
+#[test]
+fn m4a_seek_lands_on_the_requested_frame() {
+    let path = fixture("chirp_44k_stereo.m4a");
+    for secs in [0.0, 0.5, 1.37, 2.5] {
+        let mut dec = decode::open(&path).unwrap();
+        let (rate, total) = (dec.info().sample_rate, dec.info().total_frames.unwrap());
+        dec.seek(secs).unwrap();
+        let pcm = read_all(dec.as_mut());
+        let target = (secs * rate as f64).round() as u64;
+        let frames = (pcm.len() / 2) as u64;
+        assert!(frames.abs_diff(total - target) <= 1, "seek to {secs}s: {frames} frames remain, expected {}", total - target);
+        let hz = dominant_hz(&channel(&pcm, 2, 0), rate, WINDOW);
+        assert_close(hz, chirp_hz_at_window(target as usize, WINDOW, rate), CHIRP_TOLERANCE_HZ / 2.0, &format!("frequency after seek to {secs}s"));
+    }
+}

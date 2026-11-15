@@ -10,6 +10,7 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::units::{Time, Timestamp, TimeBase};
 
+use super::mp4_gapless::{self, Trim};
 use super::{Decoder, StreamInfo};
 use crate::error::{Error, Result};
 
@@ -22,6 +23,8 @@ pub struct SymphoniaDecoder {
     /// Set by `seek`: valid frames before this timestamp are dropped. Symphonia lands on a packet at
     /// or before the requested position, so the first packet or two usually straddle the target.
     seek_target: Option<Timestamp>,
+    /// Encoder priming and padding to cut (MP4 only), in frames of the decoded stream.
+    trim: Option<Trim>,
     at_end: bool,
     scratch: Vec<f32>,
 }
@@ -59,13 +62,19 @@ impl SymphoniaDecoder {
             .ok_or_else(|| Error::Unsupported("unknown channel layout".into()))?;
         let track_id = track.id;
         let time_base = track.time_base;
-        let total_frames = track.num_frames;
+        let mut total_frames = track.num_frames;
         let bits_per_sample = params.bits_per_sample;
 
         let decoder = symphonia::default::get_codecs()
             .make_audio_decoder(params, &AudioDecoderOptions::default())
             .map_err(map_err)?;
         let codec = decoder.codec_info().short_name;
+
+        // MP4 audio carries its encoder delay and padding in the edit list, which Symphonia leaves in.
+        let trim = mp4_gapless::read_trim(path, sample_rate);
+        if let Some(t) = trim {
+            total_frames = Some(t.valid);
+        }
 
         Ok(Self {
             format,
@@ -74,6 +83,7 @@ impl SymphoniaDecoder {
             time_base,
             info: StreamInfo { sample_rate, channels, total_frames, codec, bits_per_sample },
             seek_target: None,
+            trim,
             at_end: false,
             scratch: Vec::new(),
         })
@@ -118,6 +128,20 @@ impl Decoder for SymphoniaDecoder {
             None => 0,
         };
 
+        // MP4 priming and padding: where this buffer sits in the decoded stream decides how much of
+        // it is song. `front` frames at its start are priming, nothing after `cap` is music.
+        let (front, cap) = match self.trim {
+            Some(t) => {
+                let start = ts_to_frames(tb, rate, buffer_start_ts.max(0) as u64) as u64;
+                if start >= t.delay + t.valid {
+                    self.at_end = true;
+                    return Ok(false);
+                }
+                (t.delay.saturating_sub(start) as usize, (t.delay + t.valid - start) as usize)
+            }
+            None => (0, usize::MAX),
+        };
+
         match self.decoder.decode(&packet) {
             Ok(buf) => {
                 let channels = buf.spec().channels().count();
@@ -130,7 +154,10 @@ impl Decoder for SymphoniaDecoder {
                     self.seek_target = None;
                     self.scratch.clear();
                     buf.copy_to_vec_interleaved::<f32>(&mut self.scratch);
-                    out.extend_from_slice(&self.scratch[seek_skip * channels..frames * channels]);
+                    let (from, to) = (seek_skip.max(front), frames.min(cap));
+                    if from < to {
+                        out.extend_from_slice(&self.scratch[from * channels..to * channels]);
+                    }
                 }
                 Ok(true)
             }
@@ -146,7 +173,9 @@ impl Decoder for SymphoniaDecoder {
             self.at_end = true;
             return Ok(());
         }
-        let time = Time::try_from_secs_f64(seconds)
+        // Positions are in song time; the stream starts `delay` frames earlier.
+        let stream_secs = seconds + self.trim.map_or(0.0, |t| t.delay as f64 / self.info.sample_rate as f64);
+        let time = Time::try_from_secs_f64(stream_secs)
             .ok_or_else(|| Error::Seek(format!("invalid seek position {seconds}")))?;
         match self.format.seek(
             SeekMode::Accurate,

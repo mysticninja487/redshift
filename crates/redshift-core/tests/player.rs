@@ -150,6 +150,24 @@ fn consecutive_tracks_join_without_a_gap() {
 }
 
 #[test]
+fn consecutive_aac_tracks_join_without_a_gap() {
+    // AAC files start with priming and end with padding (about 1000 frames of near silence each way);
+    // the player cuts both, so three songs in a row make one unbroken stretch of sound.
+    let mut r = rig(3.0);
+    r.player.set_queue(paths(&["chirp_44k_stereo.m4a", "chirp_44k_stereo.m4a", "chirp_44k_stereo.m4a"]), 0, true);
+    r.wait_ended();
+    let left = r.left();
+    let (first, last) = audible(&left);
+    assert!((last - first).abs_diff(3 * 144_000) < 3_000, "total {} frames", last - first);
+    let (mut run, mut longest) = (0, 0);
+    for v in &left[first + 2_000..last - 2_000] {
+        run = if v.abs() < 2e-3 { run + 1 } else { 0 };
+        longest = longest.max(run);
+    }
+    assert!(longest <= 4, "a silent run of {longest} frames: AAC padding left a gap between tracks");
+}
+
+#[test]
 fn crossfade_overlaps_tracks_and_blends_both() {
     let mut r = rig(3.0);
     r.player.set_crossfade_secs(1.0);
