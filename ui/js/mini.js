@@ -106,7 +106,7 @@ export function mountMini(root) {
     paintList(true);
   }
 
-  // ---- the person's choices (Settings > Mini player) ----
+  // ---- the person's choices (Settings > Mini & ambient) ----
   let lastTop = null, lastList = null;
   function applyPrefs() {
     const m = miniPrefs();

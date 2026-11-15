@@ -566,4 +566,10 @@ export default {
   "{a} album, 1 track": "{a} 张专辑,1 首曲目",
   "{n} tracks, {t}": "{n} 首曲目,{t}",
   "1 track, {t}": "1 首曲目,{t}",
+  "General": "常规",
+  "Skin & colour": "皮肤与颜色",
+  "Mini & ambient": "迷你与氛围",
+  "{x} options": "{x} 选项",
+  "Settings sections": "设置分区",
+  "Section": "分区",
 };

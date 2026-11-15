@@ -22,11 +22,17 @@ import { confirmDialog } from '../ui/dialog.js';
 import { aboutBlock, openHelp } from '../ui/help.js';
 import { LANGUAGES } from '../i18n.js';
 
-// [id, label, icon]. The 'skin' entry only exists for skins that have options of their own.
+// [id, label, icon]. A tab with `SUBS` shows those as a second row of choices above its page.
 const TABS = [
-  ['appearance', 'Appearance', 'palette'], ['skin', '', 'record'], ['playback', 'Playback', 'play'], ['eq', 'Equaliser', 'eq'], ['lyrics', 'Lyrics & info', 'lyrics'],
-  ['visual', 'Visualisers', 'viz'], ['layout', 'Layout', 'layout'], ['ambient', 'Ambient mode', 'ambient'], ['mini', 'Mini player', 'pip'], ['keys', 'Shortcuts', 'keyboard'], ['data', 'Data & reset', 'database'], ['help', 'Help & about', 'info'],
+  ['general', 'General', 'settings'], ['appearance', 'Appearance', 'palette'], ['playback', 'Playback', 'play'], ['windows', 'Mini & ambient', 'pip'],
+  ['keys', 'Shortcuts', 'keyboard'], ['help', 'Help & about', 'info'],
 ];
+// The second row. The 'skin' entry only exists for skins that have options of their own, and is named after the skin.
+const SUBS = {
+  appearance: [['look', 'Skin & colour'], ['layout', 'Layout'], ['now', 'Now playing'], ['visual', 'Visualisers'], ['skin', '']],
+  playback: [['playback', 'Playback'], ['eq', 'Equaliser']],
+  windows: [['mini', 'Mini player'], ['ambient', 'Ambient mode']],
+};
 const HERO_MODES = [{ value: 'art', label: 'Cover art' }, { value: 'turntable', label: 'Turntable' }, { value: 'viz', label: 'Visualiser' }, { value: 'none', label: 'Nothing' }];
 const SLOT_NAMES = { top: 'Top', left: 'Left', stage: 'Centre', right: 'Right', bottom: 'Bottom' };
 
@@ -65,9 +71,10 @@ function slider(opts) {
 }
 
 export function mountSettings(root) {
-  let tab = 'appearance';
+  let tab = 'general';
+  const sub = { appearance: 'look', playback: 'playback', windows: 'mini' }; // the remembered second-row choice of each tab
   const tabs = h('nav', { class: 'set-nav', role: 'tablist', 'aria-orientation': 'vertical', 'aria-label': 'Settings sections' }, TABS.map(([id, name, ic]) =>
-    h('button', { class: 'set-tab', type: 'button', role: 'tab', dataset: { tab: id }, onclick: () => { tab = id; render(); } }, icon(ic, 18), h('span', null, name))));
+    h('button', { class: 'set-tab', type: 'button', role: 'tab', dataset: { tab: id }, onclick: () => { tab = id; render(); body.scrollTop = 0; } }, icon(ic, 18), h('span', null, name))));
   // Hold to see the skin as it is without your changes: what did that setting actually do?
   const compareBtn = h('button', { class: 'cmp-btn', type: 'button', title: 'Hold to see this skin without your changes' }, icon('eye', 16), h('span', null, 'Hold to compare'));
   const badge = h('div', { class: 'cmp-badge', role: 'status', hidden: true });
@@ -94,15 +101,14 @@ export function mountSettings(root) {
     captureKeys(false);
     renderedSkin = getPrefs().skin;
     const mine = getSkin(getPrefs().skin);
-    if (tab === 'skin' && !mine.options?.length) tab = 'appearance';
-    tabs.querySelectorAll('.set-tab').forEach((b) => {
-      const isSkin = b.dataset.tab === 'skin';
-      b.hidden = isSkin && !mine.options?.length;
-      if (isSkin) b.lastChild.textContent = `${mine.name} options`;
-      b.setAttribute('aria-selected', String(b.dataset.tab === tab));
-    });
+    const hasSkinOptions = !!mine.options?.length;
+    if (sub.appearance === 'skin' && !hasSkinOptions) sub.appearance = 'look';
+    tabs.querySelectorAll('.set-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+    const subs = (SUBS[tab] ?? []).filter(([id]) => id !== 'skin' || hasSkinOptions);
+    const subNav = subs.length ? h('div', { class: 'set-subnav', role: 'tablist', 'aria-label': 'Section' }, subs.map(([id, name]) =>
+      h('button', { class: 'set-subtab', type: 'button', role: 'tab', 'aria-selected': String(sub[tab] === id), onclick: () => { sub[tab] = id; render(); body.scrollTop = 0; } }, id === 'skin' ? `${mine.name} options` : name))) : null;
     const st = body.scrollTop;
-    clear(body).append(TAB_BUILDERS[tab]());
+    clear(body).append(...(subNav ? [subNav] : []), TAB_BUILDERS[subs.length ? `${tab}/${sub[tab]}` : tab]());
     body.scrollTop = st;
   }
   const again = () => render();
@@ -153,10 +159,6 @@ export function mountSettings(root) {
     buildColorBits();
 
     return h('div', { class: 'set-page' },
-      group('Language', row('Language', select({ label: 'Language', value: getPrefs().language ?? 'auto',
-        options: [{ value: 'auto', label: 'Automatic (follow the system)' }, ...LANGUAGES.map(([value, label]) => ({ value, label }))],
-        onChange: (v) => setPref('language', v) }),
-      { hint: 'Menus and labels are translated as you go; anything that isn\u2019t translated yet stays in English. Song titles and lyrics are never changed.' })),
       group('Skin', h('p', { class: 'hint' }, 'A skin is a whole look: layout, type, decoration and a default visualiser. Your changes are remembered separately for each one. Like how this one turned out? Save it as a skin of your own.'), cards, mineRow,
         h('div', { class: 'set-row' }, button(isCustomSkin() ? 'Undo my changes to this skin' : 'Reset this skin to its defaults', async () => { if (await confirmDialog('Reset skin?', `All your changes to ${skin.name} since you ${isCustomSkin() ? 'saved it' : 'started'} will be forgotten.`, { ok: 'Reset' })) { resetSkin(); render(); } }))),
       group('Colour',
@@ -179,7 +181,8 @@ export function mountSettings(root) {
         row('Frosted glass', slider({ min: 0, max: 1, step: 0.05, value: c.shape.glass, label: 'Frosted glass', onInput: (v) => set('shape.glass', v), format: (v) => `${Math.round(v * 100)}%` }), { path: 'shape.glass', redo: again }),
         row('Film grain', slider({ min: 0, max: 1, step: 0.05, value: c.shape.grain, label: 'Film grain', onInput: (v) => set('shape.grain', v), format: (v) => `${Math.round(v * 100)}%` }), { path: 'shape.grain', redo: again }),
         skin.hasDecor === false ? null : row('Decoration', toggle({ label: 'Decoration', value: c.decor, onChange: (v) => set('decor', v) }), { hint: 'Ghost headings, background shapes and similar flourishes.', path: 'decor', redo: again }),
-        row('Reduce motion', segmented({ label: 'Reduce motion', options: [{ value: 'system', label: 'Follow system' }, { value: 'on', label: 'On' }, { value: 'off', label: 'Off' }], value: c.motion.reduce === true ? 'on' : c.motion.reduce === false ? 'off' : c.motion.reduce, onChange: (v) => set('motion.reduce', v) }), { path: 'motion.reduce', redo: again })));
+        row('Reduce motion', segmented({ label: 'Reduce motion', options: [{ value: 'system', label: 'Follow system' }, { value: 'on', label: 'On' }, { value: 'off', label: 'Off' }], value: c.motion.reduce === true ? 'on' : c.motion.reduce === false ? 'off' : c.motion.reduce, onChange: (v) => set('motion.reduce', v) }), { path: 'motion.reduce', redo: again })),
+      shareGroup());
   }
   /**
    * A font chooser: the built-in fonts, fonts the person imported, any font installed on the PC
@@ -379,6 +382,20 @@ export function mountSettings(root) {
         row('ReplayGain', segmented({ label: 'ReplayGain', options: [{ value: 'off', label: 'Off' }, { value: 'track', label: 'Track' }, { value: 'album', label: 'Album' }], value: p.replaygain, onChange: (v) => act(api.setReplayGain(v, state.player.replaygain_preamp_db)).then(refreshPlayer) }), { hint: 'Evens out loudness using tags in the files. Never pushes a song past clipping.' }),
         row('Pre-amp', slider({ min: -12, max: 12, step: 0.5, value: p.replaygain_preamp_db, center: true, reset: 0, label: 'ReplayGain pre-amp', onChange: (v) => act(api.setReplayGain(state.player.replaygain, v)).then(refreshPlayer), format: (v) => `${v > 0 ? '+' : ''}${v} dB` }))),
       group('Output', row('Device', dev), h('p', { class: 'hint' }, p.sample_rate ? `Running at ${p.sample_rate / 1000} kHz. Songs at other rates are converted.` : '')),
+      group('Queue', queueOptions()));
+  }
+
+  // ---------- General ----------
+  function general() {
+    return h('div', { class: 'set-page' },
+      group('Language', row('Language', select({ label: 'Language', value: getPrefs().language ?? 'auto',
+        options: [{ value: 'auto', label: 'Automatic (follow the system)' }, ...LANGUAGES.map(([value, label]) => ({ value, label }))],
+        onChange: (v) => setPref('language', v) }),
+      { hint: 'Menus and labels are translated as you go; anything that isn\u2019t translated yet stays in English. Song titles and lyrics are never changed.' })),
+      group('Startup', startup()),
+      group('Notifications', row('Song notifications', toggle({ label: 'Song notifications', value: state.settings?.notify_on_track ?? false, onChange: async (v) => { await act(api.setNotifyOnTrack(v)); await refreshSettings(); render(); } }),
+        { hint: 'Shows a notification with the title and artist when a new song starts while Redshift is minimised, in the tray or behind another window.' })),
+      group('Window', tray()),
       group('Library',
         row('Playing a track from a list', segmented({ label: 'Playing a track from a list', options: [{ value: 'single', label: 'Just that track' }, { value: 'list', label: 'Continue through the list' }], value: getPrefs().library.playMode ?? 'single', onChange: (v) => setPref('library.playMode', v) }),
           { hint: 'What double-clicking a track or pressing its play button does. The right-click menu always offers both.' }),
@@ -394,11 +411,7 @@ export function mountSettings(root) {
           if (!await confirmDialog('Clear listening history?', 'The Stats screen and your mixes start again from nothing. Play counts, favourites and playlists are not touched.', { ok: 'Clear history' })) return;
           try { await act(api.clearHistory()); toast('Listening history cleared'); } catch (e) { toast(`Could not clear it: ${e}`, 'error'); }
         }, { cls: 'danger' }))),
-      group('Queue', queueOptions()),
-      group('Startup', startup()),
-      group('Notifications', row('Song notifications', toggle({ label: 'Song notifications', value: state.settings?.notify_on_track ?? false, onChange: async (v) => { await act(api.setNotifyOnTrack(v)); await refreshSettings(); render(); } }),
-        { hint: 'Shows a notification with the title and artist when a new song starts while Redshift is minimised, in the tray or behind another window.' })),
-      group('Window', tray()));
+      resetGroup());
   }
 
   /** How songs get added to, and replace, the queue. */
@@ -534,8 +547,7 @@ export function mountSettings(root) {
   }
 
   // ---------- Data ----------
-  function data() {
-    return h('div', { class: 'set-page' },
+  const shareGroup = () =>
       group('Share a look', h('p', { class: 'hint' }, 'Save the current skin, with your changes, as a small file, or add a skin someone sent you. A loaded skin shows up with your own.'),
         h('div', { class: 'set-row set-actions' },
           button('Export this skin to a file…', async () => {
@@ -557,11 +569,16 @@ export function mountSettings(root) {
             try { data = JSON.parse(await navigator.clipboard.readText()); } catch { /* reported below */ }
             const look = data ? importLook(data) : null;
             if (look) { toast(`Added “${look.name}”`); render(); } else toast('The clipboard doesn\'t contain a Redshift skin.', 'error');
-          }))),
-      group('Reset', row('Everything', button('Reset all appearance settings', async () => { if (await confirmDialog('Reset everything?', 'Every skin goes back to its defaults and shortcuts are restored. Your music, playlists and playback settings are untouched.', { ok: 'Reset all' })) { const { setPref } = await import('../prefs.js'); setPref('skins', {}); setPref('keys', {}); render(); } }, { cls: 'danger' }))));
-  }
+          })));
+  const resetGroup = () =>
+      group('Reset', row('Everything', button('Reset all appearance settings', async () => { if (await confirmDialog('Reset everything?', 'Every skin goes back to its defaults and shortcuts are restored. Your music, playlists and playback settings are untouched.', { ok: 'Reset all' })) { const { setPref } = await import('../prefs.js'); setPref('skins', {}); setPref('keys', {}); render(); } }, { cls: 'danger' })));
 
-  const TAB_BUILDERS = { appearance, skin: skinTab, layout, visual, playback, eq: eqTab, lyrics: lyricsTab, ambient: ambientPage, mini: miniPage, keys: keysTab, data, help: helpTab };
+  const TAB_BUILDERS = {
+    general, keys: keysTab, help: helpTab,
+    'appearance/look': appearance, 'appearance/layout': layout, 'appearance/now': lyricsTab, 'appearance/visual': visual, 'appearance/skin': skinTab,
+    'playback/playback': playback, 'playback/eq': eqTab,
+    'windows/mini': miniPage, 'windows/ambient': ambientPage,
+  };
   on('ui', () => { if (state.view === 'settings' && getPrefs().skin !== renderedSkin) render(); });
   on('view', (v) => { if (v === 'settings') render(); else { previews.forEach((p) => p.destroy?.()); previews = []; } });
   render();

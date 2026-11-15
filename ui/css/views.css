@@ -195,3 +195,11 @@ html[data-split="true"] .set-body { padding-right: 4px; }
 html[data-compare="true"]:not([data-split="true"]) #settings { opacity: 0; }
 /* While comparing in the side panel the panel dims so the eye goes to the left. */
 html[data-compare="true"][data-split="true"] #settings > :not(.v-head) { opacity: .35; }
+
+/* The second row of a Settings tab: Appearance > Layout, Playback > Equaliser, and so on. */
+.set-subnav { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 22px; max-width: 960px; }
+.set-subtab { border: var(--bw) solid var(--line); background: none; color: var(--fg2); padding: 7px 14px; border-radius: 999px; font-weight: 500; font-size: .86rem; }
+.set-subtab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.set-subtab[aria-selected="true"] { color: var(--fg); border-color: color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+html[data-split="true"] .set-subnav { margin-bottom: 14px; gap: 4px; }
+html[data-split="true"] .set-subtab { padding: 5px 10px; font-size: .78rem; }

@@ -24,7 +24,7 @@ const GUIDE = [
   ]],
   ['Your listening', [
     ['Stats', 'Press 4. See how long you listened today, this week, this month and this year, your top song, artist and album, your taste, a listening streak and mixes made from your history.'],
-    ['What counts as a play', 'A song counts once you have heard a set share of it (Settings > Playback, 50% by default). Songs you only flick past still show up in recently played, but not in most played, taste or mixes.'],
+    ['What counts as a play', 'A song counts once you have heard a set share of it (Settings > General, 50% by default). Songs you only flick past still show up in recently played, but not in most played, taste or mixes.'],
   ]],
   ['Making it yours', [
     ['Skins', 'Press ] and [ to switch skins. Change one until it looks right, then Settings > Appearance > Save this look as a new skin.'],

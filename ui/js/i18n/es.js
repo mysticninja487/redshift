@@ -566,4 +566,10 @@ export default {
   "{a} album, 1 track": "{a} álbum, 1 canción",
   "{n} tracks, {t}": "{n} canciones, {t}",
   "1 track, {t}": "1 canción, {t}",
+  "General": "General",
+  "Skin & colour": "Aspecto y color",
+  "Mini & ambient": "Mini y ambiente",
+  "{x} options": "Opciones de {x}",
+  "Settings sections": "Secciones de ajustes",
+  "Section": "Sección",
 };

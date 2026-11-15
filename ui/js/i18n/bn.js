@@ -566,4 +566,10 @@ export default {
   "{a} album, 1 track": "{a}টি অ্যালবাম, ১টি গান",
   "{n} tracks, {t}": "{n}টি গান, {t}",
   "1 track, {t}": "১টি গান, {t}",
+  "General": "সাধারণ",
+  "Skin & colour": "skin ও রং",
+  "Mini & ambient": "মিনি ও অ্যাম্বিয়েন্ট",
+  "{x} options": "{x}-এর বিকল্প",
+  "Settings sections": "সেটিংসের বিভাগ",
+  "Section": "বিভাগ",
 };

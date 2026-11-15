@@ -566,4 +566,10 @@ export default {
   "{a} album, 1 track": "{a}アルバム、1トラック",
   "{n} tracks, {t}": "{n}トラック、{t}",
   "1 track, {t}": "1トラック、{t}",
+  "General": "一般",
+  "Skin & colour": "スキンと色",
+  "Mini & ambient": "ミニとアンビエント",
+  "{x} options": "{x} のオプション",
+  "Settings sections": "設定のセクション",
+  "Section": "セクション",
 };
