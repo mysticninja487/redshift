@@ -72,7 +72,7 @@ const lead = (s) => s.match(/^\s*/)[0];
 const trail = (s) => s.match(/\s*$/)[0];
 // Things that come from the user's music (titles, artists, lyrics, playlist and folder names). A song called
 // "Home" or a genre called "Rock" must never be turned into another language.
-const USER_TEXT = ['[translate="no"]', '.t-row:not(.t-head) .t-title', '.t-row:not(.t-head) .t-artist', '.t-row:not(.t-head) .t-album', '.q-name', '.q-artist', '.mini-title', '.mini-meta', '.mini-artist',
+export const USER_TEXT = ['[translate="no"]', '.t-row:not(.t-head) .t-title', '.t-row:not(.t-head) .t-artist', '.t-row:not(.t-head) .t-album', '.q-name', '.q-artist', '.mini-title', '.mini-meta', '.mini-artist',
   '.mini-row-title', '.mini-row-artist', '.lyrics', '.ly-line', '.am-lyrics', '.am-title', '.am-artist', '.i-title', '.i-artist', '.i-album',
   '.i-album-name', '.d-title', '.d-artist', '.ac-title', '.ac-artist', '.ar-name', '.detail-title', '.pl-name', '.folder-path', '.si-path',
   '.si-sub', '.st-top-title', '.st-mix-name', '.st-genre-name', '.sty-title', '.sty-sub', '.quiet-album', '.quiet-meta'].join(',');

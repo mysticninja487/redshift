@@ -3,7 +3,7 @@
 
 import { api, COVER, coverUrl } from '../api.js';
 import { state } from '../state.js';
-import { fmtKhz, fmtTime, h, plural, toast } from '../util.js';
+import { dateLocale, fmtKhz, fmtTime, h, plural, toast } from '../util.js';
 import { icon } from './icons.js';
 import { button } from './controls.js';
 import { modal } from './dialog.js';
@@ -17,8 +17,8 @@ const bytes = (n) => {
   while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
   return `${i === 0 ? v : v.toFixed(v >= 100 ? 0 : 1)} ${u[i]}`;
 };
-const day = (secs) => new Date(secs * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
-const when = (secs) => new Date(secs * 1000).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+const day = (secs) => new Date(secs * 1000).toLocaleDateString(dateLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
+const when = (secs) => new Date(secs * 1000).toLocaleString(dateLocale(), { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 const listened = (secs) => (secs < 60 ? `${Math.round(secs)} s` : secs < 3600 ? `${Math.round(secs / 60)} min` : `${(secs / 3600).toFixed(1)} h`);
 const gain = (db) => (db == null ? '' : `${db > 0 ? '+' : ''}${db.toFixed(2)} dB`);
 

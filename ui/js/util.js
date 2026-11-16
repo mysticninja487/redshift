@@ -3,6 +3,8 @@
 export const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 export const lerp = (a, b, t) => a + (b - a) * t;
 export const mix = lerp;
+/** The locale for dates: the chosen interface language (the page's lang), or the system's own when English. */
+export const dateLocale = () => { const l = document.documentElement.lang; return !l || l === 'en' ? undefined : l; };
 export const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 /** m:ss, or h:mm:ss for long tracks. Unknown values show as --:--. */
@@ -106,7 +108,7 @@ export function ago(secs, now = Date.now()) {
   if (d < 86400) return `${Math.floor(d / 3600)} h ago`;
   if (d < 172800) return 'yesterday';
   if (d < 86400 * 30) return `${Math.floor(d / 86400)} days ago`;
-  return new Date(secs * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(secs * 1000).toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

@@ -44,3 +44,8 @@
 @media (max-width: 1000px) { :root[data-skin="classic"] { --side-w: 64px; } [data-skin="classic"] .brand-name, [data-skin="classic"] .nav-btn span { display: none; } [data-skin="classic"] .brand { justify-content: center; padding: 0; } [data-skin="classic"] .nav-btn { justify-content: center; padding: 12px 0; } [data-skin="classic"] .chrome-tools .skin-select { display: none; } [data-skin="classic"] .chrome { padding: 18px 8px 12px; } [data-skin="classic"] .now-tools { flex-direction: column; } }
 @media (max-width: 860px) { [data-skin="classic"] .stage-grid { grid-template-areas: "stage" "right" "bottom"; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 240px auto; overflow-y: auto; } }
 [data-skin="classic"] .now-tools { border: 0; padding: 0; margin-right: 0; }
+
+/* The title sits dead centre and its buttons hang off its right edge, so they never push it sideways. */
+[data-skin="classic"] .slot[data-slot="stage"] .i-title-row { display: grid; grid-template-columns: minmax(64px, 1fr) minmax(0, auto) minmax(64px, 1fr); gap: 0 4px; width: 100%; }
+[data-skin="classic"] .slot[data-slot="stage"] .i-title-row .i-title { grid-column: 2; text-align: center; }
+[data-skin="classic"] .slot[data-slot="stage"] .i-title-row .i-title-btns { grid-column: 3; justify-self: start; }

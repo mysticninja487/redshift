@@ -5,7 +5,7 @@ import { api, COVER, coverUrl } from '../api.js';
 import { on } from '../bus.js';
 import { act, playPaths, queueAdd, setView } from '../controller.js';
 import { state } from '../state.js';
-import { h, plural, toast } from '../util.js';
+import { dateLocale, h, plural, toast } from '../util.js';
 import { button, iconButton } from '../ui/controls.js';
 import { promptText } from '../ui/dialog.js';
 import { icon } from '../ui/icons.js';
@@ -19,8 +19,9 @@ const PERIODS = [
   { id: 'month', label: 'This month', prev: 'last month' },
   { id: 'year', label: 'This year', prev: 'last year' },
 ];
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+// Day and month names come from the interface language. 1 Jan 2024 was a Monday.
+const dayName = (i, width = 'short') => new Intl.DateTimeFormat(dateLocale(), { weekday: width, timeZone: 'UTC' }).format(new Date(Date.UTC(2024, 0, 1 + i)));
+const monthName = (i) => new Intl.DateTimeFormat(dateLocale(), { month: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2024, i, 1)));
 
 const secs = (d) => Math.floor(d.getTime() / 1000);
 
@@ -46,9 +47,9 @@ export function chartBuckets(id, now = new Date()) {
   const bar = (a, b, label, title) => out.push({ from: secs(a), to: secs(b), label, title, current: t >= secs(a) && t < secs(b), future: secs(a) > t });
   const { start } = r, y = start.getFullYear(), m = start.getMonth(), d = start.getDate();
   if (id === 'day') for (let i = 0; i < 24; i++) bar(new Date(y, m, d, i), new Date(y, m, d, i + 1), i % 6 === 0 ? String(i) : '', `${String(i).padStart(2, '0')}:00`);
-  else if (id === 'week') for (let i = 0; i < 7; i++) bar(new Date(y, m, d + i), new Date(y, m, d + i + 1), WEEKDAYS[i][0], `${WEEKDAYS[i]} ${new Date(y, m, d + i).getDate()} ${MONTHS[new Date(y, m, d + i).getMonth()]}`);
-  else if (id === 'month') { const n = new Date(y, m + 1, 0).getDate(); for (let i = 1; i <= n; i++) bar(new Date(y, m, i), new Date(y, m, i + 1), i === 1 || i % 5 === 0 ? String(i) : '', `${i} ${MONTHS[m]}`); }
-  else for (let i = 0; i < 12; i++) bar(new Date(y, i, 1), new Date(y, i + 1, 1), MONTHS[i][0], `${MONTHS[i]} ${y}`);
+  else if (id === 'week') for (let i = 0; i < 7; i++) bar(new Date(y, m, d + i), new Date(y, m, d + i + 1), dayName(i, 'narrow'), `${dayName(i)} ${new Date(y, m, d + i).getDate()} ${monthName(new Date(y, m, d + i).getMonth())}`);
+  else if (id === 'month') { const n = new Date(y, m + 1, 0).getDate(); for (let i = 1; i <= n; i++) bar(new Date(y, m, i), new Date(y, m, i + 1), i === 1 || i % 5 === 0 ? String(i) : '', `${i} ${monthName(m)}`); }
+  else for (let i = 0; i < 12; i++) bar(new Date(y, i, 1), new Date(y, i + 1, 1), monthName(i)[0], `${monthName(i)} ${y}`);
   return out;
 }
 
@@ -183,14 +184,14 @@ export function mountStats(root) {
 
   // ---- streak ----
 
-  const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const DAY_LETTERS = Array.from({ length: 7 }, (_, i) => dayName((i + 6) % 7, 'narrow'));
   function paintStreak(sk) {
     if (!sk || !sk.total_days) { streakBox.hidden = true; streakBox.replaceChildren(); return; }
     streakBox.hidden = false;
     const played = new Set(sk.recent);
     const dots = Array.from({ length: 14 }, (_, i) => {
       const day = sk.today - 13 + i, weekday = new Date(day * 86400000).getUTCDay();
-      return h('li', { class: `st-dot${played.has(day) ? ' is-on' : ''}${day === sk.today ? ' is-today' : ''}`, title: `${new Date(day * 86400000).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'UTC' })}${played.has(day) ? '' : ' · no songs'}` },
+      return h('li', { class: `st-dot${played.has(day) ? ' is-on' : ''}${day === sk.today ? ' is-today' : ''}`, title: `${new Date(day * 86400000).toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'UTC' })}${played.has(day) ? '' : ' · no songs'}` },
         h('i'), h('span', null, DAY_LETTERS[weekday]));
     });
     const alive = sk.current > 0 && !sk.played_today;
@@ -330,7 +331,7 @@ export function mountStats(root) {
         button('Play', () => playPaths(tracks, 0), { cls: 'primary', iconName: 'play' }),
         button('Add to queue', () => queueAdd(tracks), { cls: 'ghost' }),
         button('Save as playlist', async () => {
-          const n = await promptText('Save as playlist', { value: `${m.name} · ${new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`, ok: 'Save playlist' });
+          const n = await promptText('Save as playlist', { value: `${m.name} · ${new Date().toLocaleDateString(dateLocale(), { day: 'numeric', month: 'short' })}`, ok: 'Save playlist' });
           if (n === null) return;
           await act(api.createPlaylist(n, tracks)); toast(`Saved “${n}”`);
         }, { cls: 'ghost' })));

@@ -36,3 +36,8 @@
 [data-skin="soft"] .s-track { height: 36px; }
 [data-skin="soft"] .slot[data-slot="bottom"] { padding: 10px 6px; }
 [data-skin="soft"] .t-volume .knob { margin-left: 8px; }
+
+/* The title sits dead centre and its buttons hang off its right edge, so they never push it sideways. */
+[data-skin="soft"] .slot[data-slot="stage"] .i-title-row { display: grid; grid-template-columns: minmax(64px, 1fr) minmax(0, auto) minmax(64px, 1fr); gap: 0 4px; width: 100%; }
+[data-skin="soft"] .slot[data-slot="stage"] .i-title-row .i-title { grid-column: 2; text-align: center; }
+[data-skin="soft"] .slot[data-slot="stage"] .i-title-row .i-title-btns { grid-column: 3; justify-self: start; }

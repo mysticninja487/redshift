@@ -28,7 +28,7 @@ export function mount(el) {
   const title = h('h2', { class: 'i-title' });
   const heart = h('button', { class: 'fav-btn i-fav', type: 'button', title: 'Favourite', 'aria-label': 'Favourite', onclick: () => state.trackPath && toggleFavourite([state.trackPath]) }, icon('heart', 20));
   const infoBtn = h('button', { class: 'i-infobtn', type: 'button', title: 'Song info (I)', 'aria-label': 'Song info', onclick: () => state.trackPath && import('../ui/songinfo.js').then((m) => m.openSongInfo(state.trackPath)) }, icon('info', 17));
-  const titleRow = h('div', { class: 'i-title-row' }, title, infoBtn, heart);
+  const titleRow = h('div', { class: 'i-title-row' }, title, h('span', { class: 'i-title-btns' }, infoBtn, heart));
   // Right-clicking the title (or anything in the title row) opens the same menu as a song in the library.
   titleRow.addEventListener('contextmenu', async (ev) => {
     if (!state.trackPath) return;
