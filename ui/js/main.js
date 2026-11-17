@@ -3,6 +3,7 @@
 import { on } from './bus.js';
 import { api, listen } from './api.js';
 import { initController, setView, toggleSettings } from './controller.js';
+import { startupChecks } from './online.js';
 import { loadImportedFonts } from './fonts.js';
 import { eqDrawerOpen, onEqDrawer, toggleEqDrawer } from './ui/eqdrawer.js';
 import { initI18n } from './i18n.js';
@@ -133,6 +134,7 @@ async function bootMini() {
   const { mountMini } = await import('./mini.js');
   mountMini(app);
   document.documentElement.dataset.ready = 'true';
+  startupChecks();
 }
 
 async function boot() {

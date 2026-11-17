@@ -10,6 +10,11 @@ export const state = {
   coverUrl: null,          // image URL of the playing track's cover, or null
   art: null,               // colours pulled from that cover (see theme.js)
   lyrics: null,
+  lyricsLocal: null,       // the song's own lyrics (a .lrc file or its tags), whichever is shown
+  lyricsOnline: null,      // lyrics fetched from the internet: { text, tag_text, synced, word_synced, instrumental, provider }
+  lyricsView: '',          // which of the two `lyrics` is: '' (none) | 'local' | 'online'
+  lyricsStatus: '',        // '' | 'searching' | 'none' | 'instrumental' | 'error' (an online lookup)
+  lyricsError: '',
   waveform: null,          // { peaks, rms, duration_secs } for the playing track
   favs: new Set(),         // favourite track paths
   favOrder: [],            // the same, most recently added first

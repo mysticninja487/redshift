@@ -92,6 +92,20 @@
 .lyrics:hover .ly-edit, .ly-edit:focus-visible { opacity: .85; }
 .ly-edit[hidden] { display: none; }
 .ly-empty .btn { margin-top: 4px; }
+.ly-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.ly-empty[data-busy="true"] .ly-empty-title { animation: ly-pulse 1.4s ease-in-out infinite; }
+@keyframes ly-pulse { 50% { opacity: .45; } }
+:root[data-motion="reduced"] .ly-empty[data-busy="true"] .ly-empty-title { animation: none; }
+.ly-online { position: relative; flex: none; z-index: 2; padding: 10px 16px 4px 44px; display: flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: .62rem; letter-spacing: .12em; text-transform: uppercase; color: var(--fg3); }
+.ly-online[hidden] { display: none; }
+.ly-online { flex-wrap: wrap; row-gap: 6px; }
+.ly-online [hidden] { display: none !important; }
+.ly-online .segmented { font-size: .66rem; letter-spacing: .04em; text-transform: none; }
+.ly-online .seg { padding: 3px 9px; }
+.ly-source { flex: 1 1 8ch; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ly-actions { display: flex; gap: 6px; flex: none; }
+.ly-actions[hidden] { display: none; }
+.ly-online .btn { padding: 3px 9px; font-size: .66rem; letter-spacing: .04em; text-transform: none; }
 
 
 

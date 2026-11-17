@@ -4,6 +4,7 @@
 import { api, bumpCover, COVER, coverUrl, listen } from './api.js';
 import { asleep as hostAsleep } from './host.js';
 import { emit } from './bus.js';
+import { getPrefs, setPref } from './prefs.js';
 import { state } from './state.js';
 import { updateArt } from './theme.js';
 import { plural, toast } from './util.js';
@@ -28,21 +29,115 @@ async function loadTrack(entryId) {
   const mine = ++loadToken;
   const path = state.queue.entries.find((e) => e.id === entryId)?.path ?? state.queue.current?.path ?? null;
   if (!path) {
-    Object.assign(state, { track: null, trackPath: null, coverUrl: null, lyrics: null, waveform: null });
+    Object.assign(state, { track: null, trackPath: null, coverUrl: null, lyrics: null, lyricsLocal: null, lyricsOnline: null, lyricsView: '', lyricsStatus: '', lyricsError: '', waveform: null });
     emit('track'); emit('lyrics'); emit('waveform');
     updateArt(null);
     return;
   }
   state.trackPath = path;
-  state.lyrics = null; state.waveform = null;
+  state.lyrics = null; state.waveform = null; state.lyricsLocal = null; state.lyricsOnline = null; state.lyricsView = ''; state.lyricsStatus = ''; state.lyricsError = '';
   state.coverUrl = coverUrl(path, COVER.big);
   state.track = (await getMeta(path)) ?? { path, title: path.split(/[\\/]/).pop(), artist: '', album: '' };
   if (mine !== loadToken) return;
   emit('track'); emit('lyrics'); emit('waveform');
   // The rest can arrive later; each is dropped if another track has started since.
-  api.lyrics(path).then((l) => { if (mine === loadToken) { state.lyrics = l ?? null; emit('lyrics'); } }).catch(() => {});
+  api.lyrics(path).then((l) => {
+    if (mine !== loadToken) return;
+    state.lyricsLocal = l ?? null; state.lyrics = state.lyricsLocal; state.lyricsView = l ? 'local' : ''; emit('lyrics');
+    const o = state.settings?.online;
+    if (!l && o?.enabled && o.lyrics && o.auto_lyrics) searchOnlineLyrics();
+    // The person last chose the online lyrics over the ones in the file, so they are shown again.
+    else if (l && lyricsPreference() === 'online' && lyricsOnlineAllowed()) searchOnlineLyrics();
+  }).catch(() => {});
   api.waveform(path, 900).then((w) => { if (mine === loadToken) { state.waveform = w; emit('waveform'); } }).catch(() => {});
   coverLoads(state.coverUrl).then((ok) => { if (mine === loadToken) { if (!ok) state.coverUrl = null; emit('track'); updateArt(ok ? state.coverUrl : null); } });
+}
+
+/** Whether online lyrics may be asked for: the main online switch and the lyrics switch are both on. */
+export function lyricsOnlineAllowed() {
+  const o = state.settings?.online;
+  return !!(o?.enabled && o.lyrics);
+}
+/** Which lyrics the person last chose for songs that have their own: 'local' (in the file) or 'online'. */
+export const lyricsPreference = () => (getPrefs().lyricsSource === 'online' ? 'online' : 'local');
+
+/**
+ * Looks for lyrics of the playing song on the internet (BetterLyrics or LRCLIB, as chosen in Settings). Found
+ * lyrics are shown right away, unless the song has lyrics of its own and `show` is false, and are not saved
+ * anywhere until the user chooses to. The status says what happened, so the lyrics panel can tell "searching",
+ * "nothing found" and "could not reach it" apart.
+ */
+export async function searchOnlineLyrics({ show = true } = {}) {
+  const path = state.trackPath, mine = loadToken;
+  if (!path) return;
+  state.lyricsStatus = 'searching'; state.lyricsError = ''; emit('lyrics');
+  try {
+    const r = await api.onlineLyrics(path);
+    if (mine !== loadToken) return;
+    if (!r) { state.lyricsStatus = 'none'; }
+    else if (r.instrumental && !r.lyrics) { state.lyricsStatus = 'instrumental'; }
+    else {
+      state.lyricsOnline = r; state.lyricsStatus = '';
+      if (show) { state.lyricsView = 'online'; state.lyrics = r.lyrics; }
+    }
+  } catch (e) {
+    if (mine !== loadToken) return;
+    state.lyricsStatus = 'error'; state.lyricsError = String(e?.message ?? e);
+  }
+  emit('lyrics');
+}
+
+/**
+ * Switches a song that has lyrics of its own between those and the online ones. The choice is
+ * remembered for the next songs. Online lyrics are fetched the first time they are wanted.
+ */
+export async function chooseLyrics(which) {
+  if (!state.lyricsLocal) return;
+  setPref('lyricsSource', which);
+  if (which === 'local') {
+    state.lyricsView = 'local'; state.lyrics = state.lyricsLocal; state.lyricsStatus = '';
+    emit('lyrics');
+  } else if (state.lyricsOnline?.lyrics) {
+    state.lyricsView = 'online'; state.lyrics = state.lyricsOnline.lyrics; state.lyricsStatus = '';
+    emit('lyrics');
+  } else {
+    await searchOnlineLyrics();
+  }
+}
+
+/** After online lyrics were saved they are the song's own lyrics: read them back and show them as such. */
+async function adoptSaved() {
+  const path = state.trackPath, mine = loadToken;
+  const l = await api.lyrics(path).catch(() => null);
+  if (mine !== loadToken || !l) return; // nothing readable yet: what is on screen stays
+  state.lyricsLocal = l ?? null; state.lyricsOnline = null; state.lyricsStatus = '';
+  state.lyricsView = l ? 'local' : ''; state.lyrics = l ?? null;
+  setPref('lyricsSource', 'local');
+  emit('lyrics');
+}
+
+/** Saves the lyrics that came from the internet next to the song as a .lrc (or .txt) file, with word timing when there is some. */
+export async function saveOnlineLyrics() {
+  const o = state.lyricsOnline, path = state.trackPath;
+  if (!o || !path) return false;
+  const file = await act(api.saveLyricsFile(path, o.text, o.synced));
+  if (file == null) return false;
+  await adoptSaved();
+  return true;
+}
+
+/**
+ * Writes the lyrics that came from the internet into the song's own tags (line by line, which every player
+ * understands). Asks first when that would replace lyrics already in the tags.
+ */
+export async function saveOnlineLyricsToTags(confirm) {
+  const o = state.lyricsOnline, path = state.trackPath;
+  if (!o || !path) return false;
+  if (state.lyricsLocal?.source === 'embedded' && !await confirm()) return false;
+  const done = await act(api.writeTags(path, { lyrics: o.tag_text || o.text }));
+  if (done == null) return false;
+  await adoptSaved();
+  return true;
 }
 
 /** True if the cover image exists (the app answers 404 for tracks without one). */

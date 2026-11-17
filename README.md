@@ -1,194 +1,170 @@
 <h1 align="center">Redshift</h1>
 
 <p align="center">
-  A local music player for Windows with a cosmic streak: it plays your own FLAC and Opus files<br>
-  through a built-in equaliser, shows synced lyrics, and looks the way you want it to.
+  A Windows music player for the files you already own.<br>
+  FLAC, Opus and more, gapless, with an equaliser, word-by-word lyrics and skins you can remake.
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/now-playing-classic.jpg" alt="Redshift in the Classic layout: a sidebar, the cover and track in the middle, lyrics and the play queue on the right, a player bar along the bottom" width="880">
+  <img src="docs/screenshots/now-playing-classic.jpg" alt="Redshift in the Classic skin: sidebar, cover and track in the middle, lyrics and queue on the right, player bar along the bottom" width="880">
 </p>
 
-Redshift reads the music you already have. No account, no streaming, no tracking: point it at your folders and play. It's built with Tauri 2 and a Rust audio engine, so it starts quickly and stays light.
+Point Redshift at your music folders and play. There is no account, no streaming and no tracking, and it never changes your files unless you edit a tag yourself. It is built with Tauri 2 and a Rust audio engine, so it starts fast and idles at close to nothing.
+
+Everything that touches the internet (lyrics lookup, update check) is **off until you switch it on** in Settings > Online, which also shows every request that was made.
 
 > The screenshots use invented demo albums and a stand-in player, so the artists and songs are made up.
 
 ## Download
 
-Get the latest installer or the portable `.exe` from the [Releases page](https://github.com/mysticninja487/redshift/releases). It runs on Windows 10 and 11 (it uses WebView2, which is already part of both). The installer registers Redshift as an option for opening audio files and playlists (right-click a song > Open with). Windows may show a "protected your PC" warning because the app isn't code-signed yet; choose "More info" then "Run anyway".
+Get the installer or the portable `.exe` from the [Releases page](https://github.com/mysticninja487/redshift/releases). Windows 10 and 11 are supported (it uses WebView2, which both include). The installer adds Redshift to "Open with" for audio files and playlists. Windows may warn that it "protected your PC" because the app is not code-signed yet: choose **More info**, then **Run anyway**.
 
-This is an early version. If something breaks, please [open an issue](https://github.com/mysticninja487/redshift/issues).
-
-## What it does
-
-**Plays your music properly**
-
-- FLAC up to 24-bit / 192 kHz, Opus, MP3, Ogg Vorbis, WAV and AAC/M4A/ALAC.
-- Gapless playback, or crossfade between tracks (0-12 s). Gapless covers every format: FLAC, WAV and Opus join exactly, and MP3, Vorbis and AAC/M4A have their encoder's start and end padding cut (for M4A from the file's edit list), so albums that run into each other, live sets and DJ mixes play without a break. Any sample rate is converted to what your sound device runs at.
-- ReplayGain (track or album, with a pre-amp) and output device selection.
-
-**Sounds the way you like**
-
-<p align="center">
-  <img src="docs/screenshots/equaliser.jpg" alt="The equaliser drawer open over the Now Playing screen" width="760">
-</p>
-
-- A 10-band equaliser with a pre-amp, a live response curve, 24 built-in presets and your own saved presets. Open it from the top bar of Now Playing (or press `E`).
-
-**Lyrics and visualisers**
-
-- Synced lyrics from `.lrc` files next to the song or from the file's tags, with line and word timing.
-- Twelve visualisers: bars, hairlines, oscilloscope, ring, wavelength blur, orb, particles, spectrogram, vectorscope, dot matrix, ridges and level meters. Lyrics, visualisers and the queue each switch off for every skin with one button, and Settings shows a live example of the lyrics as you change their size, fade and blur.
-
-**Looks like you chose it**
-
-<p align="center">
-  <img src="docs/screenshots/skins.jpg" alt="Skins: Turntable, Noir Studio, Wavelength, Mist HUD, Paper, Soft Console and Pixel Mono, plus a light version of Noir Studio" width="900">
-</p>
-
-- Eight skins, each a whole composition rather than a colour set. Classic is the default: a sidebar, the cover and track in the middle, lyrics and the queue beside them, a player bar along the bottom. The others are Turntable, Noir Studio, Wavelength, Mist HUD, Paper, Soft Console and Pixel Mono. Switch from the skin menu, or with `[` and `]`. Options that only one skin has (the turntable's tonearm, Paper's halftone) show up under that skin's own heading in Settings.
-- Light and dark, an accent from the skin, a preset, a custom colour, or colours taken from the current album art.
-- Skins of your own: change a skin until it looks right, then **Settings > Appearance > Save this look as a new skin**. It joins the built-in ones in the skin menu and the skin keys, can be renamed or deleted, and can be exported to a small `.json` file (Settings > Data & reset) to send to someone, or added from one.
-- Your own fonts for any skin: a built-in font, an installed font by name, or an imported font file. Text size, spacing, corner radius, line weight, shadows, frosted glass and grain are adjustable, and you can rearrange the panels.
-
-**A library that knows your listening**
-
-<p align="center">
-  <img src="docs/screenshots/library-most-played.jpg" alt="The Library, on the Most played tab" width="760">
-</p>
-
-- Albums, artists, all songs and a folder browser, with search. Play or shuffle any album, artist, folder or playlist, or double-click a track to play just that one.
-- Favourites, recently played, most played (tracks, albums, artists), recently added and not played.
-- Playlists with M3U/M3U8 import and export. Playlists made on another device are matched to your library by file name, folders and track title; anything that can't be found is kept, dimmed and skipped, and can be relinked later.
-- Minimise to the system tray, with play/pause/next/previous in the tray menu.
-- Redshift picks up where you left off: the queue, the song and the position come back after a restart (switch it off in Settings > General).
-- Watches your music folders: songs you add, change or remove show up within about a minute, without a manual rescan (switch it off in Settings > General). Scrolling in a long library isn't disturbed when a new song starts.
-- **Stats** (`4`): how long you've listened today, this week, this month and this year, each compared with the stretch before it; a chart for the one you pick; your most played song, artist and album; what your taste looks like (genres, time of day, how much was new to you, which era); and **mixes for you** made from your listening: On repeat, Take me back (songs you loved and haven't heard lately), a mix for each of your top genres and artists, Fresh picks (unplayed songs you'd probably like) and your favourites. Mixes change every day and can be played, queued or saved as a playlist. It is all counted on this computer and never sent anywhere; you can turn the history off or clear it in Settings > General.
-- **Play story** on the Stats screen: your day, week, month or year as a short slideshow (total time, top song, artist and album, your sound, when you listen), with a button at the end to play your "On repeat" mix. Tap the sides or use the arrow keys, hold or press Space to pause.
-- Choose how much of a song counts as a play: **Settings > General > A song counts as played after**, from 1% to 100% of its length (50% by default). Skipping past a song doesn't count. It drives the play counts, Most played, Stats and the mixes. Songs you only flick past (under the threshold) still show in recently played and in your listening time, but never in most played, taste or mixes.
-- **Listening streak** on the Stats screen: how many days in a row you've played something, your longest run, and the last two weeks at a glance. A song only counts once it passes the play threshold above.
-- **Taste** only lists real genres. Video-site categories such as "Film & Animation" or "People & Blogs" are ignored, and songs without a genre tag show up as a dimmed **Unknown** row.
-- **Song info**: right-click a song > **Song info…**, press `I` for the one playing, or use the info button beside the title on Now Playing (right-clicking the title opens the same menu as a song in the library). It shows the tags, the format, bitrate, sample rate and bit depth, ReplayGain, how often and when you played it, and where the file is.
-- **Help & about** (`F1`, or Settings > Help & about): a short guide, every shortcut with whatever you've changed it to, the version, and a button that opens the folder where Redshift keeps its files.
-- **Settings, reorganised**: six tabs instead of twelve. *General* (language, startup, tray, notifications, library, play counts and history, reset), *Appearance* (with a second row: Skin & colour, Layout, Now playing for lyrics, progress bar and controls, Visualisers, and the skin's own options when it has any), *Playback* (transitions, loudness, output, queue, and the Equaliser), *Mini & ambient*, *Shortcuts* and *Help & about*. Sharing a skin sits under Appearance > Skin & colour.
-- **Languages**: Settings > Appearance > Language switches the interface between English, Bengali (বাংলা), Spanish (Español), French (Français), German (Deutsch), Japanese (日本語) and Simplified Chinese (简体中文), or follows the language of Windows (*Automatic*). The main screens, menus, dialogs, Settings (titles, hints and skin descriptions) and Stats sentences are translated, and dates and weekday names in Stats follow the chosen language. Song titles, artists, albums, genres, lyrics and playlist names are never translated. Translations live in `ui/js/i18n/<language>.js` as plain English-text-to-translation lists, so adding a phrase or a language is a one-file change.
-- Click the **total time** next to the progress bar to show the time left instead (turn it off in **Settings > Appearance > Now playing > Progress bar**).
-- A sleep timer in the top bar: stop in 15 minutes to 2 hours, or at the end of the current song. The volume fades out over the last ten seconds and returns to where it was.
-- Play speed and pitch: the gauge in the top bar opens speed presets (0.5× to 2×), a speed slider and a pitch slider (±12 semitones), and `<` / `>` nudge the speed by 0.05×. With Keep pitch on, Redshift time-stretches the sound (WSOLA) so songs get faster or slower without changing key; with it off you get tape style, where pitch follows speed like a record. The setting is remembered, works with every file type, and the stage is skipped entirely at normal speed so nothing changes the sound then. Extreme settings (below about 0.6× or above 1.6×) can sound slightly warbly on some material.
-
-**Fits into Windows**
-
-- Media keys (play/pause, next, previous) and the track, cover and controls in the Windows volume flyout and lock screen.
-- **Queue switches** (Settings > Playback > Queue): *Prevent duplicate songs in the queue* (off by default; Play next moves an already-queued song to the front instead), *Keep shuffle on across queues* (on by default; off means opening an album or playlist plays it in order, while the Shuffle buttons still shuffle) and *Shuffle the whole queue* (on by default; off means songs you add with Add to queue play after the shuffled ones in the order added. Play next always plays next).
-- **Song notifications** (off by default): a notification with the title and artist when a new song starts while no Redshift window is in front.
-- **Launch on startup** (Settings > General > Startup): starts Redshift when you sign in to Windows. The switch reads the real Windows setting, so it also follows changes made in Task Manager.
-- Open songs, folders or playlists with Redshift (right-click, "Open with", or drag them onto the exe or the window). A second launch hands its files to the player that's already running.
-- A mini player: a small always-on-top window with two sizes. The compact strip has the cover, the track, the controls, a heart to favourite the song and a progress line; the arrow in its corner expands it into a card with the queue (click a track to jump to it) or the lyrics beside the cover. Open it from the top bar or with `Ctrl+M`, drag it anywhere, resize it from the bottom-right corner (each size is remembered), pin it above other windows or let it sit among them, and double-click it to go back to the full player. Settings > Mini player sets whether it opens compact or expanded, its background, opacity and corner radius, and what it shows.
-- Ambient mode: the whole window becomes the visualiser, the lyrics, or the lyrics over the visualiser, full screen. Open it from the top bar or with `A`; the controls fade away when the mouse is still, `1`, `2` and `3` switch views, `V` changes the visualiser, `Esc` leaves. The screen stays awake while it is open. Settings > Ambient mode sets the background, visualiser, how soon the controls hide and more.
-- Settings shows what each option does while you change it: a panel beside the settings shows the real thing (the player, with your changes applied), rows that differ from their default get a dot and a Reset button, and **Hold to compare** shows the player as it looks with everything at its default for as long as you hold it.
-- A tag editor: right-click a song (or an album, or an artist) and choose **Edit tags…**, or press `T` for the song playing. Edit the title, artist, album, album artist, genre, composer, year, track and disc numbers and comment, replace or remove the cover picture, and add or change the lyrics. Pick several songs (an album, say) to change the fields they share in one go; only the fields you touch are written. Lyrics can be plain or timed, saved in the song's tags, in a `.lrc` file next to it, or both. **Sync lyrics** plays the song while you press Space as each line starts, with undo, nudges for one line or all of them, and an allowance for your reaction time. Tags are written to a copy that replaces the file only once it checks out, so a failed save leaves the song as it was.
+This is early software. If something breaks, please [open an issue](https://github.com/mysticninja487/redshift/issues).
 
 ## Getting started
 
-1. Install Redshift and open it.
-2. Go to **Library > Folders**, choose **Add folder** and pick your music folder. It scans in the background and never changes your files.
+1. Open Redshift, go to **Library > Folders** and choose **Add folder**.
+2. Pick your music folder. It is scanned in the background and watched afterwards, so new songs appear within about a minute.
 3. Pick an album and press play.
 
 | Key | Action | Key | Action |
 | --- | --- | --- | --- |
-| `Space` | Play / pause | `[` `]` | Previous / next skin |
-| `Shift` + `←` `→` | Previous / next track | `V` | Next visualiser |
-| `←` `→` | Seek 5 s | `Shift` + `V` | Visualisers on / off |
-| `↑` `↓` | Volume | `L` | Lyrics on / off |
-| `S` `R` `M` | Shuffle, repeat, mute | `E` | Equaliser |
-| `T` | Edit tags of the current song | `I` | Song info of the current song |
-| `F1` | Help & about | `<` `>` | Slower / faster |
-| `1` `2` `3` | Now playing, Library, Settings | `D` | Light / dark |
-| `Ctrl` + `F` | Search the library | `F` | Fullscreen |
+| `Space` | Play / pause | `1` `2` `3` `4` | Now playing, Library, Settings, Stats |
+| `←` `→` | Seek 5 s | `Shift` + `←` `→` | Previous / next track |
+| `↑` `↓` | Volume | `S` `R` `M` | Shuffle, repeat, mute |
+| `L` | Lyrics on / off | `E` | Equaliser |
+| `V` / `Shift` + `V` | Next visualiser / visualisers on or off | `[` `]` | Previous / next skin |
+| `<` `>` | Slower / faster | `D` | Light / dark |
+| `T` | Edit tags of the playing song | `I` | Info on the playing song |
+| `A` | Ambient mode | `Ctrl` + `M` | Mini player |
+| `Ctrl` + `F` | Search the library | `F1` | Help & about |
 
-Every shortcut can be changed in Settings.
+Every shortcut can be changed in Settings > Shortcuts.
+
+## What it does
+
+### Playback
+
+- FLAC up to 24-bit / 192 kHz, Opus, MP3, Ogg Vorbis, WAV and AAC / M4A / ALAC. Any sample rate is converted to what your sound device runs at.
+- **Gapless** for every format (encoder padding is cut from MP3, Vorbis and M4A), or a **crossfade** of 0–12 s.
+- ReplayGain (track or album, with a pre-amp) and output device selection.
+- **Speed and pitch**: 0.5×–2× and ±12 semitones, either time-stretched (the key stays) or tape style (pitch follows speed).
+- A 10-band **equaliser** with a pre-amp, a live curve, 24 presets and your own.
+- A **sleep timer** that fades the volume out, and queue options (no duplicates, keep shuffle, shuffle the whole queue).
+- Redshift resumes where you left off: the queue, the song and the position.
 
 <p align="center">
-  <img src="docs/screenshots/library-albums.jpg" alt="The Library, showing albums" width="430">
-  <img src="docs/screenshots/settings.jpg" alt="The Settings screen" width="430">
+  <img src="docs/screenshots/equaliser.jpg" alt="The equaliser drawer open over Now Playing" width="760">
+</p>
+
+### Lyrics
+
+- Synced lyrics from a `.lrc` file next to the song or from its tags, with line and word timing. Lyrics can be shown beside the cover, over a visualiser, or full screen.
+- **Online lyrics** (optional) from [BetterLyrics](https://better-lyrics.boidu.dev) by boidushya, which times every word, and from [LRCLIB](https://lrclib.net) for songs BetterLyrics does not have. Found lyrics are shown straight away and kept only if you choose: **Save to tags** writes them into the song, **Save as .lrc** puts a file next to it (with word timing when there is some).
+- A song that already has lyrics of its own gets a **Built-in | Online** switch above them; Redshift remembers which you prefer.
+- The **tag editor** adds or changes lyrics, plain or timed, and **Sync lyrics** lets you time a song by pressing `Space` as each line starts.
+
+### Your library
+
+- Albums, artists, all songs and a folder browser, with search. Favourites, recently played, most played, recently added and not played.
+- Playlists with M3U / M3U8 import and export; playlists from another device are matched to your library by name and folder, and anything missing is kept and can be relinked later.
+- **Tag editor** (`T`, or right-click a song, album or artist > Edit tags…): title, artist, album, genre, year, track and disc numbers, comment, cover art and lyrics, for one song or a whole album at once. Only the fields you touch are written, to a copy that replaces the original once it is complete.
+- **Song info** (`I`): tags, format, bitrate, sample rate, ReplayGain, play history and where the file is.
+
+<p align="center">
+  <img src="docs/screenshots/library-most-played.jpg" alt="The Library on the Most played tab" width="760">
+</p>
+
+### Stats and mixes
+
+- Listening time for today, this week, month and year, each compared with the stretch before; your top song, artist and album; your taste (genres, time of day, how much was new, which era); and a listening streak.
+- **Mixes for you**, made from your listening and refreshed daily: On repeat, Take me back, a mix per top genre and artist, Fresh picks and favourites. Play, queue or save any as a playlist.
+- **Play story**: a short slideshow of your day, week, month or year.
+- A song counts as played after a share of its length you choose (1–100%, 50% by default); skipped songs do not count.
+- Everything is counted on your computer and never sent anywhere. **Settings > General > Reset play counts** empties Most played, Recently played and Not played; the Stats screen has its own **Reset listening history**, which asks twice.
+
+### Looks
+
+<p align="center">
+  <img src="docs/screenshots/skins.jpg" alt="The skins: Turntable, Noir Studio, Wavelength, Mist HUD, Paper, Soft Console and Pixel Mono, plus a light Noir Studio" width="900">
+</p>
+
+- **Eight skins**, each a whole composition rather than a colour set: Classic, Turntable, Noir Studio, Wavelength, Mist HUD, Paper, Soft Console and Pixel Mono. Switch with `[` and `]`; each skin remembers its own settings.
+- Light and dark; an accent from the skin, a preset, your own colour or the current album art. Fonts (built-in, installed or imported), text size, spacing, corner radius, shadows, frosted glass and grain. Panels can be moved or hidden.
+- **Your own skins**: tune a skin, then Settings > Appearance > Save this look as a new skin. Export one to a small `.json` file to share, or import one.
+- **Twelve visualisers**, each with its own options: bars, hairlines, oscilloscope, ring, wavelength blur, orb, particles, spectrogram, vectorscope, dot matrix, ridges and level meters.
+- **Ambient mode** (`A`) turns the window into a full-screen visualiser, lyrics, or both, and keeps the screen awake.
+- Settings shows a live preview of what you change, marks rows that differ from the default, and **Hold to compare** shows everything at its defaults for as long as you hold it. **Settings > Appearance > Reset all appearance settings** returns every skin to its defaults.
+- Seven interface languages: English, Bengali, Spanish, French, German, Japanese and Simplified Chinese, or follow Windows. Song titles, artists, genres, lyrics and playlist names are never translated.
+
+### Part of Windows
+
+- Media keys and the track, cover and controls in the volume flyout and on the lock screen.
+- A **mini player**: a compact always-on-top strip that expands into a card with the queue or lyrics.
+- A system tray icon with play / pause / next / previous, optional song notifications, and launch on startup.
+- Open songs, folders and playlists with Redshift from Explorer or by dragging them on; a second launch hands its files to the running player.
+
+### Online features (optional, off by default)
+
+Settings > Online has a main switch. Nothing goes over the network until it is on, and each feature says exactly what it sends.
+
+| Feature | Host | What is sent |
+| --- | --- | --- |
+| Lyrics (BetterLyrics) | `api.betterlyrics.org` | Song title, artist, album and length in seconds |
+| Lyrics (LRCLIB) | `lrclib.net` | The same |
+| Update check | `api.github.com` | Nothing about you or your music; it only asks for the latest release and never downloads anything |
+
+Any request also carries your IP address and the app's name and version, as with any website. You can choose which lyrics service to use (Automatic asks BetterLyrics first, then LRCLIB). BetterLyrics only answers for songs it already has, so it often has nothing and Automatic falls back to LRCLIB. The page keeps a log of recent requests and a button to clear it and the saved answers.
+
+All of it goes through one network layer in the core: HTTPS only, a short list of allowed hosts, redirects checked against that list, short timeouts, size limits and a local cache. It trusts the Windows certificate store.
+
+## Performance
+
+Redshift stops animating when nothing is moving. A paused player redraws almost nothing; when the window is minimised or in the tray, the page stops drawing and its web view is suspended while the music plays on. Cover art in lists is served as small copies. **Settings > Visualisers > Performance > Reduce effects** drops blur, blend modes and grain and caps the visualiser at 30 fps for older hardware or laptops on battery.
+
+<p align="center">
+  <img src="docs/screenshots/library-albums.jpg" alt="The Library showing albums" width="430">
+  <img src="docs/screenshots/settings.jpg" alt="The Settings screen with a live preview" width="430">
 </p>
 
 ---
 
 # For developers
 
-Redshift is a Rust workspace with a plain-JavaScript front end (no bundler). To build it from source you need Rust 1.85+ with the MSVC toolchain, CMake (libopus is compiled from source), and the Tauri CLI (`cargo install tauri-cli --version "^2"`). Then `cargo tauri dev` runs it and `cargo tauri build` makes an installer. If the build stops in `audiopus_sys` with a CMake error, set `CMAKE_POLICY_VERSION_MINIMUM=3.5`. Releases are built by the "Windows build" GitHub Actions workflow when a `v*` tag is pushed.
-
-The icons in `src-tauri/icons` are placeholders; replace them with `cargo tauri icon your-logo.png`.
+Redshift is a Rust workspace with a plain JavaScript front end and no bundler. To build it you need Rust 1.85+ with the MSVC toolchain, CMake (libopus is compiled from source) and the Tauri CLI (`cargo install tauri-cli --version "^2"`). Then `cargo tauri dev` runs it and `cargo tauri build` makes an installer. If the build stops in `audiopus_sys` with a CMake error, set `CMAKE_POLICY_VERSION_MINIMUM=3.5`. The "Windows build" GitHub Actions workflow builds a release when a `v*` tag is pushed. The icons in `src-tauri/icons` are placeholders; replace them with `cargo tauri icon your-logo.png`.
 
 ## Layout
 
 ```
-crates/redshift-core/   All the logic. No GUI dependencies; `cargo test` runs here.
-  decode/             FLAC/MP3/Vorbis/WAV/AAC via symphonia; Opus via libopus
-  dsp/                EQ, resampler, spectrum analyser
-  engine/             Real-time mixer, decoder-fed sources, output, player thread
-  queue.rs  library.rs  playlists.rs  lyrics.rs  meta.rs  tags.rs
-  resolve.rs  stats.rs  fonts.rs   Playlist matching, play history and favourites, imported fonts
-  app.rs              Owns the player, library, playlists and settings
-src-tauri/            Thin Tauri shell: one command per `App` method, plus events
-ui/                   Front end: plain ES modules, no bundler (see "The interface")
-scripts/              Generates the audio fixtures the tests use
+crates/redshift-core/    All the logic, with no GUI dependencies. `cargo test -p redshift-core` runs here.
+  decode/                FLAC / MP3 / Vorbis / WAV / AAC via symphonia, Opus via libopus, M4A gapless
+  dsp/                   Equaliser, resampler, time-stretch, spectrum analyser
+  engine/                Real-time mixer, decoder-fed sources, output device, player thread
+  net/                   The network layer and its providers: betterlyrics, lrclib, updates
+  app.rs                 Owns the player, library, playlists and settings
+  library.rs  playlists.rs  queue.rs  lyrics.rs  tags.rs  meta.rs  resolve.rs
+  history.rs  stats.rs  insights.rs  waveform.rs  thumb.rs  fonts.rs
+src-tauri/               A thin Tauri shell: one command per App method, plus events
+ui/                      The front end: plain ES modules (see below)
+scripts/                 Generates the audio fixtures the tests use
 ```
 
 ## Tests
 
 ```
-cargo test            # the audio core; needs no GUI libraries
-cargo check -p redshift # type-check the Tauri shell (needs webkit2gtk on Linux, WebView2 on Windows)
+cargo test -p redshift-core   # the core; needs no GUI libraries
+cargo check -p redshift       # type-checks the Tauri shell (needs WebView2 on Windows or webkit2gtk on Linux)
 ```
 
-The test audio is generated by `scripts/gen_fixtures.sh` (needs ffmpeg) and committed. Most fixtures are "chirps" whose frequency rises with time, so a test can tell *where in the song* any piece of output came from by measuring its pitch. That is how seeking, gapless joins and crossfades are checked without listening to anything.
+Test audio is generated by `scripts/gen_fixtures.sh` (needs ffmpeg) and committed. Most fixtures are chirps whose pitch rises with time, so a test can tell where in the song any piece of output came from. That is how seeking, gapless joins and crossfades are checked without listening. The network layer is tested against a small local HTTP server, so no test touches the internet.
 
-## Talking to the engine from the UI
+## Talking to the engine
 
-Commands are called with `window.__TAURI__.core.invoke('name', { argName: value })`. Rust's `snake_case` arguments are `camelCase` in JavaScript (`preamp_db` becomes `preampDb`).
-
-| Area | Commands |
-| --- | --- |
-| Playback | `set_queue`, `play_entry`, `pause`, `resume`, `toggle_pause`, `stop`, `next`, `previous`, `seek` |
-| Queue | `queue_append`, `queue_play_next`, `queue_remove`, `queue_move`, `queue_clear`, `queue_view` |
-| State (poll) | `player_state` (position, volume, status...), `viz_frame` (at the display's frame rate) |
-| Sound | `set_volume`, `set_muted`, `set_shuffle`, `set_repeat`, `set_crossfade_secs`, `set_replaygain`, `output_devices`, `set_output_device` |
-| Equalizer | `eq_info`, `set_eq_enabled`, `set_eq_preamp_db`, `set_eq_band_db`, `set_eq_gains_db`, `apply_eq_preset`, `save_eq_preset`, `delete_eq_preset`, `eq_curve` |
-| Visualiser | `configure_viz` |
-| Library | `library_folders`, `add_library_folder`, `remove_library_folder`, `scan_library`, `is_scanning`, `library_tracks`, `search_library`, `library_albums`, `library_artists`, `recently_added`, `track_meta` |
-| Lyrics | `lyrics` |
-| Playlists | `playlists`, `playlist`, `create_playlist`, `rename_playlist`, `delete_playlist`, `move_playlist`, `add_to_playlist`, `remove_from_playlist`, `move_in_playlist`, `import_m3u`, `relink_playlist`, `paths_exist`, `export_m3u`, `play_playlist` |
-| Favourites and history | `favourite_paths`, `favourites`, `set_favourite`, `play_stats`, `reset_play_stats` |
-| Fonts and window | `fonts`, `import_font`, `remove_font`, `set_tray` |
-| Settings | `get_settings`, `ui_state`, `set_ui_state` |
-
-Events: `player-event` (track changed, queue changed, ended, error, device changed) and `scan-progress`.
-
-Cover art is an image URL: `cover://localhost/` followed by `encodeURIComponent(path to the audio file)`; on Windows the host is `http://cover.localhost/`.
-
-Folder and file pickers come from the dialog plugin: `window.__TAURI__.dialog.open({ directory: true })`.
+The UI calls `window.__TAURI__.core.invoke('command_name', { argName: value })`; Rust's `snake_case` arguments are `camelCase` in JavaScript. Every command is registered in `src-tauri/src/main.rs` and wrapped by one function in `ui/js/api.js`, which is the only place the UI calls the backend. Events are `player-event` (track changed, queue changed, ended, error, device changed) and `scan-progress`. Cover art is an image URL, `cover://localhost/` plus `encodeURIComponent(path to the audio file)` (on Windows `http://cover.localhost/`).
 
 ## The interface
 
-Eight skins, switchable from the skin menu or with `[` and `]`. A skin is a whole composition (grid, type, decoration, default hero and visualiser), not just a colour set. Each one remembers its own settings.
-
-| Skin | Look |
-| --- | --- |
-| Turntable | Charcoal with a paper panel cut on the diagonal; a spinning record with a tonearm that tracks the song |
-| Noir Studio | Serif title, hairline columns, the whole song drawn as vertical lines around a red playhead |
-| Wavelength | Giant grotesk title multiplied over a blurred waveform on a light-to-dark sweep |
-| Mist HUD | Grey haze, targeting marks, cut-corner chips, ruler seek bar, glitch on the beat |
-| Paper | Halftone cover over a red sun, ruled axes, big light numerals |
-| Soft Console | Pressed-plastic surfaces, real knobs, a glowing orb |
-| Pixel Mono | Pill buttons, dotted outlines, pixel type, dot-matrix visualiser |
-
-Everything is customisable in Settings (the Settings entry in the navigation, or `Ctrl` `,`; use either again to go back to where you were): light/dark, accent from the skin, a preset, a custom colour or the current album art; fonts, text size, spacing, corner radius, line weight, shadows, frosted glass, film grain; where each panel sits (or hide it) and the column sizes; twelve visualisers, each with its own options, for the centrepiece and for a separate panel; progress-bar style; lyrics size, alignment and fade; remappable keyboard shortcuts; export and import of a skin's settings.
-
-Visualisers: bars, hairlines, oscilloscope, ring, wavelength blur, orb, particles, spectrogram, vectorscope, dot matrix, ridges, level meters.
-
-Source layout: `ui/js/skins.js` (skin definitions), `theme.js` (colours and album-art palette), `prefs.js` (per-skin settings), `panels/` (the panels), `viz/` (visualisers), `views/` (Library, Settings), `css/skins/<id>.css` (one file per skin). All backend calls go through `ui/js/api.js`.
+`ui/js/skins.js` defines the skins, `theme.js` the colours and album-art palette, `prefs.js` the per-skin settings, `panels/` the panels, `viz/` the visualisers, `views/` the Library, Settings and Stats screens, and `css/skins/<id>.css` one file per skin. Translations are `ui/js/i18n/<language>.js`, plain lists of English text and its translation, so a phrase or a language is a one-file change.
 
 ### Previewing without Windows
 
@@ -196,17 +172,18 @@ Source layout: `ui/js/skins.js` (skin definitions), `theme.js` (colours and albu
 cd ui && python3 -m http.server 8000
 ```
 
-Open <http://localhost:8000>. With no Tauri around, the app loads `ui/dev/mock.js`: invented albums with generated covers, a player that keeps time, synthetic spectrum frames, lyrics and playlists. Nothing is audible. Add `?empty` for an empty library or `?paused` to start paused.
+Open <http://localhost:8000>. With no Tauri around the app loads `ui/dev/mock.js`: invented albums with generated covers, a player that keeps time, synthetic spectrum frames, lyrics, playlists and a pretend network. Nothing is audible. Add `?empty` for an empty library or `?paused` to start paused.
+
+## Adding an online feature
+
+Every online feature goes through `redshift-core::net`: add the provider as a module in `net/`, add its host to the allowed list where `App::new` creates the client, say what it sends in Settings > Online, and test it against the local test server in `net/mod.rs`. Nothing should open its own connection.
 
 ## Not done yet
 
-- Wider testing on real Windows machines and sound hardware. The engine's tests use a simulated sound card, so device-specific bugs are likely to turn up.
-- Opus files with more than two channels (they're reported as unsupported).
+- Testing on more real Windows machines and sound hardware. The engine's tests use a simulated sound card, so device-specific bugs are likely.
+- Opus files with more than two channels (reported as unsupported).
+- Importing playlists from streaming services, Discord rich presence and automatic updates. See the roadmap.
 
 ## Licence
 
-MIT
-
-## Performance
-
-Redshift stops animating when nothing is moving: a paused player redraws almost nothing, and the visualiser, record and lyrics loops go back to sleep. When the window is minimised or in the tray, the page stops drawing altogether and its web view is suspended, so the player idles at close to nothing while the music plays on. While music plays, the visualiser slows down when the window isn't focused. Cover art in lists and the library is served as small copies instead of full-size images. Settings > Visualisers > Performance has **Reduce effects**, which drops the blur behind panels, blend modes and film grain and caps the visualiser at 30 fps, for older graphics hardware or laptops on battery.
+MIT.

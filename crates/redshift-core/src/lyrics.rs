@@ -44,6 +44,8 @@ pub enum LyricsSource {
     Embedded,
     /// Parsed from a string handed in directly.
     Text,
+    /// Fetched from an online lyrics service.
+    Online,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

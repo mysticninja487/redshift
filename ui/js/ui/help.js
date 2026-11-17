@@ -18,7 +18,8 @@ const GUIDE = [
   ['Listening', [
     ['Queue', 'The queue is on the right of Now Playing. Drag songs to reorder them, and right-click one to remove it.'],
     ['Favourites and playlists', 'Click the heart on any song, or right-click > Add to playlist. M3U and M3U8 playlists can be imported and exported.'],
-    ['Lyrics', 'Synced lyrics come from a .lrc file next to the song or from its tags. In the tag editor you can add lyrics and time them line by line.'],
+    ['Lyrics', 'Synced lyrics come from a .lrc file next to the song or from its tags. In the tag editor you can add lyrics and time them line by line. With online features on, missing lyrics can be looked up at BetterLyrics (word by word) or LRCLIB. Found lyrics can be kept in the song\u2019s tags or in a .lrc file, and a song that has lyrics of its own gets a switch between Built-in and Online above them.'],
+    ['Online features', 'Optional and off until you turn them on in Settings > Online. They can find missing lyrics (at BetterLyrics and LRCLIB, from the song\u2019s title, artist, album and length) and check GitHub for a new version. Nothing else leaves your computer, and the same page lists every request that was made.'],
     ['Sleep timer', 'The clock in the top bar stops playback after a set time or at the end of the song, fading the volume out over the last ten seconds.'],
     ['Speed and pitch', 'The gauge in the top bar (or < and > on the keyboard) plays songs from half speed to double, and shifts the pitch up or down by up to an octave. Turn off Keep pitch for a tape or record feel.'],
     ['Song info', 'Right-click a song > Song info, press I, or use the info button beside the title on Now Playing.'],
@@ -26,6 +27,7 @@ const GUIDE = [
   ['Your listening', [
     ['Stats', 'Press 4. See how long you listened today, this week, this month and this year, your top song, artist and album, your taste, a listening streak and mixes made from your history.'],
     ['What counts as a play', 'A song counts once you have heard a set share of it (Settings > General, 50% by default). Songs you only flick past still show up in recently played, but not in most played, taste or mixes.'],
+    ['Starting over', 'Settings > General has Reset play counts, which empties Most played, Recently played and Not played. The Stats screen has its own Reset listening history, which asks twice. Neither touches favourites or playlists.'],
   ]],
   ['Making it yours', [
     ['Skins', 'Press ] and [ to switch skins. Change one until it looks right, then Settings > Appearance > Save this look as a new skin.'],

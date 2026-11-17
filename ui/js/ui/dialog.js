@@ -34,9 +34,9 @@ export function promptText(title, { value = '', ok = 'Save', placeholder = '' } 
 }
 
 /** Resolves to true if confirmed. */
-export function confirmDialog(title, text, { ok = 'Delete' } = {}) {
+export function confirmDialog(title, text, { ok = 'Delete', danger = true } = {}) {
   return modal((box, done) => {
     box.append(h('h3', { class: 'dialog-title' }, title), h('p', { class: 'dialog-text' }, text),
-      h('div', { class: 'dialog-actions' }, button('Cancel', () => done(false)), button(ok, () => done(true), { cls: 'primary danger' })));
+      h('div', { class: 'dialog-actions' }, button('Cancel', () => done(false)), button(ok, () => done(true), { cls: danger ? 'primary danger' : 'primary' })));
   }).then((v) => v === true);
 }

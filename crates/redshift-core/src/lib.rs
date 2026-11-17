@@ -14,6 +14,7 @@ pub mod insights;
 pub mod library;
 pub mod lyrics;
 pub mod meta;
+pub mod net;
 pub mod open;
 pub mod playlists;
 pub mod queue;

@@ -25,7 +25,8 @@ use crate::engine::player::MAX_PREAMP_DB;
 use crate::engine::{Player, PlayerConfig, PlayerEvent, Rate, ReplayGainMode};
 use crate::error::{Error, Result};
 use crate::library::{write_json_atomic, Album, Artist, Library, ScanProgress, ScanReport};
-use crate::lyrics::{self, Lyrics};
+use crate::lyrics::{self, Lyrics, LyricsSource};
+use crate::net::{self, betterlyrics, lrclib, updates::{self, UpdateInfo}, Net, RequestRecord};
 use crate::meta::{self, Cover, TrackMeta};
 use crate::playlists::{ImportReport, Playlist, PlaylistId, PlaylistStore, PlaylistSummary, RelinkReport};
 use crate::queue::{QueuePolicy, RepeatMode};
@@ -179,8 +180,61 @@ pub struct Settings {
     pub shuffle_whole_queue: bool,
     /// Show a notification when a new song starts while no Redshift window is in front.
     pub notify_on_track: bool,
+    /// What may go online. Everything here is off until the user turns the main switch on.
+    pub online: OnlineSettings,
     /// Owned by the front end (theme, layout, customisation); stored as is.
     pub ui: Value,
+}
+
+/// The online switches. `enabled` is the master: while it is off Redshift makes no network
+/// requests at all, whatever the others say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OnlineSettings {
+    pub enabled: bool,
+    /// Allow looking up lyrics online.
+    pub lyrics: bool,
+    /// Look up lyrics by itself when a song has none (otherwise only when asked).
+    pub auto_lyrics: bool,
+    /// Which service to ask for lyrics.
+    pub lyrics_provider: LyricsProvider,
+    /// Check for a newer version when Redshift starts.
+    pub updates: bool,
+}
+
+impl Default for OnlineSettings {
+    fn default() -> Self {
+        Self { enabled: false, lyrics: true, auto_lyrics: true, lyrics_provider: LyricsProvider::Auto, updates: true }
+    }
+}
+
+/// Where online lyrics come from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LyricsProvider {
+    /// BetterLyrics first (word-by-word timing), then LRCLIB for what it doesn't have.
+    #[default]
+    Auto,
+    BetterLyrics,
+    Lrclib,
+}
+
+/// Lyrics found online, ready to show and to save.
+#[derive(Debug, Clone, Serialize)]
+pub struct OnlineLyrics {
+    /// Parsed for display; `None` for an instrumental track.
+    pub lyrics: Option<Lyrics>,
+    /// The text as delivered (LRC when synced, with word stamps when the service has them), for
+    /// saving next to the song.
+    pub text: String,
+    /// The same with line stamps only: what goes into the song's tags, since most players show
+    /// word stamps as stray text.
+    pub tag_text: String,
+    /// Whether every word has its own time.
+    pub word_synced: bool,
+    pub synced: bool,
+    pub instrumental: bool,
+    pub provider: &'static str,
 }
 
 impl Default for Settings {
@@ -207,6 +261,7 @@ impl Default for Settings {
             keep_shuffle: true,
             shuffle_whole_queue: true,
             notify_on_track: false,
+            online: OnlineSettings::default(),
             ui: Value::Null,
         }
     }
@@ -333,6 +388,8 @@ pub struct App {
     /// What the session file holds: the queue's fingerprint and the saved position; `None` before the first save.
     session_saved: Mutex<Option<(u64, f64)>>,
     sleep: Mutex<Option<SleepKind>>,
+    /// The only way out to the internet; see [`crate::net`].
+    net: Net,
 }
 
 type CoverKey = (PathBuf, u64, u64);
@@ -375,6 +432,13 @@ impl App {
         eq.set_preamp_db(settings.eq.preamp_db);
         eq.set_gains_db(&settings.eq.gains_db);
 
+        let net = Net::new(
+            net::cache_dir_in(&data_dir),
+            &format!("Redshift/{} (+https://github.com/{})", env!("CARGO_PKG_VERSION"), updates::REPO),
+            &[lrclib::HOST, betterlyrics::HOST, updates::HOST],
+        );
+        net.set_enabled(settings.online.enabled);
+
         let app = App {
             library: Mutex::new(Library::open(data_dir.join(LIBRARY_FILE))?),
             playlists: Mutex::new(PlaylistStore::open(data_dir.join(PLAYLISTS_FILE))?),
@@ -394,6 +458,7 @@ impl App {
             thumbs: Mutex::new(VecDeque::new()),
             session_saved: Mutex::new(None),
             sleep: Mutex::new(None),
+            net,
         };
         Ok((app, events))
     }
@@ -600,6 +665,106 @@ impl App {
         self.player.set_shuffle(on);
         self.update(|s| s.shuffle = on);
     }
+    // ---- online ----
+
+    pub fn online(&self) -> OnlineSettings {
+        self.settings.lock().online
+    }
+
+    /// Changes the online switches. Turning the main one off stops all network traffic at once.
+    pub fn set_online(&self, o: OnlineSettings) {
+        self.net.set_enabled(o.enabled);
+        self.update(|s| s.online = o);
+    }
+
+    /// Looks up lyrics for a song online. Needs the main switch and the lyrics switch; fails with
+    /// [`Error::Offline`] otherwise. `Ok(None)` means nothing was found. Blocks on the network, so
+    /// call it from a worker thread.
+    pub fn online_lyrics(&self, path: &Path) -> Result<Option<OnlineLyrics>> {
+        let o = self.online();
+        if !o.enabled || !o.lyrics {
+            return Err(Error::Offline);
+        }
+        if !meta::is_audio_file(path) {
+            return Ok(None);
+        }
+        let m = self.track_meta(path)?;
+        let title = if m.title.trim().is_empty() {
+            path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string()
+        } else {
+            m.title.clone()
+        };
+        let query = (title, m.artist.clone(), Some(m.album.clone()).filter(|a| !a.trim().is_empty()), Some(m.duration_secs).filter(|d| *d > 0.0));
+        let order: &[LyricsProvider] = match o.lyrics_provider {
+            LyricsProvider::Auto => &[LyricsProvider::BetterLyrics, LyricsProvider::Lrclib],
+            LyricsProvider::BetterLyrics => &[LyricsProvider::BetterLyrics],
+            LyricsProvider::Lrclib => &[LyricsProvider::Lrclib],
+        };
+        let mut failure = None;
+        for provider in order {
+            match self.lyrics_from(*provider, &query) {
+                Ok(Some(found)) => return Ok(Some(found)),
+                Ok(None) => {}
+                Err(Error::Offline) => return Err(Error::Offline),
+                Err(e) => failure = Some(e),
+            }
+        }
+        // Something answered nothing and something else broke: say so, so that asking again is worth it.
+        failure.map_or(Ok(None), Err)
+    }
+
+    fn lyrics_from(&self, provider: LyricsProvider, (title, artist, album, duration_secs): &(String, String, Option<String>, Option<f64>)) -> Result<Option<OnlineLyrics>> {
+        if provider == LyricsProvider::BetterLyrics {
+            let q = betterlyrics::Query { title: title.clone(), artist: artist.clone(), album: album.clone(), duration_secs: *duration_secs };
+            let Some(f) = betterlyrics::lookup(&self.net, &q)? else { return Ok(None) };
+            let lyrics = lyrics::parse(&f.enhanced, LyricsSource::Online);
+            if lyrics.lines.is_empty() {
+                return Ok(None);
+            }
+            return Ok(Some(OnlineLyrics { lyrics: Some(lyrics), synced: true, text: f.enhanced, tag_text: f.lines, word_synced: f.word_synced, instrumental: false, provider: "BetterLyrics" }));
+        }
+        let q = lrclib::Query { title: title.clone(), artist: artist.clone(), album: album.clone(), duration_secs: *duration_secs };
+        let Some(f) = lrclib::lookup(&self.net, &q)? else { return Ok(None) };
+        let synced = f.synced.is_some();
+        let text = f.synced.or(f.plain).unwrap_or_default();
+        let lyrics = (!text.is_empty()).then(|| lyrics::parse(&text, LyricsSource::Online)).filter(|l| !l.lines.is_empty());
+        if lyrics.is_none() && !f.instrumental {
+            return Ok(None);
+        }
+        let synced = synced && lyrics.as_ref().is_some_and(|l| l.synced);
+        let word_synced = lyrics.as_ref().is_some_and(|l| l.lines.iter().any(|l| l.words.len() > 1));
+        Ok(Some(OnlineLyrics { lyrics, tag_text: text.clone(), text, synced, word_synced, instrumental: f.instrumental, provider: "LRCLIB" }))
+    }
+
+    /// Asks GitHub whether a newer version has been released. `force` skips the six-hour memory of
+    /// the last answer. Needs the main switch (the "check at startup" switch only decides whether
+    /// the front end asks by itself).
+    pub fn check_updates(&self, force: bool) -> Result<UpdateInfo> {
+        if !self.online().enabled {
+            return Err(Error::Offline);
+        }
+        updates::check(&self.net, env!("CARGO_PKG_VERSION"), force)
+    }
+
+    /// The last network requests, newest first: what was asked, of whom, and what came back.
+    pub fn net_log(&self) -> Vec<RequestRecord> {
+        self.net.log()
+    }
+
+    pub fn clear_net_log(&self) {
+        self.net.clear_log();
+    }
+
+    /// Forgets every saved online answer; returns how many there were.
+    pub fn clear_net_cache(&self) -> usize {
+        self.net.clear_cache()
+    }
+
+    /// How many online answers are kept on disk, and how many bytes they take.
+    pub fn net_cache_stats(&self) -> (usize, u64) {
+        self.net.cache_stats()
+    }
+
     pub fn set_notify_on_track(&self, on: bool) {
         self.update(|s| s.notify_on_track = on);
     }
@@ -1795,6 +1960,69 @@ mod tests {
         assert!(a.data.len() <= full.data.len());
         assert!(app.cover_sized(&fixture("chirp_44k_stereo.flac"), 32).is_none());
         assert!(app.cover_sized(Path::new("notes.txt"), 32).is_none(), "only audio files");
+    }
+
+    #[test]
+    fn online_is_off_by_default_and_the_choice_is_remembered() {
+        let state = tempfile::tempdir().unwrap();
+        {
+            let app = open(state.path());
+            let o = app.online();
+            assert!(!o.enabled, "nothing goes online until the user says so");
+            assert!(o.lyrics && o.auto_lyrics && o.updates, "the individual switches start on, behind the main one");
+            assert!(!app.net.enabled());
+            app.set_online(OnlineSettings { enabled: true, lyrics: true, auto_lyrics: false, updates: false, ..OnlineSettings::default() });
+            assert!(app.net.enabled());
+            app.flush().unwrap();
+        }
+        let app = open(state.path());
+        assert_eq!(app.online(), OnlineSettings { enabled: true, lyrics: true, auto_lyrics: false, updates: false, ..OnlineSettings::default() });
+        assert!(app.net.enabled(), "the network layer follows the saved switch on startup");
+        app.set_online(OnlineSettings { enabled: false, ..app.online() });
+        assert!(!app.net.enabled(), "turning the main switch off cuts the network at once");
+    }
+
+    #[test]
+    fn settings_saved_before_online_existed_still_load() {
+        let state = tempfile::tempdir().unwrap();
+        fs::write(state.path().join(SETTINGS_FILE), r#"{"volume":0.4,"shuffle":true}"#).unwrap();
+        let app = open(state.path());
+        assert!(!app.online().enabled);
+        assert_eq!(app.settings().volume, 0.4);
+    }
+
+    #[test]
+    fn online_features_refuse_and_send_nothing_while_off() {
+        let state = tempfile::tempdir().unwrap();
+        let app = open(state.path());
+        let song = fixture("tagged.flac");
+        assert!(matches!(app.online_lyrics(&song), Err(Error::Offline)));
+        assert!(matches!(app.check_updates(true), Err(Error::Offline)));
+        // main switch on but lyrics switched off: still no lyrics requests
+        app.set_online(OnlineSettings { enabled: true, lyrics: false, ..OnlineSettings::default() });
+        assert!(matches!(app.online_lyrics(&song), Err(Error::Offline)));
+        assert!(app.net_log().is_empty(), "no request was even attempted");
+    }
+
+    #[test]
+    fn the_lyrics_service_choice_is_remembered_and_defaults_to_auto() {
+        let o: OnlineSettings = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
+        assert_eq!(o.lyrics_provider, LyricsProvider::Auto);
+        let o: OnlineSettings = serde_json::from_str(r#"{"lyrics_provider":"lrclib"}"#).unwrap();
+        assert_eq!(o.lyrics_provider, LyricsProvider::Lrclib);
+        assert_eq!(serde_json::to_string(&LyricsProvider::BetterLyrics).unwrap(), "\"better_lyrics\"");
+    }
+
+    #[test]
+    fn online_lyrics_ignore_files_that_are_not_music() {
+        let state = tempfile::tempdir().unwrap();
+        let app = open(state.path());
+        app.set_online(OnlineSettings { enabled: true, ..OnlineSettings::default() });
+        let d = tempfile::tempdir().unwrap();
+        let txt = d.path().join("secret.txt");
+        fs::write(&txt, "x").unwrap();
+        assert!(app.online_lyrics(&txt).unwrap().is_none());
+        assert!(app.net_log().is_empty());
     }
 
     #[test]

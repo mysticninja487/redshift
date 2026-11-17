@@ -98,6 +98,7 @@ window.__REDSHIFT_COVER__ = (path) => {
 };
 
 // ---------------------------------------------------------------- lyrics
+const NET_LOG = [];
 const EDITS = new Map(); // path -> { comment, composer, track_total, disc_total, lyrics (text | null), cover ('none' | data URL) }
 const edit = (path) => EDITS.get(path) ?? EDITS.set(path, {}).get(path);
 function parseMockLyrics(text) {
@@ -131,6 +132,7 @@ function lyricsFor(path) {
 const listeners = {};
 const emit = (name, payload) => (listeners[name] ?? []).forEach((cb) => setTimeout(() => cb({ payload })));
 const S = {
+  online: { enabled: false, lyrics: true, auto_lyrics: true, lyrics_provider: 'auto', updates: true },
   entries: [], seq: 1, cur: null, status: 'stopped', pos: 0, t0: 0, volume: 0.8, muted: false, shuffle: false, repeat: 'off',
   crossfade: 4, rate: { speed: 1, pitch_semitones: 0, keep_pitch: true }, rg: 'track', rgPre: 0, device: null,
   eq: { enabled: true, preamp_db: 0, gains_db: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
@@ -333,7 +335,7 @@ function mockMixes() {
   return history().length ? out : out.filter((m) => m.kind === 'favourites');
 }
 
-const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, viz: {}, custom_eq_presets: CUSTOM_PRESETS, tray: TRAY, restore_session: S.restore !== false, watch_folders: S.watch, record_history: S.record !== false, count_percent: S.countPercent ?? 50, queue_no_duplicates: S.noDup ?? false, keep_shuffle: S.keepShuffle ?? true, shuffle_whole_queue: S.wholeQueue ?? true, notify_on_track: S.notify ?? false, ui: ui() });
+const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, viz: {}, custom_eq_presets: CUSTOM_PRESETS, tray: TRAY, restore_session: S.restore !== false, watch_folders: S.watch, record_history: S.record !== false, count_percent: S.countPercent ?? 50, queue_no_duplicates: S.noDup ?? false, keep_shuffle: S.keepShuffle ?? true, shuffle_whole_queue: S.wholeQueue ?? true, notify_on_track: S.notify ?? false, online: S.online, ui: ui() });
 const addEntries = (paths, at = S.entries.length) => S.entries.splice(at, 0, ...paths.map((path) => ({ id: S.seq++, path })));
 const cmds = {
   set_queue: ({ paths, start, autoplay }) => { S.entries = []; addEntries(paths); S.cur = S.entries[start]?.id ?? null; S.pos = 0; S.t0 = performance.now(); S.status = autoplay && S.cur ? 'playing' : 'stopped'; if (S.status === 'playing') noteStart(curEntry()?.path); emit('player-event', { type: 'queue_changed' }); emit('player-event', { type: 'track_changed', entry_id: S.cur }); },
@@ -377,7 +379,7 @@ const cmds = {
   sleep_status: () => sleepStatus(),
   listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
   listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
-  app_info: () => ({ version: '0.5.10', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
+  app_info: () => ({ version: '0.6.0', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
   open_data_folder: () => null,
   song_info: ({ path }) => {
     const t = tracks.find((x) => x.path === path); if (!t) throw new Error('That file isn\u2019t there any more');
@@ -402,6 +404,41 @@ const cmds = {
   set_watch_folders: ({ on }) => { S.watch = on; },
   set_queue_options: ({ noDuplicates, keepShuffle, shuffleWholeQueue }) => { S.noDup = noDuplicates; S.keepShuffle = keepShuffle; S.wholeQueue = shuffleWholeQueue; },
   set_notify_on_track: ({ on }) => { S.notify = on; },
+  set_online: ({ online }) => { S.online = { ...online }; },
+  online_lyrics: async ({ path }) => {
+    if (!S.online.enabled || !S.online.lyrics) throw 'online features are turned off';
+    const k = hash(path) % 5, prov = S.online.lyrics_provider ?? 'auto';
+    const wantBetter = prov !== 'lrclib', gotBetter = wantBetter && (k === 2 || k === 3);
+    const t = find(path), q = `title=${encodeURIComponent(t?.title ?? '')}&artist=${encodeURIComponent(t?.artist ?? '')}`;
+    const ask = (host, url, status) => NET_LOG.unshift({ time: Math.floor(Date.now() / 1000), purpose: 'Lyrics', host, url, status, bytes: 2412, cached: false, error: null });
+    if (wantBetter) ask('api.betterlyrics.org', `https://api.betterlyrics.org/getLyrics?s=${encodeURIComponent(t?.title ?? '')}&a=${encodeURIComponent(t?.artist ?? '')}&al=${encodeURIComponent(t?.album ?? '')}&d=${Math.round(t?.duration_secs ?? 0)}`, gotBetter ? 200 : 401);
+    if (!gotBetter && prov !== 'better_lyrics') ask('lrclib.net', `https://lrclib.net/api/get?track_name=${encodeURIComponent(t?.title ?? '')}&artist_name=${encodeURIComponent(t?.artist ?? '')}&duration=${Math.round(t?.duration_secs ?? 0)}`, k === 0 ? 404 : 200);
+    await new Promise((r) => setTimeout(r, 450));
+    if (globalThis.__mockNetDown) throw 'network error: could not reach the lyrics service';
+    if (prov === 'better_lyrics' && !gotBetter) return null;
+    if (k === 0) return null;
+    if (k === 1) return { lyrics: null, text: '', tag_text: '', synced: false, word_synced: false, instrumental: true, provider: 'LRCLIB' };
+    if (gotBetter) {
+      const lines = [[8000, ['Found ', 'it ', 'out ', 'there']], [14000, ['Somewhere ', 'in ', 'the ', 'open ', 'air']], [21000, ['Lines ', 'that ', 'follow ', 'the ', 'song']], [29000, ['Carried ', 'all ', 'along']]];
+      const lyrics = { synced: true, offset_ms: 0, source: 'online', title: null, artist: null, album: null,
+        lines: lines.map(([t0, ws]) => ({ time_ms: t0, text: ws.join('').trim(), words: ws.map((w, i) => ({ time_ms: t0 + i * 450, text: w })) })) };
+      const mm = (ms) => `${String(Math.floor(ms / 60000)).padStart(2, '0')}:${((ms % 60000) / 1000).toFixed(2).padStart(5, '0')}`;
+      const text = lines.map(([t0, ws]) => `[${mm(t0)}]` + ws.map((w, i) => `<${mm(t0 + i * 450)}>${w}`).join('').trimEnd()).join('\n');
+      const tag_text = lines.map(([t0, ws]) => `[${mm(t0)}]${ws.join('').trim()}`).join('\n');
+      return { lyrics, text, tag_text, synced: true, word_synced: true, instrumental: false, provider: 'BetterLyrics' };
+    }
+    const text = '[00:08.00]Found it out there\n[00:14.00]Somewhere in the open air\n[00:21.00]Lines that follow the song\n[00:29.00]Carried all along';
+    return { lyrics: { ...parseMockLyrics(text), source: 'online' }, text, tag_text: text, synced: true, word_synced: false, instrumental: false, provider: 'LRCLIB' };
+  },
+  check_updates: async () => {
+    if (!S.online.enabled) throw 'online features are turned off';
+    NET_LOG.unshift({ time: Math.floor(Date.now() / 1000), purpose: 'Update check', host: 'api.github.com', url: 'https://api.github.com/repos/mysticninja487/redshift/releases/latest', status: 200, bytes: 1180, cached: false, error: null });
+    await new Promise((r) => setTimeout(r, 300));
+    return globalThis.__mockUpdate ?? { current: '0.6.0', latest: '0.6.1', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.1', notes: 'Fixes and small improvements.' };
+  },
+  net_report: () => ({ log: NET_LOG.slice(0, 60), cached_items: NET_LOG.length, cached_bytes: NET_LOG.length * 2400 }),
+  clear_net_data: () => { const n = NET_LOG.length; NET_LOG.length = 0; return n; },
+  open_project_page: () => {},
   launch_on_startup: () => !!S.login,
   set_launch_on_startup: ({ on }) => { S.login = on; return on; },
   set_restore_session: ({ on }) => { S.restore = on; },

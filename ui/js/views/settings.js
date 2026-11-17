@@ -4,7 +4,7 @@
 import { api, pickFile, pickSave } from '../api.js';
 import { promptText } from '../ui/dialog.js';
 import { on } from '../bus.js';
-import { act, refreshPlayer, refreshSettings, setView } from '../controller.js';
+import { act, refreshPlayer, refreshSettings, refreshStats, setView } from '../controller.js';
 import { ACTIONS, captureKeys, comboFor, comboFromEvent, prettyCombo, setCombo } from '../keys.js';
 import { importFontFile, importedFonts, removeImportedFont } from '../fonts.js';
 import { DEFAULT_AMBIENT, DEFAULT_MINI, DEFAULT_PREFS, setComparing, cfg, featureOn, getPrefs, isOverridden, resetSkin, set, setPref, setSkin, deleteLook, importLook, isCustomSkin, lookFile, renameLook, saveLook } from '../prefs.js';
@@ -12,7 +12,8 @@ import { ACCENTS, FONTS, PANELS, SLOTS, cleanFontName, fitsSlot, getSkin, skins 
 import { icon } from '../ui/icons.js';
 import { state } from '../state.js';
 import { tokens } from '../theme.js';
-import { clear, clone, getPath, h, toast } from '../util.js';
+import { ago, clear, clone, getPath, h, toast } from '../util.js';
+import { askToGoOnline, checkForUpdates, online, setOnline, updateStatus } from '../online.js';
 import { changedKeys } from './changes.js';
 import { VIZ, getViz, vizOptions } from '../viz/index.js';
 import { mountViz } from '../viz/engine.js';
@@ -25,7 +26,7 @@ import { MAX_PITCH, MAX_SPEED, MIN_SPEED, formatPitch, formatSpeed, getRate, isN
 
 // [id, label, icon]. A tab with `SUBS` shows those as a second row of choices above its page.
 const TABS = [
-  ['general', 'General', 'settings'], ['appearance', 'Appearance', 'palette'], ['playback', 'Playback', 'play'], ['windows', 'Mini & ambient', 'pip'],
+  ['general', 'General', 'settings'], ['appearance', 'Appearance', 'palette'], ['playback', 'Playback', 'play'], ['online', 'Online', 'globe'], ['windows', 'Mini & ambient', 'pip'],
   ['keys', 'Shortcuts', 'keyboard'], ['help', 'Help & about', 'info'],
 ];
 // The second row. The 'skin' entry only exists for skins that have options of their own, and is named after the skin.
@@ -183,7 +184,8 @@ export function mountSettings(root) {
         row('Film grain', slider({ min: 0, max: 1, step: 0.05, value: c.shape.grain, label: 'Film grain', onInput: (v) => set('shape.grain', v), format: (v) => `${Math.round(v * 100)}%` }), { path: 'shape.grain', redo: again }),
         skin.hasDecor === false ? null : row('Decoration', toggle({ label: 'Decoration', value: c.decor, onChange: (v) => set('decor', v) }), { hint: 'Ghost headings, background shapes and similar flourishes.', path: 'decor', redo: again }),
         row('Reduce motion', segmented({ label: 'Reduce motion', options: [{ value: 'system', label: 'Follow system' }, { value: 'on', label: 'On' }, { value: 'off', label: 'Off' }], value: c.motion.reduce === true ? 'on' : c.motion.reduce === false ? 'off' : c.motion.reduce, onChange: (v) => set('motion.reduce', v) }), { path: 'motion.reduce', redo: again })),
-      shareGroup());
+      shareGroup(),
+      resetGroup());
   }
   /**
    * A font chooser: the built-in fonts, fonts the person imported, any font installed on the PC
@@ -395,6 +397,69 @@ export function mountSettings(root) {
       group('Queue', queueOptions()));
   }
 
+  // ---------- Online ----------
+  function onlineTab() {
+    const o = online();
+    const sub = (...kids) => { const el = h('div', { class: 'set-sub' }, ...kids); el.inert = !o.enabled; el.classList.toggle('is-off', !o.enabled); return el; };
+    const flag = (key, label, hint) => row(label, toggle({ label, value: o[key], onChange: async (v) => { await setOnline({ [key]: v }); render(); } }), { hint });
+
+    const master = toggle({ label: 'Go online', value: o.enabled, onChange: async (v) => {
+      if (v && !await askToGoOnline()) { master.set(false); return; }
+      if (!v) await setOnline({ enabled: false });
+      render();
+    } });
+
+    // The update check: what it found, in words.
+    const status = h('p', { class: 'hint set-status' });
+    const releaseBtn = button('Open release page', () => act(api.openProjectPage(updateStatus.info.url)));
+    const paintStatus = () => {
+      const { info, checking, error } = updateStatus;
+      releaseBtn.hidden = !info?.newer;
+      status.textContent = checking ? 'Checking\u2026' : error ? `Could not check: ${error}`
+        : !info ? '' : info.newer ? `Redshift ${info.latest} is available. You have ${info.current}.`
+        : info.latest ? `You have the latest version (${info.current}).` : 'No releases have been published yet.';
+    };
+    paintStatus();
+
+    // What has gone over the network: loaded when the tab opens.
+    const logBox = h('div', { class: 'net-log' });
+    const clearBtn = button('Clear the log and saved answers', async () => { await act(api.clearNetData()); loadLog(); });
+    async function loadLog() {
+      let r;
+      try { r = await api.netReport(); } catch { return; }
+      logBox.replaceChildren(...(r.log.length ? r.log.slice(0, 12).map((q) => {
+        let url = q.url; try { url = decodeURI(q.url); } catch { /* keep it as sent */ }
+        const result = q.error ? q.error : q.cached ? 'from saved answer' : `answer ${q.status}`;
+        return h('div', { class: `net-item${q.error ? ' bad' : ''}` },
+          h('div', { class: 'net-head' }, h('b', {}, q.purpose), h('span', { translate: 'no' }, q.host), h('span', {}, result), h('span', {}, ago(q.time))),
+          h('code', { translate: 'no' }, url));
+      }) : [h('p', { class: 'hint' }, 'Nothing has been sent yet.')]));
+      clearBtn.disabled = !r.log.length && !r.cached_items;
+      sizeNote.textContent = r.cached_items ? `${r.cached_items} saved ${r.cached_items === 1 ? 'answer' : 'answers'} on this computer, ${Math.max(1, Math.round(r.cached_bytes / 1024))} KB.` : '';
+    }
+    const sizeNote = h('p', { class: 'hint' });
+    loadLog();
+
+    return h('div', { class: 'set-page' },
+      group('Online features',
+        row('Go online', master, { hint: 'Off by default. While this is off, Redshift sends nothing over the internet, and everything below is switched off.' }),
+        h('p', { class: 'hint' }, 'Your music files, your library and your listening history are never sent anywhere. Each feature below lists exactly what it sends.')),
+      sub(
+        group('Lyrics',
+          flag('lyrics', 'Look up lyrics online', 'Finds lyrics at BetterLyrics (api.betterlyrics.org) and LRCLIB (lrclib.net), two free community services. They are sent the song\u2019s title, artist, album and length in seconds, plus your IP address and the name and version of this app, as with any website.'),
+          row('Lyrics service', segmented({ label: 'Lyrics service', options: [{ value: 'auto', label: 'Automatic' }, { value: 'better_lyrics', label: 'BetterLyrics' }, { value: 'lrclib', label: 'LRCLIB' }], value: o.lyrics_provider, onChange: (v) => setOnline({ lyrics_provider: v }) }),
+            { hint: 'Automatic asks BetterLyrics first, which times every word, and LRCLIB for the songs it does not have. BetterLyrics only answers for songs it already knows; it cannot be asked to look new ones up.' }),
+          flag('auto_lyrics', 'Find missing lyrics automatically', 'When a song has no lyrics of its own, look for them as the song starts. Off, a Find lyrics online button appears instead. Found lyrics are only shown; nothing is saved unless you press Save to tags or Save as .lrc.'),
+          h('div', { class: 'set-row set-actions' }, h('span', { class: 'hint' }, 'Word-by-word lyrics come from BetterLyrics, made by boidushya.'), button('Visit the BetterLyrics site', () => act(api.openProjectPage('https://better-lyrics.boidu.dev'))))),
+        group('Updates',
+          flag('updates', 'Check for updates at startup', 'Asks api.github.com for the newest release, sending only the name and version of this app. Redshift only tells you; it never downloads or installs anything by itself.'),
+          h('div', { class: 'set-row set-actions' }, button('Check now', async () => { const p = checkForUpdates(true); paintStatus(); await p; paintStatus(); loadLog(); }), releaseBtn),
+          status)),
+      group('What has been sent', logBox, sizeNote,
+        h('div', { class: 'set-row set-actions' }, clearBtn),
+        h('p', { class: 'hint' }, 'Answers are kept for a while so the same song is not asked about twice.')));
+  }
+
   // ---------- General ----------
   function general() {
     return h('div', { class: 'set-page' },
@@ -416,12 +481,8 @@ export function mountSettings(root) {
           onChange: async (v) => { await act(api.setCountPercent(v)); await refreshSettings(); } }),
           { hint: 'How much of a song you need to hear for it to count as a play, as a share of its length. It sets the play counts, the Most played lists, the Stats screen and your mixes. Skipping past a song doesn\'t count. Double-click the slider to go back to 50%. Songs that are already counted stay counted.' }),
         row('Keep a listening history', toggle({ label: 'Keep a listening history', value: state.settings?.record_history ?? true, onChange: async (v) => { await act(api.setRecordHistory(v)); await refreshSettings(); render(); } }),
-          { hint: 'Remembers when and for how long you listen, for the Stats screen and your mixes. It is stored on this computer only and never sent anywhere.' }),
-        h('div', { class: 'set-row set-actions' }, button('Clear listening history…', async () => {
-          if (!await confirmDialog('Clear listening history?', 'The Stats screen and your mixes start again from nothing. Play counts, favourites and playlists are not touched.', { ok: 'Clear history' })) return;
-          try { await act(api.clearHistory()); toast('Listening history cleared'); } catch (e) { toast(`Could not clear it: ${e}`, 'error'); }
-        }, { cls: 'danger' }))),
-      resetGroup());
+          { hint: 'Remembers when and for how long you listen, for the Stats screen and your mixes. It is stored on this computer only and never sent anywhere.' })),
+      libraryDataGroup());
   }
 
   /** How songs get added to, and replace, the queue. */
@@ -581,10 +642,22 @@ export function mountSettings(root) {
             if (look) { toast(`Added “${look.name}”`); render(); } else toast('The clipboard doesn\'t contain a Redshift skin.', 'error');
           })));
   const resetGroup = () =>
+      group('Reset', row('Everything', button('Reset all appearance settings', async () => {
+        if (!await confirmDialog('Reset all appearance settings?', 'Every skin goes back to its defaults: colours, type, shape, layout and visualiser. Shortcuts, your music, playlists and playback settings are untouched.', { ok: 'Reset appearance' })) return;
+        const { setPref } = await import('../prefs.js'); setPref('skins', {}); render();
+      }, { cls: 'danger' })));
+  /** Wipes the play counts that drive Most played, Recently played and Not played. The Stats history is separate. */
+  const libraryDataGroup = () =>
+    group('Library data',
+      h('div', { class: 'set-row set-actions' }, button('Reset play counts…', async () => {
+        if (!await confirmDialog('Reset all play counts?', 'Every song goes back to never played, so Most played, Recently played and Not played start again. Favourites, playlists and the Stats screen are not touched.', { ok: 'Reset play counts' })) return;
+        try { await act(api.resetPlayStats()); await refreshStats(); toast('Play counts reset'); } catch (e) { toast(`Could not reset them: ${e}`, 'error'); }
+      }, { cls: 'danger' })),
+      h('p', { class: 'hint' }, 'Clears how often and when each song was played. Your listening history for the Stats screen is cleared from the Stats screen itself.'));
       group('Reset', row('Everything', button('Reset all appearance settings', async () => { if (await confirmDialog('Reset everything?', 'Every skin goes back to its defaults and shortcuts are restored. Your music, playlists and playback settings are untouched.', { ok: 'Reset all' })) { const { setPref } = await import('../prefs.js'); setPref('skins', {}); setPref('keys', {}); render(); } }, { cls: 'danger' })));
 
   const TAB_BUILDERS = {
-    general, keys: keysTab, help: helpTab,
+    general, online: onlineTab, keys: keysTab, help: helpTab,
     'appearance/look': appearance, 'appearance/layout': layout, 'appearance/now': lyricsTab, 'appearance/visual': visual, 'appearance/skin': skinTab,
     'playback/playback': playback, 'playback/eq': eqTab,
     'windows/mini': miniPage, 'windows/ambient': ambientPage,

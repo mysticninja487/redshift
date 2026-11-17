@@ -203,3 +203,14 @@ html[data-compare="true"][data-split="true"] #settings > :not(.v-head) { opacity
 .set-subtab[aria-selected="true"] { color: var(--fg); border-color: color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
 html[data-split="true"] .set-subnav { margin-bottom: 14px; gap: 4px; }
 html[data-split="true"] .set-subtab { padding: 5px 10px; font-size: .78rem; }
+
+/* Settings > Online */
+.set-sub { display: grid; gap: 1.2rem; transition: opacity .15s; }
+.set-sub.is-off { opacity: .45; }
+.set-status { margin: 0; min-height: 1.3em; }
+.net-log { display: grid; gap: 8px; }
+.net-item { padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: color-mix(in srgb, var(--fg) 3%, transparent); min-width: 0; }
+.net-item.bad { border-color: color-mix(in srgb, var(--danger, #c33) 60%, var(--line)); }
+.net-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; font-size: .82rem; color: var(--fg3); }
+.net-head b { color: var(--fg); font-weight: 600; }
+.net-item code { display: block; margin-top: 3px; font-family: var(--font-mono); font-size: .72rem; color: var(--fg2); overflow-wrap: anywhere; }

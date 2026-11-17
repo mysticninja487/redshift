@@ -29,7 +29,7 @@ html[data-ambient] .ambient { position: fixed; inset: 0; z-index: 80; overflow: 
 .ambient .am-lyrics .lyrics[data-align] .ly-scroll { text-align: center; padding: 42cqh 0; }
 .ambient .am-lyrics .ly-line { font-size: clamp(1.7rem, calc(4.6vh * var(--am-lyrics-size, 1)), 5.6rem); line-height: 1.2; margin-bottom: .5em; transform-origin: center; text-shadow: 0 2px 26px color-mix(in srgb, var(--bg) 70%, transparent); }
 .ambient .am-lyrics .ly-line.active { transform: scale(1.04); }
-.ambient .am-lyrics .ly-badge, .ambient .am-lyrics .ly-edit { display: none; }
+.ambient .am-lyrics .ly-badge, .ambient .am-lyrics .ly-edit, .ambient .am-lyrics .ly-online { display: none; }
 .ambient .am-lyrics .ly-empty { display: none; }
 .am-nolyrics { position: absolute; left: 0; right: 0; top: 42%; z-index: 1; text-align: center; font-family: var(--font-display); font-size: clamp(1.3rem, 3vh, 2.2rem); color: var(--fg2); pointer-events: none; }
 .am-nolyrics:empty { display: none; }

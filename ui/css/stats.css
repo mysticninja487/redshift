@@ -136,3 +136,7 @@ button.st-li:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); 
 .st-dot.is-today i { outline: 2px solid color-mix(in srgb, var(--fg) 45%, transparent); outline-offset: 2px; }
 @media (max-width: 520px) { .st-dots { gap: 3px; } .st-dot i { width: 12px; height: 12px; } }
 .st-streak-main .st-facts { margin-top: 4px; }
+
+.st-reset { display: flex; justify-content: flex-end; padding: 14px 0 6px; }
+.st-reset .btn { font-size: 12px; padding: 5px 10px; opacity: .8; }
+.st-reset .btn:hover, .st-reset .btn:focus-visible { opacity: 1; }

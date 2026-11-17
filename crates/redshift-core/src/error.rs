@@ -14,6 +14,10 @@ pub enum Error {
     Seek(String),
     #[error("audio device error: {0}")]
     Device(String),
+    #[error("online features are turned off")]
+    Offline,
+    #[error("network error: {0}")]
+    Network(String),
     #[error("{0}")]
     Other(String),
 }

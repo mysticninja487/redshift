@@ -114,6 +114,12 @@ export const api = {
   setWatchFolders: (on) => invoke('set_watch_folders', { on }),
   setQueueOptions: (noDuplicates, keepShuffle, shuffleWholeQueue) => invoke('set_queue_options', { noDuplicates, keepShuffle, shuffleWholeQueue }),
   setNotifyOnTrack: (on) => invoke('set_notify_on_track', { on }),
+  // online (everything here fails with "online features are turned off" until the main switch is on)
+  setOnline: (online) => invoke('set_online', { online }),
+  onlineLyrics: (path) => invoke('online_lyrics', { path }),
+  checkUpdates: (force = false) => invoke('check_updates', { force }),
+  netReport: () => invoke('net_report'), clearNetData: () => invoke('clear_net_data'),
+  openProjectPage: (url) => invoke('open_project_page', { url }),
   launchOnStartup: () => invoke('launch_on_startup'),
   setLaunchOnStartup: (on) => invoke('set_launch_on_startup', { on }),
   setRestoreSession: (on) => invoke('set_restore_session', { on }),

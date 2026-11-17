@@ -20,7 +20,8 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use redshift_core::app::{App, CustomPreset, EqSettings, PlayStat, Settings, SongInfo, TraySettings};
+use redshift_core::app::{App, CustomPreset, EqSettings, OnlineLyrics, OnlineSettings, PlayStat, Settings, SongInfo, TraySettings};
+use redshift_core::net::{updates::UpdateInfo, RequestRecord};
 use redshift_core::dsp::eq::{BAND_COUNT, BAND_FREQS, PRESETS};
 use redshift_core::dsp::spectrum::{SpectrumConfig, VizFrame};
 use redshift_core::engine::output::{list_output_devices, DeviceInfo};
@@ -747,6 +748,53 @@ fn set_watch_folders(state: State<AppState>, on: bool) {
 fn set_queue_options(state: State<AppState>, no_duplicates: bool, keep_shuffle: bool, shuffle_whole_queue: bool) {
     state.0.set_queue_options(no_duplicates, keep_shuffle, shuffle_whole_queue);
 }
+// ---- online ----
+
+/// Changes the online switches (the main one, lyrics, automatic lyrics, update check).
+#[tauri::command]
+fn set_online(state: State<AppState>, online: OnlineSettings) {
+    state.0.set_online(online);
+}
+/// Looks for lyrics online. `None` when nothing was found; an error says why a lookup could not be made
+/// (online features off, no connection, the service being down).
+#[tauri::command]
+async fn online_lyrics(state: State<'_, AppState>, path: PathBuf) -> CmdResult<Option<OnlineLyrics>> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.online_lyrics(&path)).await.map_err(err)?.map_err(err)
+}
+#[tauri::command]
+async fn check_updates(state: State<'_, AppState>, force: bool) -> CmdResult<UpdateInfo> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.check_updates(force)).await.map_err(err)?.map_err(err)
+}
+/// What Redshift has sent over the network lately, newest first, plus how much is kept on disk.
+#[derive(serde::Serialize)]
+struct NetReport {
+    log: Vec<RequestRecord>,
+    cached_items: usize,
+    cached_bytes: u64,
+}
+#[tauri::command]
+fn net_report(state: State<AppState>) -> NetReport {
+    let (cached_items, cached_bytes) = state.0.net_cache_stats();
+    NetReport { log: state.0.net_log(), cached_items, cached_bytes }
+}
+#[tauri::command]
+fn clear_net_data(state: State<AppState>) -> usize {
+    state.0.clear_net_log();
+    state.0.clear_net_cache()
+}
+/// Opens one of the project's own pages, or the BetterLyrics site it credits, in the default browser.
+/// Anything else is refused.
+#[tauri::command]
+fn open_project_page(url: String) -> CmdResult<()> {
+    let ours = url.starts_with("https://github.com/mysticninja487/redshift") || url == "https://better-lyrics.boidu.dev" || url.starts_with("https://better-lyrics.boidu.dev/");
+    if !ours || url.chars().any(|c| c.is_whitespace() || c == '"' || c == '^' || c == '`') {
+        return Err("that address cannot be opened from here".into());
+    }
+    let opener = if cfg!(windows) { "explorer" } else if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    std::process::Command::new(opener).arg(&url).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
 #[tauri::command]
 fn set_notify_on_track(state: State<AppState>, on: bool) {
     state.0.set_notify_on_track(on);
@@ -996,7 +1044,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            set_queue, set_queue_options, set_notify_on_track, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
+            set_queue, set_queue_options, set_notify_on_track, set_online, online_lyrics, check_updates, net_report, clear_net_data, open_project_page, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
             queue_append, queue_play_next, queue_remove, queue_move, queue_clear, player_state, queue_view,
             get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_rate, set_replaygain,
             output_devices, set_output_device,

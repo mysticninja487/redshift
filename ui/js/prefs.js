@@ -33,6 +33,7 @@ export const DEFAULT_AMBIENT = { mode: 'viz', viz: 'auto', bg: 'cover', fullscre
 export const DEFAULT_PREFS = {
   v: 1,
   skin: 'classic',
+  lyricsSource: 'local', // for songs with lyrics of their own: 'local' (in the file) or 'online'
   layoutVersion: 2,
   skins: {},
   // The person's own skins: [{ id, name, base, settings }]. Each shows up as a skin called `custom:<id>`.
