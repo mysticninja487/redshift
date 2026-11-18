@@ -29,13 +29,13 @@ async function loadTrack(entryId) {
   const mine = ++loadToken;
   const path = state.queue.entries.find((e) => e.id === entryId)?.path ?? state.queue.current?.path ?? null;
   if (!path) {
-    Object.assign(state, { track: null, trackPath: null, coverUrl: null, lyrics: null, lyricsLocal: null, lyricsOnline: null, lyricsView: '', lyricsStatus: '', lyricsError: '', waveform: null });
+    Object.assign(state, { track: null, trackPath: null, coverUrl: null, lyrics: null, lyricsLocal: null, lyricsOnline: null, lyricsFetched: {}, lyricsSource: '', lyricsView: '', lyricsStatus: '', lyricsError: '', waveform: null });
     emit('track'); emit('lyrics'); emit('waveform');
     updateArt(null);
     return;
   }
   state.trackPath = path;
-  state.lyrics = null; state.waveform = null; state.lyricsLocal = null; state.lyricsOnline = null; state.lyricsView = ''; state.lyricsStatus = ''; state.lyricsError = '';
+  state.lyrics = null; state.waveform = null; state.lyricsLocal = null; state.lyricsOnline = null; state.lyricsFetched = {}; state.lyricsSource = ''; state.lyricsView = ''; state.lyricsStatus = ''; state.lyricsError = '';
   state.coverUrl = coverUrl(path, COVER.big);
   state.track = (await getMeta(path)) ?? { path, title: path.split(/[\\/]/).pop(), artist: '', album: '' };
   if (mine !== loadToken) return;
@@ -47,7 +47,7 @@ async function loadTrack(entryId) {
     const o = state.settings?.online;
     if (!l && o?.enabled && o.lyrics && o.auto_lyrics) searchOnlineLyrics();
     // The person last chose the online lyrics over the ones in the file, so they are shown again.
-    else if (l && lyricsPreference() === 'online' && lyricsOnlineAllowed()) searchOnlineLyrics();
+    else if (l && lyricsPreference() !== 'local' && lyricsOnlineAllowed()) searchOnlineLyrics({ only: lyricsPreference() });
   }).catch(() => {});
   api.waveform(path, 900).then((w) => { if (mine === loadToken) { state.waveform = w; emit('waveform'); } }).catch(() => {});
   coverLoads(state.coverUrl).then((ok) => { if (mine === loadToken) { if (!ok) state.coverUrl = null; emit('track'); updateArt(ok ? state.coverUrl : null); } });
@@ -58,27 +58,34 @@ export function lyricsOnlineAllowed() {
   const o = state.settings?.online;
   return !!(o?.enabled && o.lyrics);
 }
-/** Which lyrics the person last chose for songs that have their own: 'local' (in the file) or 'online'. */
-export const lyricsPreference = () => (getPrefs().lyricsSource === 'online' ? 'online' : 'local');
+/** The online lyrics services the lyrics panel can switch between: [id, name]. The id is what the backend calls them. */
+export const LYRICS_SERVICES = [['better_lyrics', 'BetterLyrics'], ['lrclib', 'LRCLIB']];
+const serviceId = (name) => LYRICS_SERVICES.find(([, n]) => n === name)?.[0] ?? '';
+/**
+ * Which lyrics the person last chose for songs that have their own: 'local' (the ones in the file) or the id of an
+ * online service. (An older 'online' meant "whichever the settings pick" and is passed on as null.)
+ */
+export const lyricsPreference = () => { const v = getPrefs().lyricsSource; return v === 'local' || !v ? 'local' : v === 'online' ? null : v; };
 
 /**
- * Looks for lyrics of the playing song on the internet (BetterLyrics or LRCLIB, as chosen in Settings). Found
- * lyrics are shown right away, unless the song has lyrics of its own and `show` is false, and are not saved
+ * Looks for lyrics of the playing song on the internet: at one service if `only` is its id, otherwise as chosen in
+ * Settings (BetterLyrics, then LRCLIB). Found lyrics are shown right away, unless `show` is false, and are not saved
  * anywhere until the user chooses to. The status says what happened, so the lyrics panel can tell "searching",
  * "nothing found" and "could not reach it" apart.
  */
-export async function searchOnlineLyrics({ show = true } = {}) {
+export async function searchOnlineLyrics({ show = true, only = null } = {}) {
   const path = state.trackPath, mine = loadToken;
   if (!path) return;
   state.lyricsStatus = 'searching'; state.lyricsError = ''; emit('lyrics');
   try {
-    const r = await api.onlineLyrics(path);
+    const r = await api.onlineLyrics(path, only);
     if (mine !== loadToken) return;
-    if (!r) { state.lyricsStatus = 'none'; }
+    if (!r) { state.lyricsStatus = 'none'; if (only) state.lyricsFetched[only] = 'none'; }
     else if (r.instrumental && !r.lyrics) { state.lyricsStatus = 'instrumental'; }
     else {
-      state.lyricsOnline = r; state.lyricsStatus = '';
-      if (show) { state.lyricsView = 'online'; state.lyrics = r.lyrics; }
+      const id = serviceId(r.provider);
+      state.lyricsFetched[id] = r; state.lyricsStatus = '';
+      if (show) { state.lyricsView = 'online'; state.lyricsSource = id; state.lyricsOnline = r; state.lyrics = r.lyrics; }
     }
   } catch (e) {
     if (mine !== loadToken) return;
@@ -88,21 +95,35 @@ export async function searchOnlineLyrics({ show = true } = {}) {
 }
 
 /**
- * Switches a song that has lyrics of its own between those and the online ones. The choice is
- * remembered for the next songs. Online lyrics are fetched the first time they are wanted.
+ * Switches what the lyrics panel shows: 'local' (the song's own lyrics) or the id of an online service. The choice
+ * is remembered for songs that have lyrics of their own. A service is asked the first time it is wanted.
  */
 export async function chooseLyrics(which) {
-  if (!state.lyricsLocal) return;
-  setPref('lyricsSource', which);
   if (which === 'local') {
+    if (!state.lyricsLocal) return;
+    setPref('lyricsSource', 'local');
     state.lyricsView = 'local'; state.lyrics = state.lyricsLocal; state.lyricsStatus = '';
     emit('lyrics');
-  } else if (state.lyricsOnline?.lyrics) {
-    state.lyricsView = 'online'; state.lyrics = state.lyricsOnline.lyrics; state.lyricsStatus = '';
+    return;
+  }
+  if (state.lyricsLocal) setPref('lyricsSource', which);
+  const got = state.lyricsFetched[which];
+  if (got?.lyrics) {
+    state.lyricsView = 'online'; state.lyricsSource = which; state.lyricsOnline = got; state.lyrics = got.lyrics; state.lyricsStatus = '';
     emit('lyrics');
   } else {
-    await searchOnlineLyrics();
+    await searchOnlineLyrics({ only: which });
   }
+}
+
+/** Re-reads the playing song's own lyrics after something else saved some (the lookup for a whole album, say). */
+export async function reloadLyrics() {
+  const path = state.trackPath, mine = loadToken;
+  const l = await api.lyrics(path).catch(() => null);
+  if (mine !== loadToken) return;
+  state.lyricsLocal = l ?? null;
+  if (state.lyricsView !== 'online') { state.lyrics = state.lyricsLocal; state.lyricsView = l ? 'local' : ''; }
+  emit('lyrics');
 }
 
 /** After online lyrics were saved they are the song's own lyrics: read them back and show them as such. */
@@ -110,7 +131,7 @@ async function adoptSaved() {
   const path = state.trackPath, mine = loadToken;
   const l = await api.lyrics(path).catch(() => null);
   if (mine !== loadToken || !l) return; // nothing readable yet: what is on screen stays
-  state.lyricsLocal = l ?? null; state.lyricsOnline = null; state.lyricsStatus = '';
+  state.lyricsLocal = l ?? null; state.lyricsOnline = null; state.lyricsFetched = {}; state.lyricsSource = ''; state.lyricsStatus = '';
   state.lyricsView = l ? 'local' : ''; state.lyrics = l ?? null;
   setPref('lyricsSource', 'local');
   emit('lyrics');

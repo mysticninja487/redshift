@@ -2,7 +2,7 @@
 // for one song, or the shared fields of several. Only what was changed is written.
 
 import { api, coverUrl, pickFile } from '../api.js';
-import { stampCount, stripStamps, textOfLyrics } from '../lrc.js';
+import { lineStampsOnly, stampCount, stripStamps, textOfLyrics, wordTimedCount } from '../lrc.js';
 import { h, plural, toast } from '../util.js';
 import { button } from './controls.js';
 import { confirmDialog, modal } from './dialog.js';
@@ -101,13 +101,19 @@ export async function openTagEditor(paths, { tab = 'details' } = {}) {
     const area = h('textarea', { class: 'text-input tg-lyrics', rows: 14, spellcheck: 'false', 'aria-label': 'Lyrics', placeholder: 'Paste or type the lyrics. Put [mm:ss.xx] in front of a line to time it.', oninput: () => { lyricsDirty = true; lyricsInfo(); touchedAny(); } });
     area.value = embedded;
     let lyricsDirty = false;
-    const target = h('select', { class: 'select', 'aria-label': 'Save lyrics', onchange: () => touchedAny() }, LYRIC_TARGETS.map(([v, l]) => h('option', { value: v }, l)));
+    const target = h('select', { class: 'select', 'aria-label': 'Save lyrics', onchange: () => { lyricsInfo(); touchedAny(); } }, LYRIC_TARGETS.map(([v, l]) => h('option', { value: v }, l)));
     const lyInfo = h('p', { class: 'hint tg-ly-info' });
+    const lyWords = h('p', { class: 'hint tg-ly-info', hidden: true });
+    const lyWordsNote = h('p', { class: 'hint tg-ly-info', hidden: true }, 'The tags only take line timing; save to a .lrc file as well to keep the words.');
     const sidecarNote = h('div', { class: 'hint warn tg-ly-side', hidden: true });
     const lyricsInfo = () => {
       const { total, stamped } = stampCount(area.value);
       lyInfo.textContent = !total ? 'No lyrics.' : stamped === total ? `${plural(total, 'line')}, all timed: they will follow the song.`
         : stamped ? `${stamped} of ${plural(total, 'line')} timed. Use Sync lyrics to time the rest.` : `${plural(total, 'line')}, not timed: they will scroll but not follow the song.`;
+      const words = wordTimedCount(area.value);
+      lyWords.textContent = !words ? '' : words === 1 ? '1 line timed word by word.' : `${words} lines timed word by word.`;
+      lyWordsNote.hidden = !(words && target.value === 'tags');
+      lyWords.hidden = !words;
       syncBtn.disabled = !total; stripBtn.disabled = !stamped;
     };
     const syncBtn = button('Sync lyrics…', async () => {
@@ -123,7 +129,7 @@ export async function openTagEditor(paths, { tab = 'details' } = {}) {
         area.value = textOfLyrics(currentLyrics); lyricsDirty = true; sidecarNote.hidden = true; lyricsInfo(); touchedAny();
       }, { cls: 'sy-small' }));
     }
-    const lyricsPane = h('div', { class: 'tg-pane tg-lyr', role: 'tabpanel', 'aria-label': 'Lyrics' }, sidecarNote, area, lyInfo,
+    const lyricsPane = h('div', { class: 'tg-pane tg-lyr', role: 'tabpanel', 'aria-label': 'Lyrics' }, sidecarNote, area, lyInfo, lyWords, lyWordsNote,
       h('div', { class: 'tg-ly-actions' }, syncBtn, stripBtn, clearBtn, h('label', { class: 'tg-ly-target' }, 'Save', target)));
     if (single) lyricsInfo();
 
@@ -157,7 +163,7 @@ export async function openTagEditor(paths, { tab = 'details' } = {}) {
       else if (cover) edit.cover = { file: cover.file };
       const text = area.value, tgt = target.value;
       const lyricsChange = single && lyricsDirty && text !== embedded;
-      if (lyricsChange && tgt !== 'file') edit.lyrics = text.trim() ? text : null;
+      if (lyricsChange && tgt !== 'file') edit.lyrics = text.trim() ? lineStampsOnly(text) : null; // most players cannot read word stamps in tags
       return { edit, fileLyrics: single && lyricsDirty && tgt !== 'tags' && text.trim() ? text : null };
     }
     const dirty = () => touched.size > 0 || !!cover || (single && lyricsDirty);

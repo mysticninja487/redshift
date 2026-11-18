@@ -679,8 +679,9 @@ impl App {
 
     /// Looks up lyrics for a song online. Needs the main switch and the lyrics switch; fails with
     /// [`Error::Offline`] otherwise. `Ok(None)` means nothing was found. Blocks on the network, so
-    /// call it from a worker thread.
-    pub fn online_lyrics(&self, path: &Path) -> Result<Option<OnlineLyrics>> {
+    /// call it from a worker thread. `only` asks one service instead of the one chosen in settings
+    /// (the lyrics panel's own switch); `None` or `Auto` follows the setting.
+    pub fn online_lyrics(&self, path: &Path, only: Option<LyricsProvider>) -> Result<Option<OnlineLyrics>> {
         let o = self.online();
         if !o.enabled || !o.lyrics {
             return Err(Error::Offline);
@@ -695,7 +696,8 @@ impl App {
             m.title.clone()
         };
         let query = (title, m.artist.clone(), Some(m.album.clone()).filter(|a| !a.trim().is_empty()), Some(m.duration_secs).filter(|d| *d > 0.0));
-        let order: &[LyricsProvider] = match o.lyrics_provider {
+        let chosen = only.filter(|p| *p != LyricsProvider::Auto).unwrap_or(o.lyrics_provider);
+        let order: &[LyricsProvider] = match chosen {
             LyricsProvider::Auto => &[LyricsProvider::BetterLyrics, LyricsProvider::Lrclib],
             LyricsProvider::BetterLyrics => &[LyricsProvider::BetterLyrics],
             LyricsProvider::Lrclib => &[LyricsProvider::Lrclib],
@@ -1996,11 +1998,11 @@ mod tests {
         let state = tempfile::tempdir().unwrap();
         let app = open(state.path());
         let song = fixture("tagged.flac");
-        assert!(matches!(app.online_lyrics(&song), Err(Error::Offline)));
+        assert!(matches!(app.online_lyrics(&song, None), Err(Error::Offline)));
         assert!(matches!(app.check_updates(true), Err(Error::Offline)));
         // main switch on but lyrics switched off: still no lyrics requests
         app.set_online(OnlineSettings { enabled: true, lyrics: false, ..OnlineSettings::default() });
-        assert!(matches!(app.online_lyrics(&song), Err(Error::Offline)));
+        assert!(matches!(app.online_lyrics(&song, None), Err(Error::Offline)));
         assert!(app.net_log().is_empty(), "no request was even attempted");
     }
 
@@ -2021,7 +2023,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let txt = d.path().join("secret.txt");
         fs::write(&txt, "x").unwrap();
-        assert!(app.online_lyrics(&txt).unwrap().is_none());
+        assert!(app.online_lyrics(&txt, None).unwrap().is_none());
         assert!(app.net_log().is_empty());
     }
 

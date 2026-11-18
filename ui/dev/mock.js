@@ -379,7 +379,7 @@ const cmds = {
   sleep_status: () => sleepStatus(),
   listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
   listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
-  app_info: () => ({ version: '0.6.0', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
+  app_info: () => ({ version: '0.6.1', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
   open_data_folder: () => null,
   song_info: ({ path }) => {
     const t = tracks.find((x) => x.path === path); if (!t) throw new Error('That file isn\u2019t there any more');
@@ -405,9 +405,9 @@ const cmds = {
   set_queue_options: ({ noDuplicates, keepShuffle, shuffleWholeQueue }) => { S.noDup = noDuplicates; S.keepShuffle = keepShuffle; S.wholeQueue = shuffleWholeQueue; },
   set_notify_on_track: ({ on }) => { S.notify = on; },
   set_online: ({ online }) => { S.online = { ...online }; },
-  online_lyrics: async ({ path }) => {
+  online_lyrics: async ({ path, provider }) => {
     if (!S.online.enabled || !S.online.lyrics) throw 'online features are turned off';
-    const k = hash(path) % 5, prov = S.online.lyrics_provider ?? 'auto';
+    const k = hash(path) % 5, prov = provider && provider !== 'auto' ? provider : (S.online.lyrics_provider ?? 'auto');
     const wantBetter = prov !== 'lrclib', gotBetter = wantBetter && (k === 2 || k === 3);
     const t = find(path), q = `title=${encodeURIComponent(t?.title ?? '')}&artist=${encodeURIComponent(t?.artist ?? '')}`;
     const ask = (host, url, status) => NET_LOG.unshift({ time: Math.floor(Date.now() / 1000), purpose: 'Lyrics', host, url, status, bytes: 2412, cached: false, error: null });
@@ -434,7 +434,7 @@ const cmds = {
     if (!S.online.enabled) throw 'online features are turned off';
     NET_LOG.unshift({ time: Math.floor(Date.now() / 1000), purpose: 'Update check', host: 'api.github.com', url: 'https://api.github.com/repos/mysticninja487/redshift/releases/latest', status: 200, bytes: 1180, cached: false, error: null });
     await new Promise((r) => setTimeout(r, 300));
-    return globalThis.__mockUpdate ?? { current: '0.6.0', latest: '0.6.1', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.1', notes: 'Fixes and small improvements.' };
+    return globalThis.__mockUpdate ?? { current: '0.6.1', latest: '0.6.2', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.2', notes: 'Fixes and small improvements.' };
   },
   net_report: () => ({ log: NET_LOG.slice(0, 60), cached_items: NET_LOG.length, cached_bytes: NET_LOG.length * 2400 }),
   clear_net_data: () => { const n = NET_LOG.length; NET_LOG.length = 0; return n; },

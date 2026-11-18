@@ -61,8 +61,9 @@ Every shortcut can be changed in Settings > Shortcuts.
 
 - Synced lyrics from a `.lrc` file next to the song or from its tags, with line and word timing. Lyrics can be shown beside the cover, over a visualiser, or full screen.
 - **Online lyrics** (optional) from [BetterLyrics](https://better-lyrics.boidu.dev) by boidushya, which times every word, and from [LRCLIB](https://lrclib.net) for songs BetterLyrics does not have. Found lyrics are shown straight away and kept only if you choose: **Save to tags** writes them into the song, **Save as .lrc** puts a file next to it (with word timing when there is some).
-- A song that already has lyrics of its own gets a **Built-in | Online** switch above them; Redshift remembers which you prefer.
-- The **tag editor** adds or changes lyrics, plain or timed, and **Sync lyrics** lets you time a song by pressing `Space` as each line starts.
+- The lyrics panel has a switch above the lyrics: **Embedded | BetterLyrics | LRCLIB**. Embedded is whatever the song carries in its tags or a `.lrc` file; the other two look the song up there (and say "Word by word", "Line by line" or "Not timed"). Redshift remembers which you prefer, and a service that has nothing for the song is greyed out.
+- **Find lyrics online…** in the right-click menu of a song, album, artist or selection looks up every song that has no lyrics, one after another, and saves each next to the song, in its tags, or both. Songs that already have lyrics are left alone.
+- The **tag editor** adds or changes lyrics, plain or timed, and **Sync lyrics** lets you time a song by pressing `Space` as each line starts, or, with **Words**, as each word starts. Word timing is kept in a `.lrc` file; the tags take line timing, since most players cannot read word stamps there.
 
 ### Your library
 

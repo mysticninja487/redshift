@@ -20,6 +20,7 @@ export async function trackMenuItems(paths, extra = []) {
     { sep: true },
     ...(paths.length === 1 ? [{ label: 'Song info…', onClick: async () => { const { openSongInfo } = await import('./songinfo.js'); openSongInfo(paths[0]); } }] : []),
     { label: paths.length > 1 ? `Edit tags (${paths.length} songs)…` : 'Edit tags…', disabled: !paths.length, onClick: async () => { const { openTagEditor } = await import('./tageditor.js'); openTagEditor(paths); } },
+    { label: paths.length > 1 ? `Find lyrics online (${paths.length} songs)…` : 'Find lyrics online…', disabled: !paths.length, onClick: async () => { const { findLyricsFor } = await import('./lyricsbatch.js'); findLyricsFor(paths); } },
     { label: paths.every((p) => state.favs.has(p)) ? 'Remove from favourites' : 'Add to favourites', onClick: () => toggleFavourite(paths) },
     {
       label: 'Add to playlist',

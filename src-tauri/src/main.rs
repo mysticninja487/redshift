@@ -758,9 +758,9 @@ fn set_online(state: State<AppState>, online: OnlineSettings) {
 /// Looks for lyrics online. `None` when nothing was found; an error says why a lookup could not be made
 /// (online features off, no connection, the service being down).
 #[tauri::command]
-async fn online_lyrics(state: State<'_, AppState>, path: PathBuf) -> CmdResult<Option<OnlineLyrics>> {
+async fn online_lyrics(state: State<'_, AppState>, path: PathBuf, provider: Option<redshift_core::app::LyricsProvider>) -> CmdResult<Option<OnlineLyrics>> {
     let core = state.0.clone();
-    tauri::async_runtime::spawn_blocking(move || core.online_lyrics(&path)).await.map_err(err)?.map_err(err)
+    tauri::async_runtime::spawn_blocking(move || core.online_lyrics(&path, provider)).await.map_err(err)?.map_err(err)
 }
 #[tauri::command]
 async fn check_updates(state: State<'_, AppState>, force: bool) -> CmdResult<UpdateInfo> {

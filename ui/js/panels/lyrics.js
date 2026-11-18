@@ -2,7 +2,7 @@
 // has word timing) and click-to-seek; plain lyrics just scroll.
 
 import { api } from '../api.js';
-import { act, chooseLyrics, lyricsOnlineAllowed, saveOnlineLyrics, saveOnlineLyricsToTags, searchOnlineLyrics } from '../controller.js';
+import { act, chooseLyrics, LYRICS_SERVICES, lyricsOnlineAllowed, saveOnlineLyrics, saveOnlineLyricsToTags, searchOnlineLyrics } from '../controller.js';
 import { askToGoOnline, online } from '../online.js';
 import { get } from '../prefs.js';
 import { isPlaying, position, state } from '../state.js';
@@ -23,7 +23,8 @@ export function mount(el) {
   const editBtn = h('button', { class: 'btn icon-btn ly-edit', type: 'button', title: 'Edit or sync lyrics', 'aria-label': 'Edit or sync lyrics', onclick: () => editLyrics() }, icon('edit', 16));
   // The bar above the lyrics: a switch between a song's own lyrics and the online ones, where they came
   // from, and what can be done with online lyrics (keep them in the tags, or in a .lrc file).
-  const pick = segmented({ label: 'Which lyrics', options: [{ value: 'local', label: 'Built-in' }, { value: 'online', label: 'Online' }], value: 'local', onChange: (v) => chooseLyrics(v) });
+  const pick = segmented({ label: 'Which lyrics', options: [{ value: 'local', label: 'Embedded' }, ...LYRICS_SERVICES.map(([value, label]) => ({ value, label }))], value: 'local', onChange: (v) => chooseLyrics(v) });
+  const segs = [...pick.querySelectorAll('.seg')];
   const source = h('span', { class: 'ly-source' });
   const tagsBtn = h('button', { class: 'btn ly-save', type: 'button', title: 'Write these lyrics into the song\u2019s tags, line by line', onclick: async () => {
     const ok = await saveOnlineLyricsToTags(() => confirmDialog('Replace the lyrics in the tags?', 'This song already has lyrics in its tags. They will be replaced by the online ones.', { ok: 'Replace', danger: false }));
@@ -72,15 +73,20 @@ export function mount(el) {
   /** The bar shows when there is something to choose between or to save, and says what is going on. */
   function paintBar() {
     const view = state.lyricsView, st = state.lyricsStatus, local = !!state.lyricsLocal;
-    const canSwitch = local && lyricsOnlineAllowed();
     const showingOnline = view === 'online' && !!state.lyricsOnline;
-    fromOnline.hidden = !(canSwitch || showingOnline);
-    pick.hidden = !canSwitch;
-    pick.set(showingOnline ? 'online' : 'local');
+    fromOnline.hidden = !(showingOnline || (local && lyricsOnlineAllowed()));
+    segs[0].hidden = !local; // nothing to go back to when the song has no lyrics of its own
+    pick.set(showingOnline ? state.lyricsSource : 'local');
+    LYRICS_SERVICES.forEach(([id], k) => {
+      const none = state.lyricsFetched[id] === 'none';
+      segs[k + 1].classList.toggle('is-none', none);
+      segs[k + 1].title = none ? 'Nothing found there for this song' : '';
+    });
     actions.hidden = !showingOnline;
     const o = state.lyricsOnline;
-    source.textContent = st === 'searching' ? 'Looking online\u2026' : st === 'none' ? 'Nothing found online' : st === 'instrumental' ? 'Listed as instrumental' : st === 'error' ? `Could not look up lyrics` : showingOnline ? `From ${o.provider}` : '';
-    source.title = st === 'error' ? state.lyricsError : showingOnline && o.word_synced ? 'Every word has its own time' : '';
+    source.textContent = st === 'searching' ? 'Looking online\u2026' : st === 'none' ? 'Nothing found online' : st === 'instrumental' ? 'Listed as instrumental' : st === 'error' ? 'Could not look up lyrics'
+      : showingOnline ? (o.word_synced ? 'Word by word' : o.synced ? 'Line by line' : 'Not timed') : '';
+    source.title = st === 'error' ? state.lyricsError : '';
     source.hidden = !source.textContent;
   }
 

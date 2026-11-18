@@ -116,7 +116,7 @@ export const api = {
   setNotifyOnTrack: (on) => invoke('set_notify_on_track', { on }),
   // online (everything here fails with "online features are turned off" until the main switch is on)
   setOnline: (online) => invoke('set_online', { online }),
-  onlineLyrics: (path) => invoke('online_lyrics', { path }),
+  onlineLyrics: (path, provider = null) => invoke('online_lyrics', { path, provider }),
   checkUpdates: (force = false) => invoke('check_updates', { force }),
   netReport: () => invoke('net_report'), clearNetData: () => invoke('clear_net_data'),
   openProjectPage: (url) => invoke('open_project_page', { url }),

@@ -102,6 +102,8 @@
 .ly-online [hidden] { display: none !important; }
 .ly-online .segmented { font-size: .66rem; letter-spacing: .04em; text-transform: none; }
 .ly-online .seg { padding: 3px 9px; }
+.ly-online .seg.is-none { opacity: .55; text-decoration: line-through; text-decoration-thickness: 1px; }
+.ly-online .seg[hidden] { display: none; }
 .ly-source { flex: 1 1 8ch; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ly-actions { display: flex; gap: 6px; flex: none; }
 .ly-actions[hidden] { display: none; }

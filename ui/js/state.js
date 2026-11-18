@@ -12,6 +12,8 @@ export const state = {
   lyrics: null,
   lyricsLocal: null,       // the song's own lyrics (a .lrc file or its tags), whichever is shown
   lyricsOnline: null,      // lyrics fetched from the internet: { text, tag_text, synced, word_synced, instrumental, provider }
+  lyricsFetched: {},       // answers so far by service id: a result, or 'none'
+  lyricsSource: '',        // the id of the online service whose lyrics are shown ('better_lyrics' | 'lrclib')
   lyricsView: '',          // which of the two `lyrics` is: '' (none) | 'local' | 'online'
   lyricsStatus: '',        // '' | 'searching' | 'none' | 'instrumental' | 'error' (an online lookup)
   lyricsError: '',

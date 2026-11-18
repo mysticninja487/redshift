@@ -121,3 +121,33 @@
 .rate-foot { align-items: flex-end; }
 .rate-foot small { color: var(--fg3); font-size: .72rem; max-width: 20ch; }
 .rate-reset[disabled] { opacity: .45; pointer-events: none; }
+
+/* Words mode: each word of a line is its own button */
+.sy-words { display: flex; flex-wrap: wrap; gap: 2px 3px; padding: 3px 4px; align-items: center; }
+.sy-words[hidden], .sy-text[hidden] { display: none; }
+.sy-w { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--fg3); font: inherit; padding: 3px 5px; border-radius: 5px; cursor: pointer; overflow-wrap: anywhere; }
+.sy-w:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sy-w.is-wdone { color: var(--fg2); border-bottom-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.sy-w.is-wnext { color: var(--fg); background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.sy-w.is-wsel { outline: 1px solid var(--accent); }
+.sy-w.is-wnow { color: var(--accent); font-weight: 600; }
+.sy-bar .segmented { margin-right: 6px; }
+
+/* Find lyrics online for several songs */
+.lb-dialog { width: min(560px, calc(100vw - 32px)); }
+.lb-target { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
+.lb-target label { color: var(--fg3); font-size: .82rem; }
+.lb-target .select { flex: 1; min-width: 0; }
+.lb-bar { width: 100%; height: 6px; accent-color: var(--accent); margin: 8px 0 4px; }
+.lb-list { max-height: min(46vh, 320px); overflow: auto; border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; }
+.lb-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; font-size: .86rem; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.lb-row:last-child { border-bottom: 0; }
+.lb-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-status { flex: none; color: var(--fg3); }
+.lb-row[data-state="saved"] .lb-status { color: var(--accent); }
+.lb-row[data-state="fail"] .lb-status { color: var(--danger, #e5484d); }
+.lb-row[data-state="look"] { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.lb-sum { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.lb-sum[hidden] { display: none; }
+.lb-chip { padding: 2px 9px; border-radius: 99px; font-size: .78rem; background: color-mix(in srgb, var(--fg) 9%, transparent); }
+.lb-chip[data-state="saved"] { background: color-mix(in srgb, var(--accent) 22%, transparent); }
