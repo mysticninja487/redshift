@@ -440,6 +440,32 @@ export function mountSettings(root) {
     const sizeNote = h('p', { class: 'hint' });
     loadLog();
 
+
+    // Discord rich presence: independent of the online switch (the Discord app on this computer does
+    // the talking), and off until switched on.
+    const pres = () => ({ enabled: false, share: 'song', client_id: '', ...(state.settings?.presence ?? {}) });
+    const setPres = async (patch) => { await act(api.setPresence({ ...pres(), ...patch })); await refreshSettings(); };
+    const presStatus = h('p', { class: 'hint set-status' });
+    const paintPres = async () => {
+      let st = { state: 'off', detail: '' };
+      try { st = await api.presenceStatus(); } catch { /* keep the blank line */ }
+      presStatus.textContent = !pres().enabled ? '' : st.state === 'connected' ? 'Connected to Discord.'
+        : st.state === 'waiting' ? 'Waiting for Discord. Open the Discord app on this computer.'
+        : st.state === 'no_id' ? 'This needs a Discord application ID. Paste one below.'
+        : st.state === 'error' ? `Discord said: ${st.detail}` : '';
+    };
+    paintPres();
+    const presTimer = setInterval(() => { if (!presStatus.isConnected) clearInterval(presTimer); else paintPres(); }, 2000);
+    const idInput = h('input', { class: 'text-input', type: 'text', inputmode: 'numeric', value: pres().client_id, placeholder: 'Built in', 'aria-label': 'Discord application ID', translate: 'no',
+      onchange: async (e) => { await setPres({ client_id: e.target.value.trim() }); paintPres(); } });
+    const discord = group('Discord',
+      row('Show on Discord', toggle({ label: 'Show on Discord', value: pres().enabled, onChange: async (v) => { await setPres({ enabled: v }); render(); } }),
+        { hint: 'Puts \u201cListening to\u201d and the song on your Discord profile while music plays, and takes it down when you pause. Off by default. It only talks to the Discord app on this computer, which shows it to other people; it does not use the Go online switch.' }),
+      row('What to show', segmented({ label: 'What to show', options: [{ value: 'song', label: 'Song and artist' }, { value: 'generic', label: 'Just \u201cmusic\u201d' }], value: pres().share, onChange: (v) => setPres({ share: v }) }),
+        { hint: 'Song and artist shows the title, artist, album and time left. The other says only that you are listening to music.' }),
+      row('Application ID', idInput, { hint: 'Leave empty to use the one built into Redshift. To use your own Discord application, paste its Application ID here.' }),
+      presStatus);
+
     return h('div', { class: 'set-page' },
       group('Online features',
         row('Go online', master, { hint: 'Off by default. While this is off, Redshift sends nothing over the internet, and everything below is switched off.' }),
@@ -455,6 +481,7 @@ export function mountSettings(root) {
           flag('updates', 'Check for updates at startup', 'Asks api.github.com for the newest release, sending only the name and version of this app. Redshift only tells you; it never downloads or installs anything by itself.'),
           h('div', { class: 'set-row set-actions' }, button('Check now', async () => { const p = checkForUpdates(true); paintStatus(); await p; paintStatus(); loadLog(); }), releaseBtn),
           status)),
+      discord,
       group('What has been sent', logBox, sizeNote,
         h('div', { class: 'set-row set-actions' }, clearBtn),
         h('p', { class: 'hint' }, 'Answers are kept for a while so the same song is not asked about twice.')));

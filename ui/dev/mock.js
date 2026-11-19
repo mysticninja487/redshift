@@ -335,7 +335,7 @@ function mockMixes() {
   return history().length ? out : out.filter((m) => m.kind === 'favourites');
 }
 
-const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, viz: {}, custom_eq_presets: CUSTOM_PRESETS, tray: TRAY, restore_session: S.restore !== false, watch_folders: S.watch, record_history: S.record !== false, count_percent: S.countPercent ?? 50, queue_no_duplicates: S.noDup ?? false, keep_shuffle: S.keepShuffle ?? true, shuffle_whole_queue: S.wholeQueue ?? true, notify_on_track: S.notify ?? false, online: S.online, ui: ui() });
+const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, viz: {}, custom_eq_presets: CUSTOM_PRESETS, tray: TRAY, restore_session: S.restore !== false, watch_folders: S.watch, record_history: S.record !== false, count_percent: S.countPercent ?? 50, queue_no_duplicates: S.noDup ?? false, keep_shuffle: S.keepShuffle ?? true, shuffle_whole_queue: S.wholeQueue ?? true, notify_on_track: S.notify ?? false, online: S.online, presence: S.presence ?? { enabled: false, share: "song", client_id: "" }, ui: ui() });
 const addEntries = (paths, at = S.entries.length) => S.entries.splice(at, 0, ...paths.map((path) => ({ id: S.seq++, path })));
 const cmds = {
   set_queue: ({ paths, start, autoplay }) => { S.entries = []; addEntries(paths); S.cur = S.entries[start]?.id ?? null; S.pos = 0; S.t0 = performance.now(); S.status = autoplay && S.cur ? 'playing' : 'stopped'; if (S.status === 'playing') noteStart(curEntry()?.path); emit('player-event', { type: 'queue_changed' }); emit('player-event', { type: 'track_changed', entry_id: S.cur }); },
@@ -379,7 +379,7 @@ const cmds = {
   sleep_status: () => sleepStatus(),
   listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
   listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
-  app_info: () => ({ version: '0.6.1', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
+  app_info: () => ({ version: '0.6.2', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
   open_data_folder: () => null,
   song_info: ({ path }) => {
     const t = tracks.find((x) => x.path === path); if (!t) throw new Error('That file isn\u2019t there any more');
@@ -405,6 +405,13 @@ const cmds = {
   set_queue_options: ({ noDuplicates, keepShuffle, shuffleWholeQueue }) => { S.noDup = noDuplicates; S.keepShuffle = keepShuffle; S.wholeQueue = shuffleWholeQueue; },
   set_notify_on_track: ({ on }) => { S.notify = on; },
   set_online: ({ online }) => { S.online = { ...online }; },
+  set_presence: ({ presence }) => { S.presence = { ...presence }; },
+  presence_status: () => {
+    const p = S.presence ?? {};
+    if (!p.enabled) return { state: 'off', detail: '' };
+    if (!/^\d{15,25}$/.test((p.client_id ?? '').trim())) return { state: 'no_id', detail: '' };
+    return globalThis.__mockDiscord === 'waiting' ? { state: 'waiting', detail: '' } : { state: 'connected', detail: '' };
+  },
   online_lyrics: async ({ path, provider }) => {
     if (!S.online.enabled || !S.online.lyrics) throw 'online features are turned off';
     const k = hash(path) % 5, prov = provider && provider !== 'auto' ? provider : (S.online.lyrics_provider ?? 'auto');
@@ -434,7 +441,7 @@ const cmds = {
     if (!S.online.enabled) throw 'online features are turned off';
     NET_LOG.unshift({ time: Math.floor(Date.now() / 1000), purpose: 'Update check', host: 'api.github.com', url: 'https://api.github.com/repos/mysticninja487/redshift/releases/latest', status: 200, bytes: 1180, cached: false, error: null });
     await new Promise((r) => setTimeout(r, 300));
-    return globalThis.__mockUpdate ?? { current: '0.6.1', latest: '0.6.2', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.2', notes: 'Fixes and small improvements.' };
+    return globalThis.__mockUpdate ?? { current: '0.6.2', latest: '0.6.3', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.3', notes: 'Fixes and small improvements.' };
   },
   net_report: () => ({ log: NET_LOG.slice(0, 60), cached_items: NET_LOG.length, cached_bytes: NET_LOG.length * 2400 }),
   clear_net_data: () => { const n = NET_LOG.length; NET_LOG.length = 0; return n; },

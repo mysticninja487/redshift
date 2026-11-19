@@ -17,6 +17,7 @@ pub mod meta;
 pub mod net;
 pub mod open;
 pub mod playlists;
+pub mod presence;
 pub mod queue;
 pub mod resolve;
 pub mod stats;

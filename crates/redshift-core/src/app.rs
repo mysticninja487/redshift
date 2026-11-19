@@ -182,6 +182,8 @@ pub struct Settings {
     pub notify_on_track: bool,
     /// What may go online. Everything here is off until the user turns the main switch on.
     pub online: OnlineSettings,
+    /// Showing what is playing on Discord (off until switched on).
+    pub presence: crate::presence::PresenceSettings,
     /// Owned by the front end (theme, layout, customisation); stored as is.
     pub ui: Value,
 }
@@ -262,6 +264,7 @@ impl Default for Settings {
             shuffle_whole_queue: true,
             notify_on_track: false,
             online: OnlineSettings::default(),
+            presence: crate::presence::PresenceSettings::default(),
             ui: Value::Null,
         }
     }
@@ -390,6 +393,10 @@ pub struct App {
     sleep: Mutex<Option<SleepKind>>,
     /// The only way out to the internet; see [`crate::net`].
     net: Net,
+    /// Keeps the Discord profile line right; see [`crate::presence`].
+    presence: Mutex<crate::presence::Runner>,
+    /// The title, artist and album of the song on Discord, so the file is not read every second.
+    presence_meta: Mutex<Option<(crate::queue::EntryId, (String, String, String))>>,
 }
 
 type CoverKey = (PathBuf, u64, u64);
@@ -459,6 +466,8 @@ impl App {
             session_saved: Mutex::new(None),
             sleep: Mutex::new(None),
             net,
+            presence: Mutex::new(crate::presence::Runner::default()),
+            presence_meta: Mutex::new(None),
         };
         Ok((app, events))
     }
@@ -665,6 +674,52 @@ impl App {
         self.player.set_shuffle(on);
         self.update(|s| s.shuffle = on);
     }
+    // ---- Discord presence ----
+
+    pub fn presence(&self) -> crate::presence::PresenceSettings {
+        self.settings.lock().presence.clone()
+    }
+
+    pub fn set_presence(&self, p: crate::presence::PresenceSettings) {
+        self.update(|s| s.presence = p);
+    }
+
+    pub fn presence_status(&self) -> crate::presence::PresenceStatus {
+        self.presence.lock().status()
+    }
+
+    /// Call about once a second. Keeps the Discord profile in step with the player: the song while
+    /// it plays, nothing while it is paused or stopped. Does nothing at all while the setting is off.
+    pub fn presence_tick(&self) {
+        let settings = self.presence();
+        let want = if settings.enabled && self.player.status() == crate::engine::Status::Playing {
+            self.player.current_track().map(|c| {
+                let (title, artist, album) = {
+                    let mut cache = self.presence_meta.lock();
+                    match cache.as_ref() {
+                        Some((id, m)) if *id == c.entry_id => m.clone(),
+                        _ => {
+                            let m = match self.track_meta(&c.path) {
+                                Ok(m) => (m.title, m.artist, m.album),
+                                Err(_) => (c.path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(), String::new(), String::new()),
+                            };
+                            *cache = Some((c.entry_id, m.clone()));
+                            m
+                        }
+                    }
+                };
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+                crate::presence::Want {
+                    entry: c.entry_id,
+                    activity: crate::presence::activity_for(settings.share, &title, &artist, &album, c.duration_secs, self.player.position_secs(), now),
+                }
+            })
+        } else {
+            None
+        };
+        self.presence.lock().tick(&settings, want, Instant::now());
+    }
+
     // ---- online ----
 
     pub fn online(&self) -> OnlineSettings {
@@ -1621,7 +1676,9 @@ mod tests {
         let app = open(d.path());
         let (a, b) = (m.path().join("a.flac"), m.path().join("b.mp3"));
         app.player.set_queue(vec![a.clone(), b], 0, true);
-        wait_for("playback", || app.player.status() == crate::engine::Status::Playing);
+        // The status can say Playing a moment before the track is published as current (on a slow
+        // machine the timer then found nothing to wait for), so wait for both.
+        wait_for("playback", || app.player.status() == crate::engine::Status::Playing && app.player.current_track().is_some());
         app.set_sleep_timer(None);
         assert_eq!(app.sleep_status().kind, Some("song"));
         wait_for("the song to end and the music to pause", || {
@@ -1982,6 +2039,22 @@ mod tests {
         assert!(app.net.enabled(), "the network layer follows the saved switch on startup");
         app.set_online(OnlineSettings { enabled: false, ..app.online() });
         assert!(!app.net.enabled(), "turning the main switch off cuts the network at once");
+    }
+
+    #[test]
+    fn discord_presence_is_off_by_default_remembered_and_does_nothing_while_off() {
+        let d = tempfile::tempdir().unwrap();
+        {
+            let app = open(d.path());
+            assert!(!app.presence().enabled);
+            app.presence_tick();
+            assert_eq!(app.presence_status().state, "off");
+            app.set_presence(crate::presence::PresenceSettings { enabled: true, share: crate::presence::PresenceShare::Generic, client_id: "123456789012345678".into() });
+            app.flush().unwrap();
+        }
+        let app = open(d.path());
+        let p = app.presence();
+        assert!(p.enabled && p.share == crate::presence::PresenceShare::Generic && p.client_id == "123456789012345678");
     }
 
     #[test]

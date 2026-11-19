@@ -105,6 +105,10 @@ Every shortcut can be changed in Settings > Shortcuts.
 - A system tray icon with play / pause / next / previous, optional song notifications, and launch on startup.
 - Open songs, folders and playlists with Redshift from Explorer or by dragging them on; a second launch hands its files to the running player.
 
+### Discord rich presence (optional, off by default)
+
+Settings > Online > Discord puts "Listening to" and the song on your Discord profile while music plays, and takes it down when you pause. You choose what it shows: the song, artist, album and time left, or only that you are listening to music. Redshift talks to the Discord app on the same computer (through its local pipe); Discord shows it to other people. It does not use the online switch and sends nothing itself. It needs a Discord application ID: the one built into the release, or your own pasted in Settings (create an application at discord.com/developers, name it Redshift, and upload a picture called `redshift` under Rich Presence assets).
+
 ### Online features (optional, off by default)
 
 Settings > Online has a main switch. Nothing goes over the network until it is on, and each feature says exactly what it sends.
@@ -183,7 +187,7 @@ Every online feature goes through `redshift-core::net`: add the provider as a mo
 
 - Testing on more real Windows machines and sound hardware. The engine's tests use a simulated sound card, so device-specific bugs are likely.
 - Opus files with more than two channels (reported as unsupported).
-- Importing playlists from streaming services, Discord rich presence and automatic updates. See the roadmap.
+- Importing playlists from streaming services and automatic updates. See the roadmap.
 
 ## Licence
 
