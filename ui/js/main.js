@@ -25,7 +25,7 @@ const NAV = [['now', 'Now playing', 'record'], ['library', 'Library', 'library']
 
 function buildChrome() {
   const nav = h('nav', { class: 'nav', 'aria-label': 'Sections' }, NAV.map(([id, label, ic]) =>
-    h('button', { class: 'nav-btn', type: 'button', dataset: { view: id }, onclick: () => (id === 'settings' ? toggleSettings() : setView(id)) }, icon(ic, 16), h('span', null, label))));
+    h('button', { class: 'nav-btn', type: 'button', title: label, 'aria-label': label, dataset: { view: id }, onclick: () => (id === 'settings' ? toggleSettings() : setView(id)) }, icon(ic, 16), h('span', null, label))));
   const skinSel = select({ label: 'Skin', value: getPrefs().skin, options: [], onChange: (v) => setSkin(v) });
   skinSel.classList.add('skin-select');
   // Shows the mode a click switches to: a sun while it's dark, a moon while it's light.

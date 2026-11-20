@@ -26,7 +26,7 @@ use crate::engine::{Player, PlayerConfig, PlayerEvent, Rate, ReplayGainMode};
 use crate::error::{Error, Result};
 use crate::library::{write_json_atomic, Album, Artist, Library, ScanProgress, ScanReport};
 use crate::lyrics::{self, Lyrics, LyricsSource};
-use crate::net::{self, betterlyrics, lrclib, updates::{self, UpdateInfo}, Net, RequestRecord};
+use crate::net::{self, artwork, betterlyrics, lrclib, updates::{self, UpdateInfo}, Net, RequestRecord};
 use crate::meta::{self, Cover, TrackMeta};
 use crate::playlists::{ImportReport, Playlist, PlaylistId, PlaylistStore, PlaylistSummary, RelinkReport};
 use crate::queue::{QueuePolicy, RepeatMode};
@@ -397,11 +397,19 @@ pub struct App {
     presence: Mutex<crate::presence::Runner>,
     /// The title, artist and album of the song on Discord, so the file is not read every second.
     presence_meta: Mutex<Option<(crate::queue::EntryId, (String, String, String))>>,
+    /// The cover picture found for the song on the card, so it is asked for once per song.
+    presence_cover: Mutex<Option<(crate::queue::EntryId, Option<String>)>>,
+    /// Something has played this session (a queue restored at launch is not a song being listened to).
+    presence_played: AtomicBool,
 }
 
 type CoverKey = (PathBuf, u64, u64);
 
 type WaveformKey = (PathBuf, u64, u64, usize);
+
+fn now_millis() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+}
 
 impl App {
     /// Opens everything under `data_dir` (created if needed) and applies the saved settings to the
@@ -442,7 +450,7 @@ impl App {
         let net = Net::new(
             net::cache_dir_in(&data_dir),
             &format!("Redshift/{} (+https://github.com/{})", env!("CARGO_PKG_VERSION"), updates::REPO),
-            &[lrclib::HOST, betterlyrics::HOST, updates::HOST],
+            &[lrclib::HOST, betterlyrics::HOST, updates::HOST, artwork::HOST],
         );
         net.set_enabled(settings.online.enabled);
 
@@ -468,6 +476,8 @@ impl App {
             net,
             presence: Mutex::new(crate::presence::Runner::default()),
             presence_meta: Mutex::new(None),
+            presence_cover: Mutex::new(None),
+            presence_played: AtomicBool::new(false),
         };
         Ok((app, events))
     }
@@ -688,31 +698,73 @@ impl App {
         self.presence.lock().status()
     }
 
+    /// The card as it would look right now under `p`, for the settings page's preview: the song that
+    /// is playing, or a sample song when nothing is. `sample` says which.
+    pub fn presence_preview(&self, p: &crate::presence::PresenceSettings, paused: bool) -> (crate::presence::Card, bool) {
+        let now = now_millis();
+        let (track, sample) = match self.player.current_track() {
+            Some(c) => (self.presence_track(&c), false),
+            None => (crate::presence::TrackInfo { title: "Carrier Wave".into(), artist: "Paper Satellites".into(), album: "Signal & Noise".into(), duration_secs: Some(204.0), position_secs: 63.0 }, true),
+        };
+        // A stand-in address so the preview shows how a card with a cover looks; nothing is fetched.
+        let cover = p.wants_cover().then_some("https://cover.invalid/preview.jpg");
+        (crate::presence::build_card(p, &track, !paused, cover, now), sample)
+    }
+
+    fn presence_track(&self, c: &crate::engine::player::CurrentTrack) -> crate::presence::TrackInfo {
+        let (title, artist, album) = {
+            let mut cache = self.presence_meta.lock();
+            match cache.as_ref() {
+                Some((id, m)) if *id == c.entry_id => m.clone(),
+                _ => {
+                    let m = match self.track_meta(&c.path) {
+                        Ok(m) => (m.title, m.artist, m.album),
+                        Err(_) => (c.path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(), String::new(), String::new()),
+                    };
+                    *cache = Some((c.entry_id, m.clone()));
+                    m
+                }
+            }
+        };
+        crate::presence::TrackInfo { title, artist, album, duration_secs: c.duration_secs, position_secs: self.player.position_secs() }
+    }
+
+    /// The cover picture for the song on the card: asked for once per song, and only when the card
+    /// wants one and online features are on.
+    fn presence_cover(&self, entry: crate::queue::EntryId, t: &crate::presence::TrackInfo) -> Option<String> {
+        if let Some((id, found)) = self.presence_cover.lock().as_ref() {
+            if *id == entry {
+                return found.clone();
+            }
+        }
+        if !self.net.enabled() {
+            return None;
+        }
+        let q = artwork::Query { title: t.title.clone(), artist: t.artist.clone(), album: t.album.clone() };
+        let found = match artwork::lookup(&self.net, &q) {
+            Ok(f) => f,
+            Err(Error::Offline) => return None,
+            Err(_) => None,
+        };
+        *self.presence_cover.lock() = Some((entry, found.clone()));
+        found
+    }
+
     /// Call about once a second. Keeps the Discord profile in step with the player: the song while
-    /// it plays, nothing while it is paused or stopped. Does nothing at all while the setting is off.
+    /// it plays, and (when asked) while it is paused. Does nothing at all while the setting is off.
     pub fn presence_tick(&self) {
         let settings = self.presence();
-        let want = if settings.enabled && self.player.status() == crate::engine::Status::Playing {
+        let status = self.player.status();
+        if status == crate::engine::Status::Playing {
+            self.presence_played.store(true, Ordering::Relaxed);
+        }
+        let playing = status == crate::engine::Status::Playing;
+        let showing = playing || (status == crate::engine::Status::Paused && settings.show_paused && self.presence_played.load(Ordering::Relaxed));
+        let want = if settings.enabled && showing {
             self.player.current_track().map(|c| {
-                let (title, artist, album) = {
-                    let mut cache = self.presence_meta.lock();
-                    match cache.as_ref() {
-                        Some((id, m)) if *id == c.entry_id => m.clone(),
-                        _ => {
-                            let m = match self.track_meta(&c.path) {
-                                Ok(m) => (m.title, m.artist, m.album),
-                                Err(_) => (c.path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(), String::new(), String::new()),
-                            };
-                            *cache = Some((c.entry_id, m.clone()));
-                            m
-                        }
-                    }
-                };
-                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
-                crate::presence::Want {
-                    entry: c.entry_id,
-                    activity: crate::presence::activity_for(settings.share, &title, &artist, &album, c.duration_secs, self.player.position_secs(), now),
-                }
+                let track = self.presence_track(&c);
+                let cover = if settings.wants_cover() { self.presence_cover(c.entry_id, &track) } else { None };
+                crate::presence::Want { entry: c.entry_id, card: crate::presence::build_card(&settings, &track, playing, cover.as_deref(), now_millis()) }
             })
         } else {
             None
@@ -2049,12 +2101,12 @@ mod tests {
             assert!(!app.presence().enabled);
             app.presence_tick();
             assert_eq!(app.presence_status().state, "off");
-            app.set_presence(crate::presence::PresenceSettings { enabled: true, share: crate::presence::PresenceShare::Generic, client_id: "123456789012345678".into() });
+            app.set_presence(crate::presence::PresenceSettings { enabled: true, hide_details: true, show_paused: true, line1: "artist".into(), client_id: "123456789012345678".into(), ..Default::default() });
             app.flush().unwrap();
         }
         let app = open(d.path());
         let p = app.presence();
-        assert!(p.enabled && p.share == crate::presence::PresenceShare::Generic && p.client_id == "123456789012345678");
+        assert!(p.enabled && p.hide_details && p.show_paused && p.line1 == "artist" && p.client_id == "123456789012345678");
     }
 
     #[test]

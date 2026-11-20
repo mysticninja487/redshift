@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/brand/redshift-icon.png" alt="The Redshift logo: a crimson dot inside rings that thin out and fade to pink" width="128">
+</p>
+
 <h1 align="center">Redshift</h1>
 
 <p align="center">
@@ -107,7 +111,16 @@ Every shortcut can be changed in Settings > Shortcuts.
 
 ### Discord rich presence (optional, off by default)
 
-Settings > Online > Discord puts "Listening to" and the song on your Discord profile while music plays, and takes it down when you pause. You choose what it shows: the song, artist, album and time left, or only that you are listening to music. Redshift talks to the Discord app on the same computer (through its local pipe); Discord shows it to other people. It does not use the online switch and sends nothing itself. It needs a Discord application ID: the one built into the release, or your own pasted in Settings (create an application at discord.com/developers, name it Redshift, and upload a picture called `redshift` under Rich Presence assets).
+Settings > Discord puts "Listening to" and the song on your Discord profile while music plays. It is shaped like the Discord tab in Limusic, with a live preview of the card:
+
+- **Status text**: what Discord writes after "Listening to" (the app name, line 1 or line 2), and an **app name** to show instead of "Redshift".
+- **Card**: line 1 and line 2 (title, artist, album or artist - album), line 3 (under line 2 and on hover), the album art, a small Redshift badge, and a progress bar.
+- **Links and buttons**: line 1, line 2 and the album art can open a search for what they show, on YouTube Music, Spotify, Apple Music, YouTube or Last.fm; two buttons (listen, album, artist or "Get Redshift"). Redshift plays your own files, so these are searches, not links to the exact song. Other people see the buttons; you do not see them on your own profile.
+- **Show while paused** (without the progress bar) and **Hide details** (only "Listening to music").
+
+Redshift talks to the Discord app on the same computer (through its local pipe); Discord shows the card to other people. Updates are spaced to stay within Discord's limits. The only online part is the album cover: with Go online on, Redshift asks `itunes.apple.com` for the cover of the song (artist and title, once per song); without it, the Redshift logo is shown.
+
+It needs a Discord application ID. The release has one built in; otherwise paste your own under Advanced (create an application at discord.com/developers, name it Redshift, and upload `assets/brand/redshift-icon.png` as an image called `redshift` under Rich Presence assets).
 
 ### Online features (optional, off by default)
 
@@ -117,6 +130,7 @@ Settings > Online has a main switch. Nothing goes over the network until it is o
 | --- | --- | --- |
 | Lyrics (BetterLyrics) | `api.betterlyrics.org` | Song title, artist, album and length in seconds |
 | Lyrics (LRCLIB) | `lrclib.net` | The same |
+| Discord cover art | `itunes.apple.com` | Artist and title of the song on the Discord card, once per song; only while the card shows album art |
 | Update check | `api.github.com` | Nothing about you or your music; it only asks for the latest release and never downloads anything |
 
 Any request also carries your IP address and the app's name and version, as with any website. You can choose which lyrics service to use (Automatic asks BetterLyrics first, then LRCLIB). BetterLyrics only answers for songs it already has, so it often has nothing and Automatic falls back to LRCLIB. The page keeps a log of recent requests and a button to clear it and the saved answers.

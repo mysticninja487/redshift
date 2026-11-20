@@ -2,13 +2,13 @@
    Everything reads CSS variables set by js/theme.js (colours, fonts, shape); skins only override
    composition. Nothing in here names a skin. */
 
-@property --accent { syntax: '<color>'; inherits: true; initial-value: #e2312d; }
+@property --accent { syntax: '<color>'; inherits: true; initial-value: #ca0032; }
 @property --bg { syntax: '<color>'; inherits: true; initial-value: #14161a; }
 @property --fg { syntax: '<color>'; inherits: true; initial-value: #f0ebdf; }
 
 :root {
   --bg: #14161a; --bg2: #1b1e24; --bg3: #262a33; --fg: #f0ebdf; --fg2: #b9b4a9; --fg3: #7d7a73;
-  --line: rgba(255, 255, 255, .12); --accent: #e2312d; --accent2: #ff7a5c; --on-accent: #fff; --accent-text: #ff6b66; --accent-rgb: 226, 49, 45;
+  --line: rgba(255, 255, 255, .12); --accent: #ca0032; --accent2: #ff7a5c; --on-accent: #fff; --accent-text: #e8607f; --accent-rgb: 202, 0, 50;
   --font-display: "Space Grotesk", system-ui, sans-serif; --font-body: "Inter", system-ui, sans-serif; --font-mono: "JetBrains Mono", monospace;
   --type-scale: 1; --tracking: 0em; --density: 1; --bw: 1px; --shadow-k: 1; --glass: 0; --grain: 0; --glow: .5;
   --radius: 4px;
@@ -43,7 +43,7 @@ img { display: block; }
 ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--fg) 40%, transparent); background-clip: padding-box; border: 2px solid transparent; }
 
 /* ---------- frame ---------- */
-#app { position: relative; height: 100vh; display: grid; grid-template-rows: var(--chrome-h) minmax(0, 1fr); isolation: isolate; overflow: hidden; }
+#app { position: relative; height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--chrome-h) minmax(0, 1fr); isolation: isolate; overflow: hidden; }
 .bg, .decor, .grain { position: absolute; inset: 0; pointer-events: none; }
 .bg { z-index: -3; background: var(--bg); }
 .decor { z-index: -2; overflow: hidden; }
@@ -55,11 +55,11 @@ img { display: block; }
 .view { position: absolute; inset: 0; min-height: 0; min-width: 0; }
 
 /* ---------- chrome ---------- */
-.chrome { grid-row: 1; display: flex; align-items: center; gap: 18px; padding: 0 calc(var(--pad) + 6px); z-index: 5; }
+.chrome { grid-row: 1; min-width: 0; display: flex; align-items: center; gap: 18px; padding: 0 calc(var(--pad) + 6px); z-index: 5; }
 .brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; letter-spacing: .02em; font-size: 1.1rem; margin-right: auto; }
-.brand-mark { width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle, var(--bg) 0 18%, var(--accent) 19% 38%, var(--bg) 39% 48%, var(--accent) 49%); box-shadow: 0 0 calc(14px * var(--glow)) rgba(var(--accent-rgb), .6); }
+.brand-mark { width: 20px; height: 20px; border-radius: 50%; flex: none; /* the logo: a dot and rings that thin out and lighten, in the skin's accent */ background: radial-gradient(circle, var(--accent) 0 23%, transparent 25% 43%, color-mix(in srgb, var(--accent) 82%, transparent) 45% 60%, transparent 62% 76%, color-mix(in srgb, var(--accent) 58%, transparent) 78% 90%, transparent 92%); }
 .nav { display: flex; gap: 2px; }
-.nav-btn { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--fg2); padding: 8px 12px; border-radius: var(--r-btn); font-weight: 500; font-size: .86rem; transition: color .15s, background-color .15s; }
+.nav-btn { white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--fg2); padding: 8px 12px; border-radius: var(--r-btn); font-weight: 500; font-size: .86rem; transition: color .15s, background-color .15s; }
 .nav-btn:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .nav-btn[aria-current="true"] { color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
 .chrome-tools { display: flex; align-items: center; gap: 6px; margin-left: auto; }
@@ -128,6 +128,16 @@ img { display: block; }
 .fatal { position: fixed; inset: 0; margin: 0; padding: 24px; background: #200; color: #fcc; white-space: pre-wrap; z-index: 999; font: 13px monospace; }
 
 :root[data-motion="reduced"] *, :root[data-motion="reduced"] *::before, :root[data-motion="reduced"] *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+
+/* The top bar gives way before it can push the page wider than the window: first the link names go
+   (the icons stay), then the skin menu shrinks, then the brand keeps only its mark. */
+@media (max-width: 1240px) { :root:not([data-skin="paper"]):not([data-skin="noir"]) .nav-btn span { display: none; } :root:not([data-skin="paper"]):not([data-skin="noir"]) .nav-btn { padding: 8px 10px; } }
+@media (max-width: 1000px) { .skin-select { max-width: 128px; } .chrome { gap: 10px; } .chrome-tools { gap: 2px; } }
+@media (max-width: 1000px) { :root[data-skin="paper"] .nav-btn, :root[data-skin="noir"] .nav-btn { padding: 8px 7px; letter-spacing: .08em; } }
+@media (max-width: 940px) { .skin-select { display: none; } }
+@media (max-width: 860px) { .brand > span:not(.brand-mark) { display: none; }
+  /* skins that show only words for the links show only the icons instead, like the rest */
+  :root[data-skin="paper"] .nav-btn svg, :root[data-skin="noir"] .nav-btn svg { display: block; } }
 
 /* Small windows: columns drop away, stage stays. */
 @media (max-width: 1000px) { .stage-grid { --size-left: 260px; --size-right: 280px; } }

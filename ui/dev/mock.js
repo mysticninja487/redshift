@@ -335,7 +335,7 @@ function mockMixes() {
   return history().length ? out : out.filter((m) => m.kind === 'favourites');
 }
 
-const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, viz: {}, custom_eq_presets: CUSTOM_PRESETS, tray: TRAY, restore_session: S.restore !== false, watch_folders: S.watch, record_history: S.record !== false, count_percent: S.countPercent ?? 50, queue_no_duplicates: S.noDup ?? false, keep_shuffle: S.keepShuffle ?? true, shuffle_whole_queue: S.wholeQueue ?? true, notify_on_track: S.notify ?? false, online: S.online, presence: S.presence ?? { enabled: false, share: "song", client_id: "" }, ui: ui() });
+const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, viz: {}, custom_eq_presets: CUSTOM_PRESETS, tray: TRAY, restore_session: S.restore !== false, watch_folders: S.watch, record_history: S.record !== false, count_percent: S.countPercent ?? 50, queue_no_duplicates: S.noDup ?? false, keep_shuffle: S.keepShuffle ?? true, shuffle_whole_queue: S.wholeQueue ?? true, notify_on_track: S.notify ?? false, online: S.online, presence: S.presence ?? { enabled: false }, ui: ui() });
 const addEntries = (paths, at = S.entries.length) => S.entries.splice(at, 0, ...paths.map((path) => ({ id: S.seq++, path })));
 const cmds = {
   set_queue: ({ paths, start, autoplay }) => { S.entries = []; addEntries(paths); S.cur = S.entries[start]?.id ?? null; S.pos = 0; S.t0 = performance.now(); S.status = autoplay && S.cur ? 'playing' : 'stopped'; if (S.status === 'playing') noteStart(curEntry()?.path); emit('player-event', { type: 'queue_changed' }); emit('player-event', { type: 'track_changed', entry_id: S.cur }); },
@@ -379,7 +379,7 @@ const cmds = {
   sleep_status: () => sleepStatus(),
   listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
   listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
-  app_info: () => ({ version: '0.6.2', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
+  app_info: () => ({ version: '0.6.3', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
   open_data_folder: () => null,
   song_info: ({ path }) => {
     const t = tracks.find((x) => x.path === path); if (!t) throw new Error('That file isn\u2019t there any more');
@@ -409,8 +409,35 @@ const cmds = {
   presence_status: () => {
     const p = S.presence ?? {};
     if (!p.enabled) return { state: 'off', detail: '' };
-    if (!/^\d{15,25}$/.test((p.client_id ?? '').trim())) return { state: 'no_id', detail: '' };
     return globalThis.__mockDiscord === 'waiting' ? { state: 'waiting', detail: '' } : { state: 'connected', detail: '' };
+  },
+  // Mirrors presence::build_card in the core, for the preview in the browser.
+  presence_preview: ({ presence: p, paused }) => {
+    const d = { status_line: 'line2', app_name: '', line1: 'title', line2: 'artist', cover: true, line3: 'album', link_line1: false, link_line2: false, link_cover: false, link_provider: 'youtube_music', timestamps: true, badge: true, hide_details: false, button1: 'listen', button2: 'app', ...p };
+    const cur = curTrack();
+    const t = cur ? { title: cur.title, artist: cur.artist, album: cur.album, duration: cur.duration_secs, pos: position() } : { title: 'Carrier Wave', artist: 'Paper Satellites', album: 'Signal & Noise', duration: 204, pos: 63 };
+    const now = Date.now(), playing = !paused;
+    const card = { name: d.app_name.trim() || null, status_type: 1, details: '', details_url: null, state: null, state_url: null, large_image: 'redshift', large_text: null, large_url: null, small_image: null, small_text: null, start: null, end: null, buttons: [] };
+    const start = now - Math.round(t.pos * 1000);
+    if (d.hide_details) { card.details = 'Listening to music'; card.status_type = 0; if (playing) card.start = start; return [card, !cur]; }
+    const prov = { youtube_music: ['YouTube Music', (q) => `https://music.youtube.com/search?q=${encodeURIComponent(q)}`], spotify: ['Spotify', (q) => `https://open.spotify.com/search/${encodeURIComponent(q)}`], apple_music: ['Apple Music', (q) => `https://music.apple.com/search?term=${encodeURIComponent(q)}`], youtube: ['YouTube', (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`], lastfm: ['Last.fm', (q) => `https://www.last.fm/search?q=${encodeURIComponent(q)}`] }[d.link_provider] ?? ['YouTube Music', (q) => `https://music.youtube.com/search?q=${encodeURIComponent(q)}`];
+    const text = (slot) => ({ title: t.title, artist: t.artist, album: t.album, artist_album: [t.artist, t.album].filter(Boolean).join(' \u2014 ') }[slot] || null);
+    const link = (slot) => { const q = { title: `${t.artist} ${t.title}`, artist: t.artist, album: `${t.artist} ${t.album}`, artist_album: `${t.artist} ${t.album}` }[slot]; return q?.trim() ? prov[1](q.trim()) : null; };
+    const l1 = text(d.line1); const used1 = l1 ? d.line1 : 'title';
+    card.details = l1 ?? t.title;
+    card.status_type = { app: 0, line1: 2 }[d.status_line] ?? 1;
+    if (d.link_line1) card.details_url = link(used1);
+    const l2 = text(d.line2);
+    if (l2) { card.state = l2; if (d.link_line2) card.state_url = link(d.line2); }
+    if (playing && d.timestamps) { card.start = start; card.end = t.duration ? start + Math.round(t.duration * 1000) : null; }
+    if (d.cover) {
+      card.large_image = 'https://cover.invalid/preview.jpg'; card.large_text = text(d.line3);
+      if (d.link_cover) card.large_url = link('album') ?? link('title');
+      if (d.badge) { card.small_image = 'redshift'; card.small_text = card.name ?? 'Redshift'; }
+    }
+    const btn = (k) => k === 'listen' ? { label: `Listen on ${prov[0]}`, url: link('title') } : k === 'album' && t.album ? { label: `Album on ${prov[0]}`, url: link('album') } : k === 'artist' && t.artist ? { label: `Artist on ${prov[0]}`, url: link('artist') } : k === 'app' ? { label: 'Get Redshift', url: 'https://github.com/mysticninja487/redshift' } : null;
+    card.buttons = [d.button1, d.button2].map(btn).filter(Boolean);
+    return [card, !cur];
   },
   online_lyrics: async ({ path, provider }) => {
     if (!S.online.enabled || !S.online.lyrics) throw 'online features are turned off';
@@ -441,7 +468,7 @@ const cmds = {
     if (!S.online.enabled) throw 'online features are turned off';
     NET_LOG.unshift({ time: Math.floor(Date.now() / 1000), purpose: 'Update check', host: 'api.github.com', url: 'https://api.github.com/repos/mysticninja487/redshift/releases/latest', status: 200, bytes: 1180, cached: false, error: null });
     await new Promise((r) => setTimeout(r, 300));
-    return globalThis.__mockUpdate ?? { current: '0.6.2', latest: '0.6.3', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.3', notes: 'Fixes and small improvements.' };
+    return globalThis.__mockUpdate ?? { current: '0.6.3', latest: '0.6.4', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.3', notes: 'Fixes and small improvements.' };
   },
   net_report: () => ({ log: NET_LOG.slice(0, 60), cached_items: NET_LOG.length, cached_bytes: NET_LOG.length * 2400 }),
   clear_net_data: () => { const n = NET_LOG.length; NET_LOG.length = 0; return n; },

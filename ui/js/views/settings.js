@@ -26,7 +26,7 @@ import { MAX_PITCH, MAX_SPEED, MIN_SPEED, formatPitch, formatSpeed, getRate, isN
 
 // [id, label, icon]. A tab with `SUBS` shows those as a second row of choices above its page.
 const TABS = [
-  ['general', 'General', 'settings'], ['appearance', 'Appearance', 'palette'], ['playback', 'Playback', 'play'], ['online', 'Online', 'globe'], ['windows', 'Mini & ambient', 'pip'],
+  ['general', 'General', 'settings'], ['appearance', 'Appearance', 'palette'], ['playback', 'Playback', 'play'], ['online', 'Online', 'globe'], ['discord', 'Discord', 'chat'], ['windows', 'Mini & ambient', 'pip'],
   ['keys', 'Shortcuts', 'keyboard'], ['help', 'Help & about', 'info'],
 ];
 // The second row. The 'skin' entry only exists for skins that have options of their own, and is named after the skin.
@@ -35,6 +35,7 @@ const SUBS = {
   playback: [['playback', 'Playback'], ['eq', 'Equaliser']],
   windows: [['mini', 'Mini player'], ['ambient', 'Ambient mode']],
 };
+const PROVIDERS = [{ value: 'youtube_music', label: 'YouTube Music' }, { value: 'spotify', label: 'Spotify' }, { value: 'apple_music', label: 'Apple Music' }, { value: 'youtube', label: 'YouTube' }, { value: 'lastfm', label: 'Last.fm' }];
 const HERO_MODES = [{ value: 'art', label: 'Cover art' }, { value: 'turntable', label: 'Turntable' }, { value: 'viz', label: 'Visualiser' }, { value: 'none', label: 'Nothing' }];
 const SLOT_NAMES = { top: 'Top', left: 'Left', stage: 'Centre', right: 'Right', bottom: 'Bottom' };
 
@@ -441,31 +442,6 @@ export function mountSettings(root) {
     loadLog();
 
 
-    // Discord rich presence: independent of the online switch (the Discord app on this computer does
-    // the talking), and off until switched on.
-    const pres = () => ({ enabled: false, share: 'song', client_id: '', ...(state.settings?.presence ?? {}) });
-    const setPres = async (patch) => { await act(api.setPresence({ ...pres(), ...patch })); await refreshSettings(); };
-    const presStatus = h('p', { class: 'hint set-status' });
-    const paintPres = async () => {
-      let st = { state: 'off', detail: '' };
-      try { st = await api.presenceStatus(); } catch { /* keep the blank line */ }
-      presStatus.textContent = !pres().enabled ? '' : st.state === 'connected' ? 'Connected to Discord.'
-        : st.state === 'waiting' ? 'Waiting for Discord. Open the Discord app on this computer.'
-        : st.state === 'no_id' ? 'This needs a Discord application ID. Paste one below.'
-        : st.state === 'error' ? `Discord said: ${st.detail}` : '';
-    };
-    paintPres();
-    const presTimer = setInterval(() => { if (!presStatus.isConnected) clearInterval(presTimer); else paintPres(); }, 2000);
-    const idInput = h('input', { class: 'text-input', type: 'text', inputmode: 'numeric', value: pres().client_id, placeholder: 'Built in', 'aria-label': 'Discord application ID', translate: 'no',
-      onchange: async (e) => { await setPres({ client_id: e.target.value.trim() }); paintPres(); } });
-    const discord = group('Discord',
-      row('Show on Discord', toggle({ label: 'Show on Discord', value: pres().enabled, onChange: async (v) => { await setPres({ enabled: v }); render(); } }),
-        { hint: 'Puts \u201cListening to\u201d and the song on your Discord profile while music plays, and takes it down when you pause. Off by default. It only talks to the Discord app on this computer, which shows it to other people; it does not use the Go online switch.' }),
-      row('What to show', segmented({ label: 'What to show', options: [{ value: 'song', label: 'Song and artist' }, { value: 'generic', label: 'Just \u201cmusic\u201d' }], value: pres().share, onChange: (v) => setPres({ share: v }) }),
-        { hint: 'Song and artist shows the title, artist, album and time left. The other says only that you are listening to music.' }),
-      row('Application ID', idInput, { hint: 'Leave empty to use the one built into Redshift. To use your own Discord application, paste its Application ID here.' }),
-      presStatus);
-
     return h('div', { class: 'set-page' },
       group('Online features',
         row('Go online', master, { hint: 'Off by default. While this is off, Redshift sends nothing over the internet, and everything below is switched off.' }),
@@ -481,10 +457,137 @@ export function mountSettings(root) {
           flag('updates', 'Check for updates at startup', 'Asks api.github.com for the newest release, sending only the name and version of this app. Redshift only tells you; it never downloads or installs anything by itself.'),
           h('div', { class: 'set-row set-actions' }, button('Check now', async () => { const p = checkForUpdates(true); paintStatus(); await p; paintStatus(); loadLog(); }), releaseBtn),
           status)),
-      discord,
+      group('Discord cover art',
+        h('p', { class: 'hint' }, 'The Discord tab can show the album\u2019s cover on your profile. To find it, Redshift asks itunes.apple.com (Apple\u2019s search service) for the song\u2019s artist and title, plus your IP address and the name and version of this app, as with any website, once per song. This only happens while Go online is on and the card shows album art. Without it the Redshift logo is used.'),
+        h('div', { class: 'set-row set-actions' }, button('Open Discord settings', () => { tab = 'discord'; render(); body.scrollTop = 0; }))),
       group('What has been sent', logBox, sizeNote,
         h('div', { class: 'set-row set-actions' }, clearBtn),
         h('p', { class: 'hint' }, 'Answers are kept for a while so the same song is not asked about twice.')));
+  }
+
+
+  // ---------- Discord ----------
+  // Rich presence: what other people see on your Discord profile. It talks to the Discord app on this
+  // computer, so the switch is independent of Go online; only the optional cover lookup uses the network.
+  const PRES_DEFAULTS = { enabled: false, status_line: 'line2', app_name: '', line1: 'title', line2: 'artist', cover: true, line3: 'album', link_line1: false, link_line2: false, link_cover: false,
+    link_provider: 'youtube_music', timestamps: true, badge: true, show_paused: false, hide_details: false, button1: 'listen', button2: 'app', client_id: '' };
+  const pres = () => ({ ...PRES_DEFAULTS, ...(state.settings?.presence ?? {}) });
+  const setPres = async (patch) => { await act(api.setPresence({ ...pres(), ...patch })); await refreshSettings(); };
+  const fmtClock = (secs) => { const t = Math.max(0, Math.round(secs)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+  let presPaused = false; // the preview's own play/pause switch, not a setting
+
+  function discordTab() {
+    const p = pres();
+    const status = h('p', { class: 'hint set-status' });
+    const paintStatus = async () => {
+      let st = { state: 'off', detail: '' };
+      try { st = await api.presenceStatus(); } catch { /* keep the blank line */ }
+      status.textContent = !pres().enabled ? '' : st.state === 'connected' ? 'Connected to Discord.'
+        : st.state === 'waiting' ? 'Waiting for Discord. Open the Discord app on this computer.'
+        : st.state === 'no_id' ? 'Redshift has no Discord application yet. Open Advanced below and paste an Application ID.'
+        : st.state === 'error' ? `Discord said: ${st.detail}` : '';
+    };
+    paintStatus();
+    const timer = setInterval(() => { if (!status.isConnected) clearInterval(timer); else paintStatus(); }, 2000);
+
+    // The card, drawn from what the core would send: the same code makes both.
+    const card = h('div', { class: 'dc-card', 'aria-label': 'Preview of your Discord card', role: 'group' });
+    const note = h('p', { class: 'hint dc-note' });
+    let shown = null, tick = null;
+    const paintCard = () => {
+      clearInterval(tick);
+      if (!shown) { card.replaceChildren(); return; }
+      const c = shown.card, who = c.name ?? 'Redshift';
+      const header = c.status_type === 0 ? who : c.status_type === 2 ? c.details : (c.state ?? c.details);
+      const real = /^https:/.test(c.large_image);
+      const art = h('div', { class: 'dc-art' }, real ? h('span', { class: 'dc-cover', title: c.large_text ?? '' }, icon('note', 26)) : h('span', { class: 'dc-logo brand-mark', title: c.large_text ?? '' }),
+        c.small_image ? h('span', { class: 'dc-badge brand-mark', title: c.small_text ?? '' }) : null);
+      const bar = c.start != null ? h('div', { class: 'dc-time' }, h('span', { translate: 'no' }), h('i', null, h('b')), h('span', { translate: 'no' })) : null;
+      const buttons = c.buttons?.length ? h('div', { class: 'dc-buttons' }, c.buttons.map((b) => h('span', { class: 'dc-btn', translate: 'no' }, b.label))) : null;
+      const link = (t, url) => h('div', { class: `dc-line${url ? ' is-link' : ''}`, translate: 'no' }, t);
+      card.replaceChildren(
+        h('div', { class: 'dc-head' }, icon('note', 14), h('span', null, 'Listening to ', h('b', { translate: 'no' }, header))),
+        h('div', { class: 'dc-body' }, art, h('div', { class: 'dc-text' },
+          h('div', { class: `dc-line dc-l1${c.details_url ? ' is-link' : ''}`, translate: 'no' }, c.details),
+          c.state ? link(c.state, c.state_url) : null,
+          c.large_text && c.large_image ? h('div', { class: 'dc-line dc-l3', translate: 'no' }, c.large_text) : null,
+          bar)),
+        buttons);
+      if (bar) {
+        const [a, fill, z] = [bar.firstChild, bar.querySelector('b'), bar.lastChild];
+        const draw = () => {
+          const el = Math.max(0, (Date.now() - c.start) / 1000), total = c.end ? (c.end - c.start) / 1000 : 0;
+          a.textContent = fmtClock(total ? Math.min(el, total) : el);
+          z.textContent = total ? fmtClock(total) : '';
+          fill.style.width = total ? `${Math.min(100, (el / total) * 100)}%` : '0%';
+        };
+        draw();
+        tick = setInterval(() => { if (!bar.isConnected) clearInterval(tick); else draw(); }, 1000);
+      }
+    };
+    let seq = 0;
+    const refreshCard = async () => {
+      const mine = ++seq;
+      let r = null;
+      try { r = await api.presencePreview(pres(), presPaused); } catch { /* no preview */ }
+      if (mine !== seq || !card.isConnected) return;
+      shown = r ? { card: r[0], sample: r[1] } : null;
+      paintCard();
+      const q = pres();
+      note.replaceChildren(...(!shown ? [] : [h('span', null, shown.sample ? 'A sample song, because nothing is playing.' : 'The song that is playing now.'),
+        q.cover && !q.hide_details && !online().enabled ? h('span', { class: 'dc-gap' }, 'Go online is off, so the Redshift logo is shown instead of the cover.') : null]));
+    };
+    refreshCard();
+
+    /** Saves a change; the page is rebuilt only when it changes which rows exist. */
+    const change = async (patch, rebuild) => { await setPres(patch); if (rebuild) render(); else { refreshCard(); paintStatus(); } };
+    const flag = (key, label, hint, rebuild) => row(label, toggle({ label, value: p[key], onChange: (v) => change({ [key]: v }, rebuild) }), { hint });
+    const seg = (key, label, options, hint) => row(label, segmented({ label, options, value: p[key], onChange: (v) => change({ [key]: v }) }), { hint });
+    const provider = PROVIDERS.find((x) => x.value === p.link_provider)?.label ?? 'YouTube Music';
+    const buttonOptions = [{ value: 'listen', label: `Listen on ${provider}` }, { value: 'album', label: 'Album search' }, { value: 'artist', label: 'Artist search' }, { value: 'app', label: 'Get Redshift' }, { value: 'off', label: 'Off' }];
+    const L1 = [{ value: 'title', label: 'Title' }, { value: 'artist', label: 'Artist' }, { value: 'album', label: 'Album' }];
+    const L2 = [...L1, { value: 'artist_album', label: 'Artist — Album' }, { value: 'off', label: 'Off' }];
+    const L3 = [{ value: 'album', label: 'Album' }, { value: 'title', label: 'Title' }, { value: 'artist', label: 'Artist' }, { value: 'off', label: 'Off' }];
+
+    const nameInput = h('input', { class: 'text-input', type: 'text', maxlength: 60, value: p.app_name, placeholder: 'Redshift', 'aria-label': 'App name', translate: 'no',
+      onchange: (e) => change({ app_name: e.target.value.trim() }) });
+    const idInput = h('input', { class: 'text-input', type: 'text', inputmode: 'numeric', value: p.client_id, placeholder: 'Built in', 'aria-label': 'Discord application ID', translate: 'no',
+      onchange: async (e) => { await setPres({ client_id: e.target.value.trim() }); paintStatus(); } });
+    const previewState = segmented({ label: 'Preview as', options: [{ value: 'playing', label: 'Playing' }, { value: 'paused', label: 'Paused' }], value: presPaused ? 'paused' : 'playing', onChange: (v) => { presPaused = v === 'paused'; refreshCard(); } });
+
+    const rest = p.hide_details ? [] : [
+      group('Status',
+        seg('status_line', 'Status text', [{ value: 'app', label: 'App name' }, { value: 'line1', label: 'Line 1' }, { value: 'line2', label: 'Line 2' }],
+          'What Discord writes after “Listening to” in the member list and on your profile.'),
+        row('App name', nameInput, { hint: 'Replaces “Redshift” in that spot. Leave it empty to keep the name.' })),
+      group('Card',
+        seg('line1', 'Line 1', L1), seg('line2', 'Line 2', L2),
+        flag('cover', 'Album art', 'Shows the album’s cover, found online when Go online is on. Otherwise, or when none is found, the Redshift logo is shown.', true),
+        ...(p.cover ? [seg('line3', 'Line 3', L3, 'Shown under line 2 and when someone hovers over the picture.'), flag('badge', 'Redshift badge', 'A small Redshift logo in the corner of the cover.')] : []),
+        flag('timestamps', 'Progress bar', 'The elapsed and remaining time. It is left off while paused, because Discord would keep it running.')),
+      group('Links',
+        h('p', { class: 'hint' }, 'Redshift plays your own files, so it cannot link to the exact song. A link opens a search for it instead.'),
+        row('Search on', select({ label: 'Search on', options: PROVIDERS, value: p.link_provider, onChange: (v) => change({ link_provider: v }, true) })),
+        flag('link_line1', 'Link line 1', 'Clicking the first line opens a search for what it shows.'),
+        flag('link_line2', 'Link line 2', 'The same for the second line.'),
+        ...(p.cover ? [flag('link_cover', 'Link the album art', 'Clicking the picture searches for the album.')] : [])),
+      group('Buttons',
+        h('p', { class: 'hint' }, 'Other people see up to two buttons under the card. You do not see them on your own profile.'),
+        row('First button', select({ label: 'First button', options: buttonOptions, value: p.button1, onChange: (v) => change({ button1: v }) })),
+        row('Second button', select({ label: 'Second button', options: buttonOptions, value: p.button2, onChange: (v) => change({ button2: v }) }))),
+    ];
+
+    return h('div', { class: 'set-page' },
+      group('Discord',
+        row('Show on Discord', toggle({ label: 'Show on Discord', value: p.enabled, onChange: (v) => change({ enabled: v }, true) }),
+          { hint: 'Puts “Listening to” and the song on your Discord profile while music plays. Off by default. It only talks to the Discord app on this computer, which shows it to other people; it does not use the Go online switch.' }),
+        status,
+        flag('show_paused', 'Show while paused', 'Keeps the card up when you pause, without the progress bar. Nothing is shown until you have played something.'),
+        flag('hide_details', 'Hide details', 'Says only that you are listening to music: no title, artist, album, cover, links or buttons.', true)),
+      group('Preview', h('div', { class: 'dc-bar' }, previewState), card, note),
+      ...rest,
+      group('Advanced',
+        row('Application ID', idInput, { hint: 'Redshift shows itself as its own Discord application, so you normally leave this empty. To use an application of your own (its name and icon are what Discord shows), paste its Application ID.' })));
   }
 
   // ---------- General ----------
@@ -684,7 +787,7 @@ export function mountSettings(root) {
       group('Reset', row('Everything', button('Reset all appearance settings', async () => { if (await confirmDialog('Reset everything?', 'Every skin goes back to its defaults and shortcuts are restored. Your music, playlists and playback settings are untouched.', { ok: 'Reset all' })) { const { setPref } = await import('../prefs.js'); setPref('skins', {}); setPref('keys', {}); render(); } }, { cls: 'danger' })));
 
   const TAB_BUILDERS = {
-    general, online: onlineTab, keys: keysTab, help: helpTab,
+    general, online: onlineTab, discord: discordTab, keys: keysTab, help: helpTab,
     'appearance/look': appearance, 'appearance/layout': layout, 'appearance/now': lyricsTab, 'appearance/visual': visual, 'appearance/skin': skinTab,
     'playback/playback': playback, 'playback/eq': eqTab,
     'windows/mini': miniPage, 'windows/ambient': ambientPage,

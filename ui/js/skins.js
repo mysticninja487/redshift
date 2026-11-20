@@ -61,7 +61,7 @@ export function fontStack(id) {
 
 /** Accent presets for the "Preset" colour mode. */
 export const ACCENTS = [
-  { id: 'crimson', name: 'Crimson', hex: '#e2312d' },
+  { id: 'crimson', name: 'Crimson', hex: '#ca0032' },
   { id: 'vermilion', name: 'Vermilion', hex: '#ff5a36' },
   { id: 'tangerine', name: 'Tangerine', hex: '#ff7a1a' },
   { id: 'amber', name: 'Amber', hex: '#f2b134' },
@@ -83,8 +83,8 @@ const SKINS = [
     hasDecor: false,
     vizOff: 'none',
     palette: {
-      dark: { bg: '#101216', bg2: '#171a20', bg3: '#21252d', fg: '#eceef2', accent: '#e2312d' },
-      light: { bg: '#f2f3f6', bg2: '#ffffff', bg3: '#e6e8ed', fg: '#15181d', accent: '#d42a26' },
+      dark: { bg: '#101216', bg2: '#171a20', bg3: '#21252d', fg: '#eceef2', accent: '#ca0032' },
+      light: { bg: '#f2f3f6', bg2: '#ffffff', bg3: '#e6e8ed', fg: '#15181d', accent: '#bf0030' },
     },
     fonts: { display: 'Inter', body: 'Inter', mono: 'JetBrains Mono' },
     defaults: {
@@ -102,8 +102,8 @@ const SKINS = [
     blurb: 'A record on the deck. Charcoal and warm paper split on the diagonal, with the tonearm tracking the song.',
     scheme: 'dark',
     palette: {
-      dark: { bg: '#14161a', bg2: '#1b1e24', bg3: '#262a33', fg: '#f0ebdf', accent: '#e2312d', paper: '#e3d8c3', ink: '#1b1a18' },
-      light: { bg: '#e3d8c3', bg2: '#ebe2d0', bg3: '#f3ecdd', fg: '#1b1a18', accent: '#d42a26', paper: '#14161a', ink: '#f0ebdf' },
+      dark: { bg: '#14161a', bg2: '#1b1e24', bg3: '#262a33', fg: '#f0ebdf', accent: '#ca0032', paper: '#e3d8c3', ink: '#1b1a18' },
+      light: { bg: '#e3d8c3', bg2: '#ebe2d0', bg3: '#f3ecdd', fg: '#1b1a18', accent: '#bf0030', paper: '#14161a', ink: '#f0ebdf' },
     },
     fonts: { display: 'Space Grotesk', body: 'Inter', mono: 'JetBrains Mono' },
     // Options only this skin has (Settings shows them under the skin's own heading).

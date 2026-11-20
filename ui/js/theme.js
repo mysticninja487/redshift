@@ -13,7 +13,7 @@ import { ACCENTS, fontStack, getSkin } from './skins.js';
 import { state } from './state.js';
 import { clamp } from './util.js';
 
-export const tokens = { accent: '#e2312d', bg: '#111', fg: '#eee', scheme: 'dark', art2: '#e2312d', art3: '#e2312d' };
+export const tokens = { accent: '#ca0032', bg: '#111', fg: '#eee', scheme: 'dark', art2: '#ca0032', art3: '#ca0032' };
 
 const DENSITY = { compact: 0.78, cozy: 1, roomy: 1.28 };
 

@@ -18,6 +18,7 @@
 //! This is a blocking client (`ureq`), meant to be called from a worker thread, never from the audio
 //! thread or the UI thread.
 
+pub mod artwork;
 pub mod betterlyrics;
 pub mod lrclib;
 pub mod updates;

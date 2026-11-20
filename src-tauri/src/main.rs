@@ -767,6 +767,12 @@ fn presence_status(state: State<AppState>) -> redshift_core::presence::PresenceS
     state.0.presence_status()
 }
 
+/// The Discord card as it would look under `presence` (the song playing, or a sample): `[card, sample]`.
+#[tauri::command]
+fn presence_preview(state: State<AppState>, presence: redshift_core::presence::PresenceSettings, paused: bool) -> (redshift_core::presence::Card, bool) {
+    state.0.presence_preview(&presence, paused)
+}
+
 /// Looks for lyrics online. `None` when nothing was found; an error says why a lookup could not be made
 /// (online features off, no connection, the service being down).
 #[tauri::command]
@@ -1064,7 +1070,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            set_queue, set_queue_options, set_notify_on_track, set_online, set_presence, presence_status, online_lyrics, check_updates, net_report, clear_net_data, open_project_page, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
+            set_queue, set_queue_options, set_notify_on_track, set_online, set_presence, presence_status, presence_preview, online_lyrics, check_updates, net_report, clear_net_data, open_project_page, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
             queue_append, queue_play_next, queue_remove, queue_move, queue_clear, player_state, queue_view,
             get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_rate, set_replaygain,
             output_devices, set_output_device,

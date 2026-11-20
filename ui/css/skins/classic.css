@@ -49,3 +49,6 @@
 [data-skin="classic"] .slot[data-slot="stage"] .i-title-row { display: grid; grid-template-columns: minmax(64px, 1fr) minmax(0, auto) minmax(64px, 1fr); gap: 0 4px; width: 100%; }
 [data-skin="classic"] .slot[data-slot="stage"] .i-title-row .i-title { grid-column: 2; text-align: center; }
 [data-skin="classic"] .slot[data-slot="stage"] .i-title-row .i-title-btns { grid-column: 3; justify-self: start; }
+
+/* The empty state sits under a centred title, so it is centred too. */
+[data-skin="classic"] .slot[data-slot="stage"] .i-empty { justify-items: center; text-align: center; }

@@ -118,6 +118,8 @@ export const api = {
   setOnline: (online) => invoke('set_online', { online }),
   setPresence: (presence) => invoke('set_presence', { presence }),
   presenceStatus: () => invoke('presence_status'),
+  /** The Discord card as it would look: `[card, isSample]`. */
+  presencePreview: (presence, paused) => invoke('presence_preview', { presence, paused }),
   onlineLyrics: (path, provider = null) => invoke('online_lyrics', { path, provider }),
   checkUpdates: (force = false) => invoke('check_updates', { force }),
   netReport: () => invoke('net_report'), clearNetData: () => invoke('clear_net_data'),
