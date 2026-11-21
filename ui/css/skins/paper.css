@@ -1,10 +1,10 @@
 /* Paper: a printed page. Halftone cover over a red sun, ruled axes, big light numerals,
    vertical running text. */
-:root[data-skin="paper"] { --chrome-h: 56px; --gap: calc(24px * var(--density)); }
+:root[data-skin="paper"] { --chrome-h: 56px; --gap: calc(24px * var(--density)); --pad: calc(20px * var(--density)); }
 [data-skin="paper"] .bg { background: var(--bg); }
-[data-skin="paper"] .d-ticks { display: block; left: calc(var(--pad) + 6px); right: calc(var(--pad) + 6px); bottom: 104px; height: 0; border-top: var(--bw) solid var(--fg); opacity: .35; }
-[data-skin="paper"] .d-split { display: block; left: calc(var(--pad) + 6px); top: 56px; bottom: 104px; width: 0; border-left: var(--bw) solid var(--fg); opacity: .35; }
-[data-skin="paper"] .d-side { display: block; left: 6px; top: 50%; transform: translateY(-50%) rotate(180deg); font-size: .62rem; }
+[data-skin="paper"] .d-ticks { display: block; left: calc(var(--pad) - 2px); right: calc(var(--pad) + 6px); bottom: 104px; height: 0; border-top: var(--bw) solid var(--fg); opacity: .35; }
+[data-skin="paper"] .d-split { display: block; left: calc(var(--pad) - 2px); top: 56px; bottom: 104px; width: 0; border-left: var(--bw) solid var(--fg); opacity: .35; }
+[data-skin="paper"] .d-side { display: block; left: 1px; top: 50%; transform: translateY(-50%) rotate(180deg); font-size: .62rem; }
 [data-skin="paper"] .d-title { display: block; right: 24px; bottom: 110px; font-size: clamp(100px, 16vw, 260px); font-weight: 400; font-style: italic; color: var(--fg); opacity: .045; max-width: 62%; overflow: hidden; text-align: right; }
 [data-skin="paper"] .brand { font-family: var(--font-display); font-weight: 600; font-style: italic; font-size: 1.5rem; letter-spacing: 0; }
 [data-skin="paper"] .brand-mark { background: var(--accent); box-shadow: none; }

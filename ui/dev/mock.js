@@ -379,7 +379,7 @@ const cmds = {
   sleep_status: () => sleepStatus(),
   listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
   listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
-  app_info: () => ({ version: '0.6.3', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
+  app_info: () => ({ version: '0.6.4', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
   open_data_folder: () => null,
   song_info: ({ path }) => {
     const t = tracks.find((x) => x.path === path); if (!t) throw new Error('That file isn\u2019t there any more');
@@ -468,7 +468,7 @@ const cmds = {
     if (!S.online.enabled) throw 'online features are turned off';
     NET_LOG.unshift({ time: Math.floor(Date.now() / 1000), purpose: 'Update check', host: 'api.github.com', url: 'https://api.github.com/repos/mysticninja487/redshift/releases/latest', status: 200, bytes: 1180, cached: false, error: null });
     await new Promise((r) => setTimeout(r, 300));
-    return globalThis.__mockUpdate ?? { current: '0.6.3', latest: '0.6.4', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.3', notes: 'Fixes and small improvements.' };
+    return globalThis.__mockUpdate ?? { current: '0.6.4', latest: '0.6.5', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.4', notes: 'Fixes and small improvements.' };
   },
   net_report: () => ({ log: NET_LOG.slice(0, 60), cached_items: NET_LOG.length, cached_bytes: NET_LOG.length * 2400 }),
   clear_net_data: () => { const n = NET_LOG.length; NET_LOG.length = 0; return n; },
@@ -524,6 +524,21 @@ const cmds = {
   move_playlist: () => {}, add_to_playlist: ({ id, tracks: ts }) => { PL.list.find((p) => p.id === id).tracks.push(...ts); },
   remove_from_playlist: ({ id, positions }) => { const p = PL.list.find((x) => x.id === id); p.tracks = p.tracks.filter((_, i) => !positions.includes(i)); },
   move_in_playlist: ({ id, from, to }) => { const p = PL.list.find((x) => x.id === id); const [t] = p.tracks.splice(from, 1); p.tracks.splice(to, 0, t); },
+  playlist_import_preview: async ({ input }) => {
+    const text = String(input).trim();
+    const link = !text.includes('\n') && /^https?:\/\//i.test(text);
+    if (link) {
+      if (!S.online.enabled) throw 'online features are turned off';
+      if (!/(deezer\.com|open\.spotify\.com|youtube\.com)/.test(text)) throw 'that link isn\u2019t supported. Redshift reads public Deezer, Spotify and YouTube playlists; for others, paste the list as text (Artist - Title, one per line).';
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    const lines = link ? ['Halden Vey - Slow Tide', 'Paper Satellites - Carrier Wave (Remastered)', 'Mira Solano - Neon Corridor', 'Someone Else - Not In Your Library'] : text.split('\n').map((l) => l.trim().replace(/^\d+[.)]\s+/, '')).filter(Boolean);
+    const loose = (s) => s.toLowerCase().replace(/\([^)]*\)|\[[^\]]*\]/g, '').replace(/[^\p{L}\p{N}]/gu, '');
+    const rows = lines.map((l) => { const i = l.indexOf(' - '); const artist = i > 0 ? l.slice(0, i).trim() : ''; const title = i > 0 ? l.slice(i + 3).trim() : l;
+      const hit = tracks.find((t) => loose(t.title) === loose(title) && (!artist || loose(t.artist).includes(loose(artist)) || loose(artist).includes(loose(t.artist))));
+      return { title, artist, path: hit?.path ?? null }; });
+    return { source: link ? (text.includes('deezer') ? 'Deezer' : text.includes('spotify') ? 'Spotify' : 'YouTube') : 'Pasted list', name: link ? 'Night Drive' : 'Imported playlist', total: rows.length, matched: rows.filter((r) => r.path).length, truncated: false, rows };
+  },
   import_m3u: () => { const id = PL.seq++; PL.list.push({ id, name: 'playlist', tracks: [tracks[0].path, tracks[3].path, '/storage/emulated/0/Music/Gone Band/Lost Album/01 Missing.opus'] }); return { id, name: 'playlist', total: 3, matched: 2, relinked: 0, missing_count: 1, missing: ['/storage/emulated/0/Music/Gone Band/Lost Album/01 Missing.opus'] }; }, export_m3u: () => {}, play_playlist: ({ id, start }) => { const p = PL.list.find((x) => x.id === id); const ok = p.tracks.filter((t) => find(t)); if (!ok.length) throw new Error('none of the tracks in this playlist could be found on this PC'); cmds.set_queue({ paths: ok, start: Math.min(start, ok.length - 1), autoplay: true }); },
 };
 

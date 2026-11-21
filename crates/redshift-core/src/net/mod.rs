@@ -21,6 +21,7 @@
 pub mod artwork;
 pub mod betterlyrics;
 pub mod lrclib;
+pub mod remote_playlist;
 pub mod updates;
 
 use std::collections::VecDeque;

@@ -403,6 +403,12 @@ async fn import_m3u(state: State<'_, AppState>, file: PathBuf) -> CmdResult<Impo
     tauri::async_runtime::spawn_blocking(move || core.import_m3u(&file)).await.map_err(err)?.map_err(err)
 }
 #[tauri::command]
+async fn playlist_import_preview(state: State<'_, AppState>, input: String) -> CmdResult<redshift_core::playlist_import::Preview> {
+    // May fetch a web page and then match against the library: never on the UI thread.
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.playlist_import_preview(&input)).await.map_err(err)?.map_err(err)
+}
+#[tauri::command]
 async fn relink_playlist(state: State<'_, AppState>, id: PlaylistId) -> CmdResult<RelinkReport> {
     let core = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || core.relink_playlist(id)).await.map_err(err)?.map_err(err)
@@ -719,9 +725,9 @@ fn sync_tray(app: &AppHandle, tray: TraySettings) -> tauri::Result<()> {
                 show_main_window(icon.app_handle());
             }
         });
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    }
+    // The tray has its own picture: the mark with room around it. The big app icon, shrunk to 16-32 px,
+    // looked cramped there. 64x64 raw RGBA (no PNG decoder needed); Windows scales it to the tray size.
+    builder = builder.icon(tauri::image::Image::new(include_bytes!("../icons/tray-64.rgba"), 64, 64));
     builder.build(app)?;
     Ok(())
 }
@@ -1082,7 +1088,7 @@ fn main() {
             library_folders, add_library_folder, remove_library_folder, scan_library, is_scanning,
             library_tracks, search_library, library_albums, library_artists, recently_added, track_meta, lyrics, tag_form, write_tags, save_lyrics_file, write_look_file, read_look_file, image_preview, waveform,
             playlists, playlist, create_playlist, rename_playlist, delete_playlist, move_playlist,
-            add_to_playlist, remove_from_playlist, move_in_playlist, import_m3u, export_m3u, play_playlist,
+            add_to_playlist, remove_from_playlist, move_in_playlist, import_m3u, playlist_import_preview, export_m3u, play_playlist,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build the Redshift window");

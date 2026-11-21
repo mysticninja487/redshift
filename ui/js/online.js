@@ -26,7 +26,7 @@ export async function setOnline(patch) {
 export async function askToGoOnline() {
   if (online().enabled) return true;
   const ok = await confirmDialog('Go online?',
-    'Redshift stays offline unless you allow it. With this on, it can look up lyrics at BetterLyrics and LRCLIB (it sends the song’s title, artist, album and length) and check GitHub for new versions. Your music and library never leave this computer. You can turn it off again any time, and Settings > Online lists everything that was sent.',
+    'Redshift stays offline unless you allow it. With this on, it can look up lyrics at BetterLyrics and LRCLIB (it sends the song’s title, artist, album and length), check GitHub for new versions and, only when you ask, read a public playlist link or find a cover for your Discord card. Your music and library never leave this computer. You can turn it off again any time, and Settings > Online lists everything that was sent.',
     { ok: 'Turn on', danger: false });
   if (!ok) return false;
   await setOnline({ enabled: true });

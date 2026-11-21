@@ -460,6 +460,8 @@ export function mountSettings(root) {
       group('Discord cover art',
         h('p', { class: 'hint' }, 'The Discord tab can show the album\u2019s cover on your profile. To find it, Redshift asks itunes.apple.com (Apple\u2019s search service) for the song\u2019s artist and title, plus your IP address and the name and version of this app, as with any website, once per song. This only happens while Go online is on and the card shows album art. Without it the Redshift logo is used.'),
         h('div', { class: 'set-row set-actions' }, button('Open Discord settings', () => { tab = 'discord'; render(); body.scrollTop = 0; }))),
+      group('Playlist import',
+        h('p', { class: 'hint' }, 'Library > Playlists > Import online can read a public Deezer, Spotify or YouTube playlist from its link. Only when you press Find songs, Redshift asks that service (api.deezer.com, open.spotify.com or www.youtube.com) for the playlist\u2019s page, which sends the link\u2019s address, plus your IP address and the name and version of this app, as with any website. No account or sign-in is used, so only public playlists work. Your music and library are never sent.')),
       group('What has been sent', logBox, sizeNote,
         h('div', { class: 'set-row set-actions' }, clearBtn),
         h('p', { class: 'hint' }, 'Answers are kept for a while so the same song is not asked about twice.')));
@@ -577,14 +579,18 @@ export function mountSettings(root) {
         row('Second button', select({ label: 'Second button', options: buttonOptions, value: p.button2, onChange: (v) => change({ button2: v }) }))),
     ];
 
+    // The preview floats beside the settings panel when the window is wide enough for one, and stays at
+    // the top of the page (always in view while you scroll) when it is not.
+    const dock = group('Preview', h('div', { class: 'dc-bar' }, previewState), card, note);
+    dock.classList.add('dc-dock');
     return h('div', { class: 'set-page' },
+      dock,
       group('Discord',
         row('Show on Discord', toggle({ label: 'Show on Discord', value: p.enabled, onChange: (v) => change({ enabled: v }, true) }),
           { hint: 'Puts “Listening to” and the song on your Discord profile while music plays. Off by default. It only talks to the Discord app on this computer, which shows it to other people; it does not use the Go online switch.' }),
         status,
         flag('show_paused', 'Show while paused', 'Keeps the card up when you pause, without the progress bar. Nothing is shown until you have played something.'),
         flag('hide_details', 'Hide details', 'Says only that you are listening to music: no title, artist, album, cover, links or buttons.', true)),
-      group('Preview', h('div', { class: 'dc-bar' }, previewState), card, note),
       ...rest,
       group('Advanced',
         row('Application ID', idInput, { hint: 'Redshift shows itself as its own Discord application, so you normally leave this empty. To use an application of your own (its name and icon are what Discord shows), paste its Application ID.' })));

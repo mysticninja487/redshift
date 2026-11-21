@@ -26,7 +26,8 @@ use crate::engine::{Player, PlayerConfig, PlayerEvent, Rate, ReplayGainMode};
 use crate::error::{Error, Result};
 use crate::library::{write_json_atomic, Album, Artist, Library, ScanProgress, ScanReport};
 use crate::lyrics::{self, Lyrics, LyricsSource};
-use crate::net::{self, artwork, betterlyrics, lrclib, updates::{self, UpdateInfo}, Net, RequestRecord};
+use crate::net::{self, artwork, betterlyrics, lrclib, remote_playlist, updates::{self, UpdateInfo}, Net, RequestRecord};
+use crate::playlist_import;
 use crate::meta::{self, Cover, TrackMeta};
 use crate::playlists::{ImportReport, Playlist, PlaylistId, PlaylistStore, PlaylistSummary, RelinkReport};
 use crate::queue::{QueuePolicy, RepeatMode};
@@ -450,7 +451,7 @@ impl App {
         let net = Net::new(
             net::cache_dir_in(&data_dir),
             &format!("Redshift/{} (+https://github.com/{})", env!("CARGO_PKG_VERSION"), updates::REPO),
-            &[lrclib::HOST, betterlyrics::HOST, updates::HOST, artwork::HOST],
+            &[lrclib::HOST, betterlyrics::HOST, updates::HOST, artwork::HOST, remote_playlist::DEEZER_HOST, remote_playlist::SPOTIFY_HOST, remote_playlist::YOUTUBE_HOST],
         );
         net.set_enabled(settings.online.enabled);
 
@@ -1488,6 +1489,25 @@ impl App {
         let resolver = self.resolver();
         self.with_playlists(|s| s.import_m3u(file, &|p, label| resolver.resolve(p, label)))
     }
+    /// Reads a playlist from a link (Deezer, Spotify, YouTube) or from pasted text, and finds each
+    /// song in the library. Nothing is created yet; the caller shows the result and then calls
+    /// `create_playlist` with the paths it wants. Links need online features; pasted text doesn't.
+    pub fn playlist_import_preview(&self, input: &str) -> Result<playlist_import::Preview> {
+        let input = input.trim();
+        if input.is_empty() {
+            return Err(Error::Other("paste a playlist link, or a list of songs".into()));
+        }
+        let single_line = !input.contains('\n');
+        let list = match remote_playlist::detect(input).filter(|_| single_line) {
+            Some(source) => remote_playlist::fetch(&self.net, &source)?,
+            None if single_line && (input.starts_with("http://") || input.starts_with("https://")) => {
+                return Err(Error::Other("that link isn't supported. Redshift reads public Deezer, Spotify and YouTube playlists; for others, paste the list as text (Artist - Title, one per line).".into()));
+            }
+            None => playlist_import::parse_text(input),
+        };
+        let matcher = playlist_import::Matcher::new(self.library.lock().tracks());
+        Ok(playlist_import::preview(list, &matcher))
+    }
     /// Retries the entries of a playlist that point at missing files, e.g. after adding a folder.
     pub fn relink_playlist(&self, id: PlaylistId) -> Result<RelinkReport> {
         let resolver = self.resolver();
@@ -2210,6 +2230,24 @@ mod tests {
         assert_eq!((report.total, report.missing_count), (2, 0));
         let new_id = report.id;
         assert_eq!(app.playlist(new_id).unwrap().tracks, app.playlist(id).unwrap().tracks);
+    }
+
+    #[test]
+    fn pasted_lists_are_matched_to_the_library_and_links_need_online_features() {
+        let state = tempfile::tempdir().unwrap();
+        let m = music();
+        let app = open(state.path());
+        app.add_library_folder(m.path()).unwrap();
+        app.scan_library(&mut |_| {}).unwrap();
+        let p = app.playlist_import_preview("The Testers - Tagged Song\nNobody - Nothing").unwrap();
+        assert_eq!((p.total, p.matched), (2, 1), "{p:?}");
+        assert!(p.rows[0].path.is_some() && p.rows[1].path.is_none());
+        // a supported link while online features are off: nothing is sent
+        assert!(matches!(app.playlist_import_preview("https://www.deezer.com/playlist/123"), Err(Error::Offline)));
+        // an unsupported link is explained, not fetched
+        let e = app.playlist_import_preview("https://example.com/list/1").unwrap_err().to_string();
+        assert!(e.contains("isn't supported"), "{e}");
+        assert!(app.playlist_import_preview("  ").is_err());
     }
 
     #[test]

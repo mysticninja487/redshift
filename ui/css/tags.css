@@ -151,3 +151,19 @@
 .lb-sum[hidden] { display: none; }
 .lb-chip { padding: 2px 9px; border-radius: 99px; font-size: .78rem; background: color-mix(in srgb, var(--fg) 9%, transparent); }
 .lb-chip[data-state="saved"] { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+
+/* ---- online playlist import ---- */
+.pi-dialog { width: min(580px, calc(100vw - 32px)); }
+.pi-input { resize: vertical; min-height: 84px; font-family: var(--font-mono, ui-monospace, monospace); font-size: .8rem; }
+.pi-status { margin: 2px 0; font-size: .86rem; color: var(--fg2); }
+.pi-status[data-kind="error"] { color: var(--accent-text); }
+.pi-sum { margin: 4px 0 2px; font-weight: 600; }
+.pi-src { color: var(--fg3); font-weight: 400; }
+.pi-name-label { display: grid; gap: 4px; margin: 8px 0; color: var(--fg3); font-size: .82rem; }
+.pi-list { max-height: min(36vh, 260px); overflow: auto; border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; }
+.pi-row { display: flex; gap: 10px; padding: 5px 10px; font-size: .85rem; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.pi-row:last-child { border-bottom: 0; }
+.pi-row[data-found="false"] { color: var(--fg3); }
+.pi-mark { flex: none; width: 1em; text-align: center; color: var(--accent-text); }
+.pi-row[data-found="false"] .pi-mark { color: var(--fg3); }
+.pi-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

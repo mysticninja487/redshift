@@ -72,6 +72,7 @@ Every shortcut can be changed in Settings > Shortcuts.
 ### Your library
 
 - Albums, artists, all songs and a folder browser, with search. Favourites, recently played, most played, recently added and not played.
+- Import a public Deezer, Spotify or YouTube playlist from its link, or a pasted list of songs (`Artist - Title` per line, or a Spotify CSV export such as Exportify's): songs are matched to your files by title, artist and length, the ones you don't have are listed and can be copied, and the playlist is made from the ones you do. Deezer is read from its open API (any length); Spotify and YouTube have no open API for this, so their public pages are read, which shows the first 100 songs and can break if the service changes its page (the import then says so and the pasted-list route still works).
 - Playlists with M3U / M3U8 import and export; playlists from another device are matched to your library by name and folder, and anything missing is kept and can be relinked later.
 - **Tag editor** (`T`, or right-click a song, album or artist > Edit tags…): title, artist, album, genre, year, track and disc numbers, comment, cover art and lyrics, for one song or a whole album at once. Only the fields you touch are written, to a copy that replaces the original once it is complete.
 - **Song info** (`I`): tags, format, bitrate, sample rate, ReplayGain, play history and where the file is.
@@ -131,6 +132,7 @@ Settings > Online has a main switch. Nothing goes over the network until it is o
 | Lyrics (BetterLyrics) | `api.betterlyrics.org` | Song title, artist, album and length in seconds |
 | Lyrics (LRCLIB) | `lrclib.net` | The same |
 | Discord cover art | `itunes.apple.com` | Artist and title of the song on the Discord card, once per song; only while the card shows album art |
+| Playlist import | `api.deezer.com`, `open.spotify.com`, `www.youtube.com` | The playlist link's address, only when you press Find songs in Library > Playlists > Import online; no account or sign-in, so only public playlists |
 | Update check | `api.github.com` | Nothing about you or your music; it only asks for the latest release and never downloads anything |
 
 Any request also carries your IP address and the app's name and version, as with any website. You can choose which lyrics service to use (Automatic asks BetterLyrics first, then LRCLIB). BetterLyrics only answers for songs it already has, so it often has nothing and Automatic falls back to LRCLIB. The page keeps a log of recent requests and a button to clear it and the saved answers.
@@ -201,7 +203,7 @@ Every online feature goes through `redshift-core::net`: add the provider as a mo
 
 - Testing on more real Windows machines and sound hardware. The engine's tests use a simulated sound card, so device-specific bugs are likely.
 - Opus files with more than two channels (reported as unsupported).
-- Importing playlists from streaming services and automatic updates. See the roadmap.
+- Playlist import from Spotify and YouTube reads the public page, which only lists 100 songs and is not guaranteed by those services; it has been tested against sample pages, not live ones. Automatic updates. See the roadmap.
 
 ## Licence
 

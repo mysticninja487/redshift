@@ -9,6 +9,7 @@ import { state } from '../state.js';
 import { ago, clear, debounce, fmtTime, h, plural, toast } from '../util.js';
 import { button, iconButton, select } from '../ui/controls.js';
 import { confirmDialog, promptText } from '../ui/dialog.js';
+import { importOnlinePlaylist } from '../ui/playlistimport.js';
 import { icon } from '../ui/icons.js';
 import { showMenu } from '../ui/menu.js';
 import { trackMenuItems } from '../ui/trackmenu.js';
@@ -252,7 +253,8 @@ export function mountLibrary(root) {
     const left = h('div', { class: 'pl-list' },
       h('div', { class: 'pl-actions' },
         button('New playlist', async () => { const n = await promptText('New playlist', { ok: 'Create', placeholder: 'Playlist name' }); if (n) { const id = await act(api.createPlaylist(n)); await reloadPlaylists(); if (id) detail = { type: 'playlist', id }; render(); } }, { iconName: 'plus' }),
-        button('Import M3U', importM3u)),
+        button('Import M3U', importM3u),
+        button('Import online', importOnline)),
       data.playlists.length ? data.playlists.map((p) => h('button', { class: `pl-item${detail?.id === p.id ? ' current' : ''}`, type: 'button', onclick: () => { detail = { type: 'playlist', id: p.id }; render(); } }, h('span', { class: 'pl-name' }, p.name), h('span', { class: 'pl-count' }, String(p.track_count))))
         : h('p', { class: 'hint' }, 'No playlists yet.'));
     const right = h('div', { class: 'pl-detail' });
@@ -271,6 +273,14 @@ export function mountLibrary(root) {
     toast(`Imported "${r.name}": ${parts.join(', ')}`);
     await reloadPlaylists();
     detail = { type: 'playlist', id: r.id };
+    render();
+  }
+
+  async function importOnline() {
+    const id = await importOnlinePlaylist();
+    if (id == null) return;
+    await reloadPlaylists();
+    detail = { type: 'playlist', id };
     render();
   }
 
@@ -303,7 +313,7 @@ export function mountLibrary(root) {
           button('Rename', async () => { const n = await promptText('Rename playlist', { value: p.name }); if (n) { await act(api.renamePlaylist(id, n)); await reloadPlaylists(); render(); } }),
           button('Export M3U', async () => { const d = await pickSave(`${p.name}.m3u8`, [{ name: 'Playlist', extensions: ['m3u8'] }]).catch(() => null); if (d) { await act(api.exportM3u(id, d)); toast('Playlist exported'); } }),
           button('Delete', async () => { if (await confirmDialog('Delete playlist?', `"${p.name}" will be removed. Your music files are not touched.`)) { await act(api.deletePlaylist(id)); detail = null; await reloadPlaylists(); render(); } }, { iconName: 'trash' })))),
-      gone.size ? h('p', { class: 'hint warn' }, `${plural(gone.size, 'track')} in this playlist ${gone.size === 1 ? 'points' : 'point'} to files that aren't on this PC (the playlist was probably made elsewhere). They're skipped when playing. If your music is in a folder that isn't in the library yet, add it under Folders and press Relink missing.`) : null,
+      gone.size ? h('p', { class: 'hint warn' }, `${plural(gone.size, 'track')} in this playlist ${gone.size === 1 ? 'points' : 'point'} to files that aren't on this PC (the playlist was probably made elsewhere). They're skipped when playing. If your music is in a folder that isn't in the library yet, add it under Folders and press Relink missing.`) : '',
       tracks.length ? trackTable(tracks, {
         missing: gone,
         menuExtra: (t, i) => [

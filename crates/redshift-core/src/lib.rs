@@ -16,6 +16,7 @@ pub mod lyrics;
 pub mod meta;
 pub mod net;
 pub mod open;
+pub mod playlist_import;
 pub mod playlists;
 pub mod presence;
 pub mod queue;
