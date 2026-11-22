@@ -13,7 +13,7 @@ import { icon } from '../ui/icons.js';
 import { state } from '../state.js';
 import { tokens } from '../theme.js';
 import { ago, clear, clone, getPath, h, toast } from '../util.js';
-import { askToGoOnline, checkForUpdates, online, setOnline, updateStatus } from '../online.js';
+import { askToGoOnline, checkForUpdates, online, openUpdateDialog, setOnline, updateStatus } from '../online.js';
 import { changedKeys } from './changes.js';
 import { VIZ, getViz, vizOptions } from '../viz/index.js';
 import { mountViz } from '../viz/engine.js';
@@ -413,9 +413,11 @@ export function mountSettings(root) {
     // The update check: what it found, in words.
     const status = h('p', { class: 'hint set-status' });
     const releaseBtn = button('Open release page', () => act(api.openProjectPage(updateStatus.info.url)));
+    const updateBtn = button('Update now', () => openUpdateDialog(), { cls: 'primary' });
     const paintStatus = () => {
       const { info, checking, error } = updateStatus;
       releaseBtn.hidden = !info?.newer;
+      updateBtn.hidden = !info?.newer;
       status.textContent = checking ? 'Checking\u2026' : error ? `Could not check: ${error}`
         : !info ? '' : info.newer ? `Redshift ${info.latest} is available. You have ${info.current}.`
         : info.latest ? `You have the latest version (${info.current}).` : 'No releases have been published yet.';
@@ -454,8 +456,8 @@ export function mountSettings(root) {
           flag('auto_lyrics', 'Find missing lyrics automatically', 'When a song has no lyrics of its own, look for them as the song starts. Off, a Find lyrics online button appears instead. Found lyrics are only shown; nothing is saved unless you press Save to tags or Save as .lrc.'),
           h('div', { class: 'set-row set-actions' }, h('span', { class: 'hint' }, 'Word-by-word lyrics come from BetterLyrics, made by boidushya.'), button('Visit the BetterLyrics site', () => act(api.openProjectPage('https://better-lyrics.boidu.dev'))))),
         group('Updates',
-          flag('updates', 'Check for updates at startup', 'Asks api.github.com for the newest release, sending only the name and version of this app. Redshift only tells you; it never downloads or installs anything by itself.'),
-          h('div', { class: 'set-row set-actions' }, button('Check now', async () => { const p = checkForUpdates(true); paintStatus(); await p; paintStatus(); loadLog(); }), releaseBtn),
+          flag('updates', 'Check for updates at startup', 'Asks api.github.com for the newest release when Redshift starts and every few hours after, sending only the name and version of this app. If there is one, you are asked whether to install it. Nothing is downloaded or installed unless you press Update now, and then only the release file from this project\u2019s GitHub page (github.com), checked against the checksum GitHub lists for it.'),
+          h('div', { class: 'set-row set-actions' }, button('Check now', async () => { const p = checkForUpdates(true); paintStatus(); await p; paintStatus(); loadLog(); }), updateBtn, releaseBtn),
           status)),
       group('Discord cover art',
         h('p', { class: 'hint' }, 'The Discord tab can show the album\u2019s cover on your profile. To find it, Redshift asks itunes.apple.com (Apple\u2019s search service) for the song\u2019s artist and title, plus your IP address and the name and version of this app, as with any website, once per song. This only happens while Go online is on and the card shows album art. Without it the Redshift logo is used.'),
@@ -537,7 +539,7 @@ export function mountSettings(root) {
       paintCard();
       const q = pres();
       note.replaceChildren(...(!shown ? [] : [h('span', null, shown.sample ? 'A sample song, because nothing is playing.' : 'The song that is playing now.'),
-        q.cover && !q.hide_details && !online().enabled ? h('span', { class: 'dc-gap' }, 'Go online is off, so the Redshift logo is shown instead of the cover.') : null]));
+        q.cover && !q.hide_details && !online().enabled ? h('span', { class: 'dc-gap' }, 'Go online is off, so the Redshift logo is shown instead of the cover.') : null].filter(Boolean)));
     };
     refreshCard();
 

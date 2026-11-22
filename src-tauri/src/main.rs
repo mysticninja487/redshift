@@ -791,6 +791,81 @@ async fn check_updates(state: State<'_, AppState>, force: bool) -> CmdResult<Upd
     let core = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || core.check_updates(force)).await.map_err(err)?.map_err(err)
 }
+/// Progress of an update download, sent to the page as `update-progress`.
+#[derive(serde::Serialize, Clone)]
+struct UpdateProgress {
+    done: u64,
+    total: Option<u64>,
+}
+/// Downloads the update file chosen by `check_updates` (only from this project's releases) and
+/// returns where it was saved. The page is told how far it got.
+#[tauri::command]
+async fn download_update(app: AppHandle, state: State<'_, AppState>, asset: redshift_core::net::updates::UpdateAsset) -> CmdResult<PathBuf> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut last = std::time::Instant::now() - std::time::Duration::from_secs(1);
+        core.download_update(&asset, &mut |done, total| {
+            // a few times a second is plenty for a progress bar
+            if last.elapsed() >= std::time::Duration::from_millis(150) || total == Some(done) {
+                last = std::time::Instant::now();
+                let _ = app.emit("update-progress", UpdateProgress { done, total });
+            }
+        })
+    })
+    .await
+    .map_err(err)?
+    .map_err(err)
+}
+/// Starts `program` a couple of seconds from now, from a helper that outlives this process, so the
+/// installer or the new copy does not meet a still-running Redshift (the single-instance guard would
+/// otherwise hand it over to the old one).
+fn start_after_exit(program: &std::path::Path, args: &str) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let line = format!("ping -n 3 127.0.0.1 >nul & start \"\" \"{}\" {}", program.display(), args);
+        // raw: the line has its own quotes, which the usual argument escaping would turn into \" (cmd does not read that)
+        std::process::Command::new("cmd").raw_arg(format!("/S /C \"{line}\"")).creation_flags(0x0800_0000).spawn().map(|_| ())
+    }
+    #[cfg(not(windows))]
+    {
+        std::process::Command::new(program).args(args.split_whitespace()).spawn().map(|_| ())
+    }
+}
+/// Installs a downloaded update and restarts: the installer is run for an installed copy, and the
+/// new program replaces the old one (which is kept aside until the next start) for a bare `.exe`.
+/// Only a file that `download_update` saved can be run.
+#[tauri::command]
+fn install_update(app: AppHandle, state: State<AppState>, path: PathBuf, kind: String) -> CmdResult<()> {
+    let file = state.0.downloaded_update(&path).map_err(err)?;
+    if kind == "installer" {
+        start_after_exit(&file, "/UPDATE").map_err(|e| e.to_string())?;
+    } else {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let mut old = exe.clone().into_os_string();
+        old.push(".old");
+        let old = PathBuf::from(old);
+        let _ = std::fs::remove_file(&old);
+        // a running program can be renamed on Windows, just not overwritten
+        std::fs::rename(&exe, &old).map_err(|e| format!("could not move the running program aside: {e}"))?;
+        if let Err(e) = std::fs::copy(&file, &exe) {
+            let _ = std::fs::remove_file(&exe);
+            let _ = std::fs::rename(&old, &exe);
+            return Err(format!("could not put the new program in place: {e}"));
+        }
+        if let Err(e) = start_after_exit(&exe, "") {
+            let _ = std::fs::remove_file(&exe);
+            let _ = std::fs::rename(&old, &exe);
+            return Err(e.to_string());
+        }
+    }
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        handle.exit(0);
+    });
+    Ok(())
+}
 /// What Redshift has sent over the network lately, newest first, plus how much is kept on disk.
 #[derive(serde::Serialize)]
 struct NetReport {
@@ -1001,6 +1076,8 @@ fn main() {
             // Back to where you left off (paused), unless that is switched off or you started it
             // with files, which replace the queue a moment later.
             core.restore_session();
+            // leftovers of an earlier update (the downloaded file, the replaced program)
+            core.clean_update_leftovers();
 
             // Player events go to the UI as they happen.
             let handle = app.handle().clone();
@@ -1076,7 +1153,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            set_queue, set_queue_options, set_notify_on_track, set_online, set_presence, presence_status, presence_preview, online_lyrics, check_updates, net_report, clear_net_data, open_project_page, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
+            set_queue, set_queue_options, set_notify_on_track, set_online, set_presence, presence_status, presence_preview, online_lyrics, check_updates, download_update, install_update, net_report, clear_net_data, open_project_page, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
             queue_append, queue_play_next, queue_remove, queue_move, queue_clear, player_state, queue_view,
             get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_rate, set_replaygain,
             output_devices, set_output_device,

@@ -3,11 +3,11 @@
 // the main switch on; the lyrics lookup itself lives in controller.js beside the lyrics it feeds.
 
 import { api } from './api.js';
-import { emit } from './bus.js';
+import { emit, on } from './bus.js';
 import { act, refreshSettings } from './controller.js';
 import { state } from './state.js';
 import { confirmDialog } from './ui/dialog.js';
-import { toast } from './util.js';
+import { laterVersion, showUpdateDialog } from './ui/updatedialog.js';
 
 export const ONLINE_DEFAULTS = { enabled: false, lyrics: true, auto_lyrics: true, lyrics_provider: 'auto', updates: true };
 
@@ -45,12 +45,38 @@ export async function checkForUpdates(force = true) {
   return updateStatus.info;
 }
 
-/** A few seconds after start, ask whether a newer version exists (only when the user allowed it). */
+/** Marks the Settings button while an update is waiting, so it is not missed after "Later". */
+function markUpdate() {
+  const on = !!updateStatus.info?.newer;
+  document.querySelectorAll('.nav-btn[data-view="settings"]').forEach((b) => {
+    b.toggleAttribute('data-update', on);
+    b.title = on ? `Settings (update ${updateStatus.info.latest} available)` : 'Settings';
+  });
+}
+
+/** Opens the update dialog for what the last check found. */
+export function openUpdateDialog() {
+  const info = updateStatus.info;
+  return info?.newer ? showUpdateDialog(info) : Promise.resolve(null);
+}
+
+let started = false;
+/**
+ * A few seconds after the main window opens, and then every few hours while it stays open, ask
+ * whether a newer version exists (only when the person allowed it). It asks about each version once;
+ * after "Later" only the mark on Settings reminds.
+ */
 export function startupChecks() {
-  setTimeout(async () => {
+  if (started) return;
+  started = true;
+  const run = async () => {
     const o = online();
     if (!o.enabled || !o.updates) return;
-    const u = await checkForUpdates(false);
-    if (u?.newer) toast(`Redshift ${u.latest} is available. See Settings > Online.`);
-  }, 6000);
+    const u = await checkForUpdates(true);
+    markUpdate();
+    if (u?.newer && laterVersion() !== u.latest && !document.querySelector('.dialog-back')) openUpdateDialog();
+  };
+  setTimeout(run, 5000);
+  setInterval(run, 6 * 3600 * 1000);
+  on('update', markUpdate);
 }

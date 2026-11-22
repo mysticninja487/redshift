@@ -69,11 +69,30 @@ pub struct Request<'a> {
     pub cache_ttl: Option<Duration>,
     /// How long a kept 404 ("nothing found") is believed, if shorter than `cache_ttl`.
     pub miss_ttl: Option<Duration>,
+    /// Largest reply accepted; [`MAX_BODY_BYTES`] if not set.
+    pub max_body: Option<u64>,
+    /// What kind of reply is asked for; JSON if not set.
+    pub accept: Option<&'a str>,
+    /// A JSON body: the request is then a POST (never cached, and redirects are not followed).
+    pub post_json: Option<&'a str>,
 }
 
 impl<'a> Request<'a> {
     pub fn new(url: &'a str, purpose: &'a str) -> Self {
-        Self { url, purpose, cache_ttl: None, miss_ttl: None }
+        Self { url, purpose, cache_ttl: None, miss_ttl: None, max_body: None, accept: None, post_json: None }
+    }
+    /// Accept a reply up to this many bytes (a web page can be larger than the usual limit).
+    pub fn max_body(mut self, bytes: u64) -> Self {
+        self.max_body = Some(bytes);
+        self
+    }
+    pub fn accept(mut self, accept: &'a str) -> Self {
+        self.accept = Some(accept);
+        self
+    }
+    pub fn post_json(mut self, body: &'a str) -> Self {
+        self.post_json = Some(body);
+        self
     }
     pub fn cached_for(mut self, ttl: Duration) -> Self {
         self.cache_ttl = Some(ttl);
@@ -105,6 +124,8 @@ pub struct Net {
     agent: ureq::Agent,
     hosts: Vec<String>,
     enabled: AtomicBool,
+    /// The same rules with time for a large file.
+    download_agent: ureq::Agent,
     cache_dir: PathBuf,
     log: Mutex<VecDeque<RequestRecord>>,
 }
@@ -143,19 +164,22 @@ impl Net {
     /// A disabled client that may only talk to `hosts` (bare host names, no scheme). Cached replies
     /// live in `cache_dir`, which is created when first needed.
     pub fn new(cache_dir: impl Into<PathBuf>, user_agent: &str, hosts: &[&str]) -> Net {
-        let agent: ureq::Agent = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .max_redirects(0)
-            .timeout_connect(Some(Duration::from_secs(6)))
-            .timeout_global(Some(Duration::from_secs(15)))
-            .user_agent(user_agent)
-            // Trust the operating system's certificate store (so antivirus and company proxies that
-            // install their own root certificate on Windows keep working) rather than a bundled list.
-            .tls_config(ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build())
-            .build()
-            .into();
+        let build = |global: Duration| -> ureq::Agent {
+            ureq::Agent::config_builder()
+                .http_status_as_error(false)
+                .max_redirects(0)
+                .timeout_connect(Some(Duration::from_secs(6)))
+                .timeout_global(Some(global))
+                .user_agent(user_agent)
+                // Trust the operating system's certificate store (so antivirus and company proxies that
+                // install their own root certificate on Windows keep working) rather than a bundled list.
+                .tls_config(ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build())
+                .build()
+                .into()
+        };
         let net = Net {
-            agent,
+            agent: build(Duration::from_secs(15)),
+            download_agent: build(Duration::from_secs(20 * 60)),
             hosts: hosts.iter().map(|h| h.to_ascii_lowercase()).collect(),
             enabled: AtomicBool::new(false),
             cache_dir: cache_dir.into(),
@@ -271,35 +295,131 @@ impl Net {
                 return Ok(Reply { status: e.s, body: e.b, cached: true });
             }
         }
-        match self.fetch(req.url) {
+        // What a POST sends is in its body, so the log shows the body as well as the address.
+        let shown = req.post_json.map(|b| format!("{} (POST {})", req.url, b));
+        let logged = Request { url: shown.as_deref().unwrap_or(req.url), ..*req };
+        let req_log = &logged;
+        match self.fetch(req) {
             Ok(reply) => {
-                self.record(req, &host, Some(reply.status), reply.body.len(), false, None);
+                self.record(req_log, &host, Some(reply.status), reply.body.len(), false, None);
                 if req.cache_ttl.is_some() && matches!(reply.status, 200 | 401 | 404) {
                     self.cache_write(req.url, reply.status, &reply.body);
                 }
                 Ok(reply)
             }
             Err(e) => {
-                self.record(req, &host, None, 0, false, Some(e.to_string()));
+                self.record(req_log, &host, None, 0, false, Some(e.to_string()));
+                Err(e)
+            }
+        }
+    }
+
+    /// Downloads a file (an update) to `dest`, checking every redirect against the host list, and
+    /// returns the SHA-256 of what was written as lowercase hex. `progress(done, total)` is called as
+    /// the data arrives. The file is written next to `dest` first and only renamed when complete, so
+    /// a broken download never leaves a half file under the real name.
+    pub fn download(&self, url: &str, purpose: &str, dest: &Path, max_bytes: u64, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<String> {
+        use sha2::{Digest, Sha256};
+        use std::io::{Read, Write};
+        if !self.enabled() {
+            return Err(Error::Offline);
+        }
+        let req = Request::new(url, purpose);
+        let host = self.check_url(url).inspect_err(|e| self.record(&req, "", None, 0, false, Some(e.to_string())))?;
+        let mut current = url.to_string();
+        let mut redirects = 0u8;
+        let result = (|| -> Result<(u16, u64, String)> {
+            loop {
+                self.check_url(&current)?;
+                let mut resp = self.download_agent.get(&current).header("Accept", "application/octet-stream").call().map_err(|e| Error::Network(e.to_string()))?;
+                let status = resp.status().as_u16();
+                if matches!(status, 301 | 302 | 307 | 308) {
+                    let loc = resp.headers().get("location").and_then(|v| v.to_str().ok()).map(str::to_string).ok_or_else(|| Error::Network("redirect without a target".into()))?;
+                    redirects += 1;
+                    if redirects > MAX_REDIRECTS {
+                        return Err(Error::Network("too many redirects".into()));
+                    }
+                    current = loc;
+                    continue;
+                }
+                if status != 200 {
+                    return Ok((status, 0, String::new()));
+                }
+                let total = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok());
+                if total.is_some_and(|t| t > max_bytes) {
+                    return Err(Error::Network("the file is larger than expected".into()));
+                }
+                if let Some(dir) = dest.parent() {
+                    fs::create_dir_all(dir)?;
+                }
+                let part = dest.with_extension("part");
+                let mut out = fs::File::create(&part)?;
+                let mut reader = resp.body_mut().with_config().limit(max_bytes).reader();
+                let mut hasher = Sha256::new();
+                let mut buf = vec![0u8; 64 * 1024];
+                let mut done = 0u64;
+                let written = (|| -> Result<()> {
+                    loop {
+                        let n = reader.read(&mut buf).map_err(|e| Error::Network(e.to_string()))?;
+                        if n == 0 {
+                            break;
+                        }
+                        hasher.update(&buf[..n]);
+                        out.write_all(&buf[..n])?;
+                        done += n as u64;
+                        progress(done, total);
+                    }
+                    out.flush()?;
+                    Ok(())
+                })();
+                drop(out);
+                if let Err(e) = written {
+                    let _ = fs::remove_file(&part);
+                    return Err(e);
+                }
+                if total.is_some_and(|t| t != done) {
+                    let _ = fs::remove_file(&part);
+                    return Err(Error::Network("the download ended early".into()));
+                }
+                fs::rename(&part, dest)?;
+                let hex: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+                return Ok((200, done, hex));
+            }
+        })();
+        match result {
+            Ok((200, bytes, hex)) => {
+                self.record(&req, &host, Some(200), bytes as usize, false, None);
+                Ok(hex)
+            }
+            Ok((status, _, _)) => {
+                self.record(&req, &host, Some(status), 0, false, None);
+                Err(Error::Network(format!("the server answered {status}")))
+            }
+            Err(e) => {
+                self.record(&req, &host, None, 0, false, Some(e.to_string()));
                 Err(e)
             }
         }
     }
 
     /// One GET with redirects (checked against the host list) and a single retry after 429/503.
-    fn fetch(&self, first_url: &str) -> Result<Reply> {
-        let mut url = first_url.to_string();
+    fn fetch(&self, req: &Request) -> Result<Reply> {
+        let mut url = req.url.to_string();
+        let accept = req.accept.unwrap_or("application/json");
+        let limit = req.max_body.unwrap_or(MAX_BODY_BYTES);
         let mut redirects = 0u8;
         let mut retried = false;
         loop {
             self.check_url(&url)?;
-            let mut resp = self
-                .agent
-                .get(&url)
-                .header("Accept", "application/json")
-                .call()
-                .map_err(|e| Error::Network(e.to_string()))?;
+            let mut resp = match req.post_json {
+                Some(body) => self.agent.post(&url).header("Accept", accept).header("Content-Type", "application/json").send(body),
+                None => self.agent.get(&url).header("Accept", accept).call(),
+            }
+            .map_err(|e| Error::Network(e.to_string()))?;
             let status = resp.status().as_u16();
+            if matches!(status, 301 | 302 | 307 | 308) && req.post_json.is_some() {
+                return Err(Error::Network("the service redirected a request that cannot be repeated".into()));
+            }
             if matches!(status, 301 | 302 | 307 | 308) {
                 let loc = resp.headers().get("location").and_then(|v| v.to_str().ok()).map(str::to_string);
                 let Some(loc) = loc else { return Err(Error::Network("redirect without a target".into())) };
@@ -330,7 +450,7 @@ impl Net {
             let body = resp
                 .body_mut()
                 .with_config()
-                .limit(MAX_BODY_BYTES)
+                .limit(limit)
                 .lossy_utf8(true)
                 .read_to_string()
                 .map_err(|e| Error::Network(e.to_string()))?;
@@ -562,6 +682,38 @@ mod tests {
         let n = net(d.path());
         assert!(matches!(n.get(&Request::new(&format!("{}/a", s.base), "t")), Err(Error::Network(_))));
         assert!(n.log()[0].error.is_some());
+    }
+
+    #[test]
+    fn a_download_is_written_hashed_and_reported() {
+        let d = tempfile::tempdir().unwrap();
+        let s = testserver::start(vec![testserver::reply(200, "hello update")]);
+        let n = Net::new(d.path().join("c"), "Redshift-test", &["127.0.0.1"]);
+        n.set_enabled(true);
+        let dest = d.path().join("up").join("setup.exe");
+        let mut seen = Vec::new();
+        let hex = n.download(&format!("{}/f", s.base), "Update download", &dest, 1024, &mut |done, total| seen.push((done, total))).unwrap();
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "hello update");
+        // sha256("hello update")
+        assert_eq!(hex.len(), 64);
+        assert_eq!(seen.last().unwrap().0, 12);
+        assert!(!dest.with_extension("part").exists());
+        assert_eq!(n.log()[0].purpose, "Update download");
+    }
+
+    #[test]
+    fn a_download_that_is_too_big_or_fails_leaves_nothing_behind() {
+        let d = tempfile::tempdir().unwrap();
+        let s = testserver::start(vec![testserver::reply(200, &"x".repeat(5000)), testserver::reply(404, "")]);
+        let n = Net::new(d.path().join("c"), "Redshift-test", &["127.0.0.1"]);
+        n.set_enabled(true);
+        let dest = d.path().join("setup.exe");
+        assert!(n.download(&format!("{}/f", s.base), "Update download", &dest, 1000, &mut |_, _| {}).is_err());
+        assert!(!dest.exists() && !dest.with_extension("part").exists());
+        assert!(n.download(&format!("{}/f", s.base), "Update download", &dest, 1000, &mut |_, _| {}).is_err());
+        assert!(!dest.exists());
+        n.set_enabled(false);
+        assert!(matches!(n.download(&format!("{}/f", s.base), "x", &dest, 10, &mut |_, _| {}), Err(Error::Offline)));
     }
 
     #[test]

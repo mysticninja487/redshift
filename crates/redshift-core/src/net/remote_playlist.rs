@@ -112,6 +112,16 @@ fn get(net: &Net, url: &str, purpose: &str) -> Result<String> {
     }
 }
 
+/// A web page: asks for HTML and allows a page larger than a data reply.
+fn get_page(net: &Net, url: &str, purpose: &str) -> Result<String> {
+    let r = net.get(&Request::new(url, purpose).accept("text/html,application/xhtml+xml").max_body(8 * 1024 * 1024).cached_for(TTL).misses_for(TTL))?;
+    match r.status {
+        200 => Ok(r.body),
+        404 | 403 => Err(Error::Network("that playlist could not be opened. It may be private or deleted; only public playlists work.".into())),
+        s => Err(Error::Network(format!("the service answered {s}"))),
+    }
+}
+
 fn unreadable(what: &str) -> Error {
     Error::Network(format!("could not read the {what} playlist page. The service may have changed it; paste the list as text instead."))
 }
@@ -280,31 +290,137 @@ pub fn video_entry(title: &str, channel: &str, secs: u32) -> Entry {
     Entry { title, artist: artist.into(), duration_secs: secs }
 }
 
-pub(crate) fn youtube_at(net: &Net, base: &str, id: &str) -> Result<RemoteList> {
-    let html = get(net, &format!("{base}/playlist?list={id}"), "Playlist import (YouTube)")?;
-    let at = html.find("ytInitialData").ok_or_else(|| unreadable("YouTube"))?;
-    let from = at + html[at..].find('{').ok_or_else(|| unreadable("YouTube"))?;
-    let data: Value = serde_json::Deserializer::from_str(&html[from..]).into_iter::<Value>().next().and_then(|r| r.ok()).ok_or_else(|| unreadable("YouTube"))?;
-    let name = find_key(&data, "playlistMetadataRenderer").map(|m| text(m, "title").to_string()).unwrap_or_default();
+fn video_from_renderer(r: &Value) -> Option<Entry> {
+    let title = runs_text(r.get("title"));
+    let low = title.to_lowercase();
+    if title.is_empty() || low == "[deleted video]" || low == "[private video]" {
+        return None;
+    }
+    let secs = r.get("lengthSeconds").and_then(Value::as_str).and_then(|s| s.parse().ok()).unwrap_or(0);
+    Some(video_entry(&title, &runs_text(r.get("shortBylineText")), secs))
+}
+
+/// The newer page layout lists videos as "lockups" (title and channel as plain text parts).
+fn video_from_lockup(r: &Value) -> Option<Entry> {
+    if r.get("contentType").and_then(Value::as_str) != Some("LOCKUP_CONTENT_TYPE_VIDEO") {
+        return None;
+    }
+    let meta = r.get("metadata")?.get("lockupMetadataViewModel")?;
+    let title = meta.get("title")?.get("content")?.as_str()?.trim().to_string();
+    let low = title.to_lowercase();
+    if title.is_empty() || low == "[deleted video]" || low == "[private video]" {
+        return None;
+    }
+    let channel = find_key(meta, "metadataParts").and_then(Value::as_array).and_then(|p| p.first()).and_then(|p| p.get("text")).and_then(|t| t.get("content")).and_then(Value::as_str).unwrap_or("");
+    Some(video_entry(&title, channel, 0))
+}
+
+/// Songs and the playlist's name from one answer (a page's data, or a browse reply).
+fn youtube_entries(data: &Value) -> (String, Vec<Entry>) {
+    let name = find_key(data, "playlistMetadataRenderer").map(|m| text(m, "title").to_string()).filter(|n| !n.is_empty()).or_else(|| find_key(data, "playlistHeaderRenderer").map(|m| runs_text(m.get("title")))).unwrap_or_default();
     let mut found = Vec::new();
-    find_all(&data, "playlistVideoRenderer", &mut found);
-    let entries: Vec<Entry> = found
-        .into_iter()
-        .filter_map(|r| {
-            let title = runs_text(r.get("title"));
-            let low = title.to_lowercase();
-            if title.is_empty() || low == "[deleted video]" || low == "[private video]" {
-                return None;
-            }
-            let secs = r.get("lengthSeconds").and_then(Value::as_str).and_then(|s| s.parse().ok()).unwrap_or(0);
-            Some(video_entry(&title, &runs_text(r.get("shortBylineText")), secs))
-        })
-        .collect();
+    find_all(data, "playlistVideoRenderer", &mut found);
+    let mut entries: Vec<Entry> = found.into_iter().filter_map(video_from_renderer).collect();
     if entries.is_empty() {
+        let mut lockups = Vec::new();
+        find_all(data, "lockupViewModel", &mut lockups);
+        entries = lockups.into_iter().filter_map(video_from_lockup).collect();
+    }
+    (name, entries)
+}
+
+/// The token that asks for the next part of a long playlist.
+fn continuation(data: &Value) -> Option<String> {
+    let mut found = Vec::new();
+    find_all(data, "continuationItemRenderer", &mut found);
+    found.iter().rev().find_map(|c| find_key(c, "token").and_then(Value::as_str)).map(str::to_string)
+}
+
+const CLIENT: &str = r#"{"clientName":"WEB","clientVersion":"2.20250101.00.00","hl":"en","gl":"US"}"#;
+
+/// The page's own data: `ytInitialData` is assigned in a script, written a few ways.
+fn initial_data(html: &str) -> Option<Value> {
+    let mut from = 0;
+    while let Some(i) = html[from..].find("ytInitialData") {
+        let at = from + i + "ytInitialData".len();
+        from = at;
+        let rest = html[at..].trim_start_matches(['"', '\'', ']', ' ']);
+        let Some(rest) = rest.strip_prefix('=') else { continue };
+        let rest = rest.trim_start();
+        if !rest.starts_with('{') {
+            continue;
+        }
+        if let Some(Ok(v)) = serde_json::Deserializer::from_str(rest).into_iter::<Value>().next() {
+            return Some(v);
+        }
+    }
+    None
+}
+
+/// Reads the playlist the way YouTube's own web page asks for it (a small JSON answer, with the
+/// rest of a long playlist a request away).
+fn youtube_browse(net: &Net, base: &str, id: &str) -> Result<RemoteList> {
+    let url = format!("{base}/youtubei/v1/browse?prettyPrint=false");
+    let client: Value = serde_json::from_str(CLIENT).expect("fixed client description");
+    let mut out = RemoteList { source: "YouTube".into(), ..Default::default() };
+    let mut token: Option<String> = None;
+    for page in 0..25 {
+        let body = match &token {
+            None => serde_json::json!({ "context": { "client": client }, "browseId": format!("VL{id}") }),
+            Some(t) => serde_json::json!({ "context": { "client": client }, "continuation": t }),
+        }
+        .to_string();
+        let r = net.get(&Request::new(&url, "Playlist import (YouTube)").post_json(&body).max_body(6 * 1024 * 1024))?;
+        if r.status != 200 {
+            return Err(Error::Network(format!("the service answered {}", r.status)));
+        }
+        let data: Value = serde_json::from_str(&r.body).map_err(|_| unreadable("YouTube"))?;
+        let (name, entries) = youtube_entries(&data);
+        if page == 0 {
+            out.name = name;
+        }
+        if entries.is_empty() {
+            break;
+        }
+        out.entries.extend(entries);
+        token = continuation(&data);
+        if token.is_none() || out.entries.len() >= MAX_ENTRIES {
+            break;
+        }
+    }
+    out.truncated = token.is_some() && out.entries.len() >= MAX_ENTRIES;
+    out.entries.truncate(MAX_ENTRIES);
+    if out.entries.is_empty() {
         return Err(unreadable("YouTube"));
+    }
+    Ok(out)
+}
+
+/// Reads the playlist from its public web page (the first 100 videos).
+fn youtube_page(net: &Net, base: &str, id: &str) -> Result<RemoteList> {
+    let html = get_page(net, &format!("{base}/playlist?list={id}"), "Playlist import (YouTube)")?;
+    let Some(data) = initial_data(&html) else {
+        return Err(Error::Network(format!("could not read the YouTube playlist page (no playlist data in {} KB). The service may have changed it; paste the list as text instead.", html.len() / 1024)));
+    };
+    let (name, entries) = youtube_entries(&data);
+    if entries.is_empty() {
+        return Err(Error::Network("could not find any videos on the YouTube playlist page. It may be private, empty or changed; paste the list as text instead.".into()));
     }
     let truncated = entries.len() >= 100;
     Ok(RemoteList { source: "YouTube".into(), name, entries, truncated })
+}
+
+pub(crate) fn youtube_at(net: &Net, base: &str, id: &str) -> Result<RemoteList> {
+    match youtube_browse(net, base, id) {
+        Ok(list) => Ok(list),
+        // Offline stays offline; anything else (the service changed its answer) tries the page.
+        Err(Error::Offline) => Err(Error::Offline),
+        Err(first) => youtube_page(net, base, id).map_err(|e| match (first, e) {
+            // keep both reasons: which one failed is what is needed to fix it
+            (first, Error::Network(page)) => Error::Network(format!("{page} (the data call said: {first})")),
+            (_, e) => e,
+        }),
+    }
 }
 
 #[cfg(test)]
@@ -382,21 +498,73 @@ mod tests {
         assert!(e.contains("paste the list as text"), "{e}");
     }
 
+    fn renderer(title: &str, channel: &str, secs: &str) -> String {
+        format!(r#"{{"playlistVideoRenderer":{{"title":{{"runs":[{{"text":"{title}"}}]}},"shortBylineText":{{"runs":[{{"text":"{channel}"}}]}},"lengthSeconds":"{secs}"}}}}"#)
+    }
+
     #[test]
-    fn youtube_pages_are_read_and_titles_cleaned() {
+    fn youtube_pages_are_read_when_the_data_call_fails() {
         let d = tempfile::tempdir().unwrap();
-        let data = r#"{"metadata":{"playlistMetadataRenderer":{"title":"Mix"}},"contents":[
-          {"playlistVideoRenderer":{"title":{"runs":[{"text":"Paper Satellites - Carrier Wave (Official Video) [HD]"}]},"shortBylineText":{"runs":[{"text":"PaperSatVEVO"}]},"lengthSeconds":"215"}},
-          {"playlistVideoRenderer":{"title":{"runs":[{"text":"Low Orbit"}]},"shortBylineText":{"runs":[{"text":"Paper Satellites - Topic"}]},"lengthSeconds":"180"}},
-          {"playlistVideoRenderer":{"title":{"runs":[{"text":"[Private video]"}]},"shortBylineText":{"runs":[]},"lengthSeconds":"0"}}]}"#;
-        let html = format!("<html><script>var ytInitialData = {data};</script><script>other()</script></html>");
-        let s = start(vec![reply(200, &html)]);
+        let data = format!(
+            r#"{{"metadata":{{"playlistMetadataRenderer":{{"title":"Mix"}}}},"contents":[{},{},{{"playlistVideoRenderer":{{"title":{{"runs":[{{"text":"[Private video]"}}]}},"shortBylineText":{{"runs":[]}},"lengthSeconds":"0"}}}}]}}"#,
+            renderer("Paper Satellites - Carrier Wave (Official Video) [HD]", "PaperSatVEVO", "215"),
+            renderer("Low Orbit", "Paper Satellites - Topic", "180")
+        );
+        // other scripts mention the name before the real assignment
+        let html = format!("<html><script>if (window.ytInitialData) {{ run(); }}</script><script>var ytInitialData = {data};</script><script>other()</script></html>");
+        let s = start(vec![reply(500, ""), reply(200, &html)]);
         let got = youtube_at(&net(d.path()), &s.base, "PLabcdefghijk123").unwrap();
         assert_eq!(got.name, "Mix");
         assert_eq!(got.entries, vec![
             Entry { title: "Carrier Wave".into(), artist: "Paper Satellites".into(), duration_secs: 215 },
             Entry { title: "Low Orbit".into(), artist: "Paper Satellites".into(), duration_secs: 180 },
         ]);
+        let sent = s.requests.lock().clone();
+        assert!(sent[0].starts_with("POST /youtubei/v1/browse"), "{}", sent[0]);
+        assert!(sent[1].starts_with("GET /playlist?list=PLabcdefghijk123"), "{}", sent[1]);
+    }
+
+    #[test]
+    fn youtube_browse_follows_continuations() {
+        let d = tempfile::tempdir().unwrap();
+        let p1 = format!(
+            r#"{{"metadata":{{"playlistMetadataRenderer":{{"title":"Big mix"}}}},"contents":[{},{{"continuationItemRenderer":{{"continuationEndpoint":{{"continuationCommand":{{"token":"TOK1"}}}}}}}}]}}"#,
+            renderer("One", "A - Topic", "100")
+        );
+        let p2 = format!(r#"{{"onResponseReceivedActions":[{{"appendContinuationItemsAction":{{"continuationItems":[{}]}}}}]}}"#, renderer("B - Two", "Chan", "200"));
+        let s = start(vec![reply(200, &p1), reply(200, &p2)]);
+        let got = youtube_at(&net(d.path()), &s.base, "PLabcdefghijk123").unwrap();
+        assert_eq!(got.name, "Big mix");
+        assert_eq!(got.entries.len(), 2);
+        assert_eq!(got.entries[1], Entry { title: "Two".into(), artist: "B".into(), duration_secs: 200 });
+        assert!(!got.truncated);
+        let sent = s.requests.lock().clone();
+        assert!(sent.iter().all(|r| r.starts_with("POST /youtubei/v1/browse")), "{sent:?}");
+    }
+
+    #[test]
+    fn youtube_lockup_layout_is_read() {
+        let d = tempfile::tempdir().unwrap();
+        let lock = |t: &str, c: &str| format!(r#"{{"lockupViewModel":{{"contentType":"LOCKUP_CONTENT_TYPE_VIDEO","metadata":{{"lockupMetadataViewModel":{{"title":{{"content":"{t}"}},"metadata":{{"contentMetadataViewModel":{{"metadataRows":[{{"metadataParts":[{{"text":{{"content":"{c}"}}}}]}}]}}}}}}}}}}}}"#);
+        let other = r#"{"lockupViewModel":{"contentType":"LOCKUP_CONTENT_TYPE_PLAYLIST","metadata":{"lockupMetadataViewModel":{"title":{"content":"Another playlist"}}}}}"#;
+        let data = format!(r#"{{"contents":[{},{},{other}]}}"#, lock("Neon Corridor", "Mira Solano - Topic"), lock("Mira Solano - Slow Tide", "Chan"));
+        let s = start(vec![reply(200, &data)]);
+        let got = youtube_at(&net(d.path()), &s.base, "PLabcdefghijk123").unwrap();
+        assert_eq!(got.entries, vec![
+            Entry { title: "Neon Corridor".into(), artist: "Mira Solano".into(), duration_secs: 0 },
+            Entry { title: "Slow Tide".into(), artist: "Mira Solano".into(), duration_secs: 0 },
+        ]);
+    }
+
+    #[test]
+    fn a_big_youtube_page_is_not_refused_for_its_size() {
+        let d = tempfile::tempdir().unwrap();
+        let data = format!(r#"{{"contents":[{}]}}"#, renderer("Song", "Artist - Topic", "60"));
+        let filler = "x".repeat(3 * 1024 * 1024);
+        let html = format!("<html><!-- {filler} --><script>var ytInitialData = {data};</script></html>");
+        let s = start(vec![reply(500, ""), reply(200, &html)]);
+        let got = youtube_at(&net(d.path()), &s.base, "PLabcdefghijk123").unwrap();
+        assert_eq!(got.entries.len(), 1);
     }
 
     #[test]

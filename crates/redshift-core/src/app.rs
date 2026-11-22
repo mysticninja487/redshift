@@ -451,7 +451,7 @@ impl App {
         let net = Net::new(
             net::cache_dir_in(&data_dir),
             &format!("Redshift/{} (+https://github.com/{})", env!("CARGO_PKG_VERSION"), updates::REPO),
-            &[lrclib::HOST, betterlyrics::HOST, updates::HOST, artwork::HOST, remote_playlist::DEEZER_HOST, remote_playlist::SPOTIFY_HOST, remote_playlist::YOUTUBE_HOST],
+            &[lrclib::HOST, betterlyrics::HOST, updates::HOST, updates::DOWNLOAD_HOSTS[0], updates::DOWNLOAD_HOSTS[1], updates::DOWNLOAD_HOSTS[2], artwork::HOST, remote_playlist::DEEZER_HOST, remote_playlist::SPOTIFY_HOST, remote_playlist::YOUTUBE_HOST],
         );
         net.set_enabled(settings.online.enabled);
 
@@ -853,7 +853,63 @@ impl App {
         if !self.online().enabled {
             return Err(Error::Offline);
         }
-        updates::check(&self.net, env!("CARGO_PKG_VERSION"), force)
+        let mut info = updates::check(&self.net, env!("CARGO_PKG_VERSION"), force)?;
+        info.asset = if Self::installed_by_installer() { info.installer.clone() } else { info.portable.clone() };
+        Ok(info)
+    }
+
+    /// Whether this copy was put in place by the installer (which leaves an uninstaller beside the
+    /// program) rather than being a bare `.exe`.
+    pub fn installed_by_installer() -> bool {
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("uninstall.exe").exists())).unwrap_or(false)
+    }
+
+    fn updates_dir(&self) -> PathBuf {
+        self.data_dir.join("updates")
+    }
+
+    /// Downloads the file for an update (only from this project's releases, only with the main switch
+    /// on) and checks it against the checksum GitHub states, if there is one. Returns where it is.
+    pub fn download_update(&self, asset: &updates::UpdateAsset, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<PathBuf> {
+        if !self.online().enabled {
+            return Err(Error::Offline);
+        }
+        if !updates::is_release_download(&asset.url) || asset.size > updates::MAX_UPDATE_BYTES {
+            return Err(Error::Other("that file is not one of this project's release downloads".into()));
+        }
+        let name: String = asset.name.chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' }).collect();
+        if name.is_empty() || name.starts_with('.') {
+            return Err(Error::Other("bad file name".into()));
+        }
+        let dest = self.updates_dir().join(name);
+        let got = self.net.download(&asset.url, "Update download", &dest, updates::MAX_UPDATE_BYTES, progress)?;
+        if let Some(want) = &asset.sha256 {
+            if !want.eq_ignore_ascii_case(&got) {
+                let _ = fs::remove_file(&dest);
+                return Err(Error::Other("the downloaded file does not match the checksum GitHub lists for it, so it was thrown away".into()));
+            }
+        }
+        Ok(dest)
+    }
+
+    /// Confirms that a file the front end wants to run is one this app downloaded as an update.
+    pub fn downloaded_update(&self, path: &Path) -> Result<PathBuf> {
+        let dir = fs::canonicalize(self.updates_dir()).map_err(|_| Error::Other("no update has been downloaded".into()))?;
+        let file = fs::canonicalize(path).map_err(|_| Error::Other("that update file is gone".into()))?;
+        if file.parent() != Some(dir.as_path()) {
+            return Err(Error::Other("that file is not a downloaded update".into()));
+        }
+        Ok(file)
+    }
+
+    /// Removes leftovers of an earlier update (the downloaded file, a replaced program).
+    pub fn clean_update_leftovers(&self) {
+        let _ = fs::remove_dir_all(self.updates_dir());
+        if let Ok(exe) = std::env::current_exe() {
+            let mut old = exe.into_os_string();
+            old.push(".old");
+            let _ = fs::remove_file(old);
+        }
     }
 
     /// The last network requests, newest first: what was asked, of whom, and what came back.
@@ -2248,6 +2304,28 @@ mod tests {
         let e = app.playlist_import_preview("https://example.com/list/1").unwrap_err().to_string();
         assert!(e.contains("isn't supported"), "{e}");
         assert!(app.playlist_import_preview("  ").is_err());
+    }
+
+    #[test]
+    fn updates_only_come_from_the_projects_releases_and_only_downloaded_files_run() {
+        let state = tempfile::tempdir().unwrap();
+        let app = open(state.path());
+        let mk = |url: &str| updates::UpdateAsset { name: "x-setup.exe".into(), url: url.into(), size: 10, sha256: None, kind: "installer".into() };
+        // offline first: nothing is asked
+        assert!(matches!(app.download_update(&mk("https://github.com/mysticninja487/redshift/releases/download/v1/x-setup.exe"), &mut |_, _| {}), Err(Error::Offline)));
+        app.set_online(OnlineSettings { enabled: true, ..Default::default() });
+        let e = app.download_update(&mk("https://evil.example.com/x-setup.exe"), &mut |_, _| {}).unwrap_err().to_string();
+        assert!(e.contains("not one of this project"), "{e}");
+        // a file outside the updates folder is never run
+        let other = state.path().join("other.exe");
+        fs::write(&other, b"x").unwrap();
+        assert!(app.downloaded_update(&other).is_err());
+        fs::create_dir_all(state.path().join("updates")).unwrap();
+        let ok = state.path().join("updates").join("x-setup.exe");
+        fs::write(&ok, b"x").unwrap();
+        assert!(app.downloaded_update(&ok).is_ok());
+        app.clean_update_leftovers();
+        assert!(!ok.exists());
     }
 
     #[test]

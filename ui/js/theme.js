@@ -151,16 +151,21 @@ function summarise(cl, ex = { opaque: 1, black: 0, white: 0 }) {
   const items = cl.map((c) => ({ ...lch(c.lab), share: c.n / total }));
   const dominant = [...items].sort((a, b) => b.share - a.share)[0];
   // A good accent is vivid, mid-light and present in the picture, in that order of importance.
-  // (Colour that covers only a speck of the picture is not its colour: such a cover counts as grey.)
-  const score = (c) => (c.C + 0.02) * c.share ** 0.75 * (1 - Math.abs(c.L - 0.68) * 0.9);
-  const ranked = [...items].filter((c) => c.share >= 0.05).sort((a, b) => score(b) - score(a));
-  const vivid = !!ranked[0] && ranked[0].C > 0.045;
-  const pick = vivid ? ranked[0] : null;
+  // Dark and photographic covers have little chroma even when they are clearly coloured (a navy night
+  // sky, skin and leaves), so what counts as "no colour" is close to none at all: a cover is grey only
+  // when no real part of it (more than about 4%) carries any hue. Colour that covers only a speck of the
+  // picture is not its colour.
+  const score = (c) => (c.C + 0.01) ** 1.6 * c.share ** 0.6 * (1 - Math.abs(c.L - 0.68) * 0.9);
+  const ranked = [...items].filter((c) => c.share >= 0.04).sort((a, b) => score(b) - score(a));
+  const vivid = ranked.some((c) => c.C > 0.03);
+  const pick = vivid ? ranked.filter((c) => c.C > 0.03)[0] : null;
   const hueGap = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
-  const second = pick ? ranked.find((c) => c !== pick && c.C > 0.04 && hueGap(c.h, pick.h) > 35) : null;
-  const accentLch = pick ? { L: clamp(pick.L, 0.58, 0.8), C: Math.min(pick.C * 1.15, 0.2), h: pick.h } : null;
+  const second = pick ? ranked.find((c) => c !== pick && c.C > 0.03 && hueGap(c.h, pick.h) > 35) : null;
+  // a muted colour is lifted just enough to read as an accent, keeping its hue
+  const lift = (C) => (C < 0.07 ? clamp(C * 2, 0.08, 0.12) : Math.min(C * 1.15, 0.2));
+  const accentLch = pick ? { L: clamp(pick.L, 0.58, 0.8), C: lift(pick.C), h: pick.h } : null;
   const accent = accentLch ? C.lchToHex(accentLch) : null;
-  const acc2 = second ? C.lchToHex({ L: clamp(second.L, 0.55, 0.8), C: Math.min(second.C * 1.1, 0.18), h: second.h }) : accent ? C.rotateHue(accent, 40) : null;
+  const acc2 = second ? C.lchToHex({ L: clamp(second.L, 0.55, 0.8), C: Math.max(lift(second.C), 0.06), h: second.h }) : accent ? C.rotateHue(accent, 40) : null;
   if (!accent) {
     // A grey or monochrome cover: the accent is as light as the lighter parts of the picture (white for
     // black-and-white art), and nothing is tinted.

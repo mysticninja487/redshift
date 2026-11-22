@@ -122,6 +122,8 @@ export const api = {
   presencePreview: (presence, paused) => invoke('presence_preview', { presence, paused }),
   onlineLyrics: (path, provider = null) => invoke('online_lyrics', { path, provider }),
   checkUpdates: (force = false) => invoke('check_updates', { force }),
+  downloadUpdate: (asset) => invoke('download_update', { asset }),
+  installUpdate: (path, kind) => invoke('install_update', { path, kind }),
   netReport: () => invoke('net_report'), clearNetData: () => invoke('clear_net_data'),
   openProjectPage: (url) => invoke('open_project_page', { url }),
   launchOnStartup: () => invoke('launch_on_startup'),

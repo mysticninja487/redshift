@@ -3376,7 +3376,7 @@ dependencies = [
 
 [[package]]
 name = "redshift"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "redshift-core",
  "serde",
@@ -3394,7 +3394,7 @@ dependencies = [
 
 [[package]]
 name = "redshift-core"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "audiopus",
  "cpal",
@@ -3408,6 +3408,7 @@ dependencies = [
  "rustfft",
  "serde",
  "serde_json",
+ "sha2",
  "symphonia",
  "tempfile",
  "thiserror 2.0.21",

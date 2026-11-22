@@ -134,7 +134,6 @@ async function bootMini() {
   const { mountMini } = await import('./mini.js');
   mountMini(app);
   document.documentElement.dataset.ready = 'true';
-  startupChecks();
 }
 
 async function boot() {
@@ -157,6 +156,8 @@ async function boot() {
   if (takeMigrated()) setTimeout(() => toast('Redshift now opens in the new Classic layout. Your other skins are still in the skin menu and Settings.'), 800);
   try { await initController(); } catch (e) { console.error(e); toast('Could not reach the audio engine', 'error'); }
   document.documentElement.dataset.ready = 'true';
+  // Ask GitHub about a newer version a few seconds after start (the main window only, once).
+  startupChecks();
   // Files opened with the player, or dropped on it, start playing; a hint shows while they hover.
   const drop = h('div', { class: 'drop-hint', hidden: true, 'aria-hidden': 'true' }, h('div', {}, icon('play', 28), h('b', {}, 'Drop to play'), h('span', {}, 'Songs, folders and playlists')));
   app.append(drop);

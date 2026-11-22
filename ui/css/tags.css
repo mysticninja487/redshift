@@ -153,7 +153,9 @@
 .lb-chip[data-state="saved"] { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 
 /* ---- online playlist import ---- */
-.pi-dialog { width: min(580px, calc(100vw - 32px)); }
+.dialog.pi-dialog { width: min(620px, 94vw); max-height: min(90vh, 840px); overflow: auto; align-content: start; grid-template-columns: minmax(0, 1fr); }
+.pi-dialog > *, .pi-result { min-width: 0; }
+.pi-dialog .dialog-actions { flex-wrap: wrap; }
 .pi-input { resize: vertical; min-height: 84px; font-family: var(--font-mono, ui-monospace, monospace); font-size: .8rem; }
 .pi-status { margin: 2px 0; font-size: .86rem; color: var(--fg2); }
 .pi-status[data-kind="error"] { color: var(--accent-text); }
@@ -167,3 +169,14 @@
 .pi-mark { flex: none; width: 1em; text-align: center; color: var(--accent-text); }
 .pi-row[data-found="false"] .pi-mark { color: var(--fg3); }
 .pi-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- update dialog and the mark on Settings ---- */
+.dialog.up-dialog { width: min(560px, 94vw); grid-template-columns: minmax(0, 1fr); }
+.up-dialog > * { min-width: 0; }
+.up-notes { margin: 6px 0; max-height: 200px; overflow: auto; white-space: pre-wrap; font: inherit; font-size: .86rem; color: var(--fg2); padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.up-status { margin: 6px 0 2px; font-size: .86rem; color: var(--fg2); }
+.up-status[data-kind="error"] { color: var(--accent-text); }
+.up-bar { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--fg) 12%, transparent); overflow: hidden; margin-top: 8px; }
+.up-bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s linear; }
+.nav-btn[data-update] { position: relative; }
+.nav-btn[data-update]::after { content: ''; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg, #000); }

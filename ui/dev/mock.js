@@ -132,7 +132,7 @@ function lyricsFor(path) {
 const listeners = {};
 const emit = (name, payload) => (listeners[name] ?? []).forEach((cb) => setTimeout(() => cb({ payload })));
 const S = {
-  online: { enabled: false, lyrics: true, auto_lyrics: true, lyrics_provider: 'auto', updates: true },
+  online: { enabled: new URLSearchParams(location.search).has('online'), lyrics: true, auto_lyrics: true, lyrics_provider: 'auto', updates: true },
   entries: [], seq: 1, cur: null, status: 'stopped', pos: 0, t0: 0, volume: 0.8, muted: false, shuffle: false, repeat: 'off',
   crossfade: 4, rate: { speed: 1, pitch_semitones: 0, keep_pitch: true }, rg: 'track', rgPre: 0, device: null,
   eq: { enabled: true, preamp_db: 0, gains_db: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
@@ -379,7 +379,7 @@ const cmds = {
   sleep_status: () => sleepStatus(),
   listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
   listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
-  app_info: () => ({ version: '0.6.4', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
+  app_info: () => ({ version: '0.6.5', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
   open_data_folder: () => null,
   song_info: ({ path }) => {
     const t = tracks.find((x) => x.path === path); if (!t) throw new Error('That file isn\u2019t there any more');
@@ -468,8 +468,10 @@ const cmds = {
     if (!S.online.enabled) throw 'online features are turned off';
     NET_LOG.unshift({ time: Math.floor(Date.now() / 1000), purpose: 'Update check', host: 'api.github.com', url: 'https://api.github.com/repos/mysticninja487/redshift/releases/latest', status: 200, bytes: 1180, cached: false, error: null });
     await new Promise((r) => setTimeout(r, 300));
-    return globalThis.__mockUpdate ?? { current: '0.6.4', latest: '0.6.5', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.4', notes: 'Fixes and small improvements.' };
+    return globalThis.__mockUpdate ?? { current: '0.6.5', latest: '0.6.6', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.6', notes: 'Online playlist import for YouTube.\nFixes and small improvements.', asset: { name: 'Redshift_0.6.6_x64-setup.exe', url: 'https://github.com/mysticninja487/redshift/releases/download/v0.6.6/Redshift_0.6.6_x64-setup.exe', size: 31457280, sha256: null, kind: 'installer' } };
   },
+  download_update: async ({ asset }) => { for (let i = 1; i <= 10; i++) { emit('update-progress', { done: asset.size * i / 10, total: asset.size }); await new Promise((r) => setTimeout(r, 120)); } return '/mock/updates/' + asset.name; },
+  install_update: () => { globalThis.__mockInstalled = true; },
   net_report: () => ({ log: NET_LOG.slice(0, 60), cached_items: NET_LOG.length, cached_bytes: NET_LOG.length * 2400 }),
   clear_net_data: () => { const n = NET_LOG.length; NET_LOG.length = 0; return n; },
   open_project_page: () => {},
@@ -532,7 +534,7 @@ const cmds = {
       if (!/(deezer\.com|open\.spotify\.com|youtube\.com)/.test(text)) throw 'that link isn\u2019t supported. Redshift reads public Deezer, Spotify and YouTube playlists; for others, paste the list as text (Artist - Title, one per line).';
       await new Promise((r) => setTimeout(r, 500));
     }
-    const lines = link ? ['Halden Vey - Slow Tide', 'Paper Satellites - Carrier Wave (Remastered)', 'Mira Solano - Neon Corridor', 'Someone Else - Not In Your Library'] : text.split('\n').map((l) => l.trim().replace(/^\d+[.)]\s+/, '')).filter(Boolean);
+    const lines = link ? ['Halden Vey - Slow Tide', 'Paper Satellites - Carrier Wave (Remastered)', 'Mira Solano - Neon Corridor', 'Someone Else With A Very Long Name, Another Very Long Collaborator Name, And One More Artist - A Song Title That Goes On And On And On (feat. Several People) [Extended Remastered Version 2024]'] : text.split('\n').map((l) => l.trim().replace(/^\d+[.)]\s+/, '')).filter(Boolean);
     const loose = (s) => s.toLowerCase().replace(/\([^)]*\)|\[[^\]]*\]/g, '').replace(/[^\p{L}\p{N}]/gu, '');
     const rows = lines.map((l) => { const i = l.indexOf(' - '); const artist = i > 0 ? l.slice(0, i).trim() : ''; const title = i > 0 ? l.slice(i + 3).trim() : l;
       const hit = tracks.find((t) => loose(t.title) === loose(title) && (!artist || loose(t.artist).includes(loose(artist)) || loose(artist).includes(loose(t.artist))));
