@@ -787,7 +787,7 @@ export default {
   "Play counts reset": "播放次数已重置",
   "Could not reset them: {x}": "无法重置:{x}",
   "Clears how often and when each song was played. Your listening history for the Stats screen is cleared from the Stats screen itself.": "清除每首歌的播放次数和时间。统计页面的收听历史需在统计页面中重置。",
-  "Reset listening history…": "重置收听历史…",
+  "Reset listening history": "重置收听历史",
   "Reset listening history?": "重置收听历史?",
   "This clears everything the Stats screen and your mixes are built from: when and how long you listened. Play counts, favourites and playlists are not touched.": "这将清除统计页面和混音所依据的全部数据:你何时、听了多久。播放次数、收藏和播放列表不受影响。",
   "Continue": "继续",
@@ -1004,4 +1004,7 @@ export default {
   "Downloading: {n} MB": "正在下载：{n} MB",
   "Installing… Redshift will close and start again.": "正在安装… Redshift 将关闭并重新启动。",
   "Asks api.github.com for the newest release when Redshift starts and every few hours after, sending only the name and version of this app. If there is one, you are asked whether to install it. Nothing is downloaded or installed unless you press Update now, and then only the release file from this project’s GitHub page (github.com), checked against the checksum GitHub lists for it.": "在 Redshift 启动时以及之后每隔几小时，向 api.github.com 询问最新版本，只发送本应用的名称和版本。如果有新版本，会询问你是否安装。除非你点击“立即更新”，否则不会下载或安装任何内容；点击后也只会从本项目的 GitHub 页面（github.com）下载发布文件，并用 GitHub 列出的校验和进行核对。",
+  "Taken from the playing cover": "取自正在播放的封面",
+  "Nothing taken: no cover is playing, or it has no colour.": "未取色:没有正在播放的封面,或封面没有颜色。",
+  "Main tone": "主色调",
 };

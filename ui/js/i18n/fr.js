@@ -787,7 +787,7 @@ export default {
   "Play counts reset": "Écoutes réinitialisées",
   "Could not reset them: {x}": "Impossible de réinitialiser : {x}",
   "Clears how often and when each song was played. Your listening history for the Stats screen is cleared from the Stats screen itself.": "Efface le nombre et la date des écoutes de chaque morceau. L’historique d’écoute de l’écran Statistiques s’efface depuis cet écran.",
-  "Reset listening history…": "Réinitialiser l’historique d’écoute…",
+  "Reset listening history": "Réinitialiser l’historique d’écoute",
   "Reset listening history?": "Réinitialiser l’historique d’écoute ?",
   "This clears everything the Stats screen and your mixes are built from: when and how long you listened. Play counts, favourites and playlists are not touched.": "Cela efface tout ce sur quoi reposent l’écran Statistiques et vos mix : quand et combien de temps vous avez écouté. Les écoutes, les favoris et les playlists ne sont pas touchés.",
   "Continue": "Continuer",
@@ -1004,4 +1004,7 @@ export default {
   "Downloading: {n} MB": "Téléchargement : {n} Mo",
   "Installing… Redshift will close and start again.": "Installation… Redshift va se fermer puis redémarrer.",
   "Asks api.github.com for the newest release when Redshift starts and every few hours after, sending only the name and version of this app. If there is one, you are asked whether to install it. Nothing is downloaded or installed unless you press Update now, and then only the release file from this project’s GitHub page (github.com), checked against the checksum GitHub lists for it.": "Interroge api.github.com sur la dernière version au démarrage de Redshift puis toutes les quelques heures, en n’envoyant que le nom et la version de cette application. S’il y en a une, on vous demande si vous voulez l’installer. Rien n’est téléchargé ni installé tant que vous n’appuyez pas sur Mettre à jour maintenant, et alors seulement le fichier de la version depuis la page GitHub de ce projet (github.com), vérifié avec la somme de contrôle indiquée par GitHub.",
+  "Taken from the playing cover": "Tiré de la pochette en cours",
+  "Nothing taken: no cover is playing, or it has no colour.": "Rien de tiré : aucune pochette en cours, ou elle n’a pas de couleur.",
+  "Main tone": "Teinte principale",
 };

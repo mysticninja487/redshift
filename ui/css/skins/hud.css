@@ -9,7 +9,6 @@
 [data-skin="hud"] .d-title { display: block; right: 8px; top: 62px; font-size: clamp(90px, 14vw, 240px); font-weight: 700; text-transform: uppercase; letter-spacing: -.02em; color: var(--fg); opacity: .06; max-width: 70%; overflow: hidden; }
 [data-skin="hud"] .d-side { display: block; left: 24px; top: 40%; }
 [data-skin="hud"] .brand { text-transform: uppercase; letter-spacing: .2em; font-size: .95rem; }
-[data-skin="hud"] .brand-mark { border-radius: 0; clip-path: polygon(0 0, 100% 0, 100% 70%, 70% 100%, 0 100%); background: var(--accent); box-shadow: none; }
 [data-skin="hud"] .nav-btn { text-transform: uppercase; letter-spacing: .16em; font-size: .78rem; border-radius: 0; clip-path: polygon(var(--cut) 0, 100% 0, calc(100% - var(--cut)) 100%, 0 100%); padding: 9px 18px; }
 [data-skin="hud"] .nav-btn[aria-current="true"] { background: var(--accent); color: var(--on-accent); }
 [data-skin="hud"] .btn, [data-skin="hud"] .seg, [data-skin="hud"] .select, [data-skin="hud"] .text-input { border-radius: 0; text-transform: uppercase; letter-spacing: .1em; font-size: .74rem; }

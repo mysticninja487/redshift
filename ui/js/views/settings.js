@@ -12,6 +12,7 @@ import { ACCENTS, FONTS, PANELS, SLOTS, cleanFontName, fitsSlot, getSkin, skins 
 import { icon } from '../ui/icons.js';
 import { state } from '../state.js';
 import { tokens } from '../theme.js';
+import * as Col from '../color.js';
 import { ago, clear, clone, getPath, h, toast } from '../util.js';
 import { askToGoOnline, checkForUpdates, online, openUpdateDialog, setOnline, updateStatus } from '../online.js';
 import { changedKeys } from './changes.js';
@@ -147,6 +148,14 @@ export function mountSettings(root) {
 
     const mode = c.color.mode;
     const colorBits = h('div', { class: 'color-bits' });
+    // What the picker took from the cover that is playing, so a wrong-looking accent can be traced (hover for the colour codes).
+    const artColours = () => {
+      const a = state.art;
+      if (!a) return h('span', { class: 'hint' }, '');
+      const hex = (lch) => Col.lchToHex({ L: lch.L, C: lch.C, h: lch.h });
+      const parts = a.grey ? [['Main tone', tokens.accent]] : [['Main tone', hex({ ...a.dominant, L: Math.min(Math.max(a.dominant.L, 0.25), 0.7), C: Math.max(a.dominant.C, 0.05) })], ['Accent', a.accent], ['Second accent', a.accent2]];
+      return h('div', { class: 'swatches art-read' }, parts.map(([name, c]) => h('span', { class: 'swatch', title: `${name}: ${c}`, 'aria-label': `${name}: ${c}`, style: { '--sw': c } })));
+    };
     const buildColorBits = () => {
       const m = cfg().color.mode, cc = cfg().color;
       clear(colorBits);
@@ -157,7 +166,8 @@ export function mountSettings(root) {
         row('Text', colorInput({ value: cc.fg ?? tokens.fg, label: 'Text colour', onInput: (v) => set('color.fg', v) })),
         h('div', { class: 'set-row' }, button('Clear custom colours', () => { set('color.accent', undefined); set('color.bg', undefined); set('color.fg', undefined); render(); })));
       if (m === 'art') colorBits.append(
-        row('Cover strength', slider({ min: 0, max: 1, step: 0.05, value: cc.artMix, label: 'Cover colour strength', onInput: (v) => set('color.artMix', v), format: (v) => `${Math.round(v * 100)}%` }), { hint: 'How much the cover tints the whole interface. Grey covers keep the skin\'s accent.', path: 'color.artMix', redo: again }));
+        row('Cover strength', slider({ min: 0, max: 1, step: 0.05, value: cc.artMix, label: 'Cover colour strength', onInput: (v) => set('color.artMix', v), format: (v) => `${Math.round(v * 100)}%` }), { hint: 'How much the cover tints the whole interface. Black, white and grey covers give a grey or white accent.', path: 'color.artMix', redo: again }),
+        row('Taken from the playing cover', artColours(), { hint: state.art ? '' : 'Nothing taken: no cover is playing, or it has no colour.' }));
     };
     buildColorBits();
 

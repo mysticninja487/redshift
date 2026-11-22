@@ -787,7 +787,7 @@ export default {
   "Play counts reset": "Reproducciones restablecidas",
   "Could not reset them: {x}": "No se pudo restablecer: {x}",
   "Clears how often and when each song was played. Your listening history for the Stats screen is cleared from the Stats screen itself.": "Borra cuántas veces y cuándo se reprodujo cada canción. El historial de escucha de la pantalla de estadísticas se borra desde esa misma pantalla.",
-  "Reset listening history…": "Restablecer historial de escucha…",
+  "Reset listening history": "Restablecer historial de escucha",
   "Reset listening history?": "¿Restablecer el historial de escucha?",
   "This clears everything the Stats screen and your mixes are built from: when and how long you listened. Play counts, favourites and playlists are not touched.": "Esto borra todo lo que usan la pantalla de estadísticas y tus mezclas: cuándo y cuánto escuchaste. Las reproducciones, los favoritos y las listas no se tocan.",
   "Continue": "Continuar",
@@ -1004,4 +1004,7 @@ export default {
   "Downloading: {n} MB": "Descargando: {n} MB",
   "Installing… Redshift will close and start again.": "Instalando… Redshift se cerrará y volverá a abrirse.",
   "Asks api.github.com for the newest release when Redshift starts and every few hours after, sending only the name and version of this app. If there is one, you are asked whether to install it. Nothing is downloaded or installed unless you press Update now, and then only the release file from this project’s GitHub page (github.com), checked against the checksum GitHub lists for it.": "Pregunta a api.github.com por la versión más reciente cuando Redshift se inicia y cada pocas horas después, enviando solo el nombre y la versión de esta aplicación. Si hay una, se te pregunta si quieres instalarla. No se descarga ni se instala nada a menos que pulses Actualizar ahora, y entonces solo el archivo de la versión de la página de GitHub de este proyecto (github.com), comprobado con la suma de verificación que GitHub indica.",
+  "Taken from the playing cover": "Tomado de la portada que suena",
+  "Nothing taken: no cover is playing, or it has no colour.": "Nada tomado: no suena ninguna portada o no tiene color.",
+  "Main tone": "Tono principal",
 };

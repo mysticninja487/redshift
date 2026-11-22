@@ -2,7 +2,6 @@
 :root[data-skin="soft"] { --chrome-h: 58px; --gap: calc(22px * var(--density)); --hi: rgba(255, 255, 255, .9); --lo: rgba(30, 36, 50, .16); }
 :root[data-skin="soft"][data-scheme="dark"] { --hi: rgba(255, 255, 255, .05); --lo: rgba(0, 0, 0, .5); }
 [data-skin="soft"] .bg { background: linear-gradient(160deg, color-mix(in srgb, var(--bg) 82%, #fff), var(--bg) 60%); }
-[data-skin="soft"] .brand-mark { box-shadow: 3px 3px 7px var(--lo), -3px -3px 7px var(--hi); background: var(--bg); border: 4px solid var(--bg); outline: 3px solid var(--accent); }
 [data-skin="soft"] .nav { padding: 5px; border-radius: 99px; background: var(--bg); box-shadow: inset 3px 3px 7px var(--lo), inset -3px -3px 7px var(--hi); }
 [data-skin="soft"] .nav-btn[aria-current="true"] { background: var(--bg); color: var(--accent-text); box-shadow: 3px 3px 7px var(--lo), -3px -3px 7px var(--hi); }
 [data-skin="soft"] .panel[data-panel="queue"], [data-skin="soft"] .panel[data-panel="lyrics"], [data-skin="soft"] .panel[data-panel="eq"], [data-skin="soft"] .panel[data-panel="viz"], [data-skin="soft"] .panel[data-panel="meters"] {

@@ -4,7 +4,6 @@
 [data-skin="pixel"] .bg { background: radial-gradient(70% 60% at 50% 105%, color-mix(in srgb, var(--accent) 70%, transparent), transparent 70%), radial-gradient(60% 50% at 8% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%), var(--bg); }
 [data-skin="pixel"] body { font-family: var(--font-mono); }
 [data-skin="pixel"] .brand { font-family: var(--font-display); text-transform: uppercase; letter-spacing: .1em; font-size: .95rem; font-weight: 400; }
-[data-skin="pixel"] .brand-mark { border-radius: 2px; background: var(--fg); box-shadow: none; clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); width: 14px; height: 14px; }
 [data-skin="pixel"] .nav-btn, [data-skin="pixel"] .btn, [data-skin="pixel"] .seg, [data-skin="pixel"] .select, [data-skin="pixel"] .text-input { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .08em; font-size: .72rem; }
 [data-skin="pixel"] .nav-btn { border: var(--dot); border-radius: 99px; padding: 7px 16px; margin-right: 4px; color: var(--fg); }
 [data-skin="pixel"] .nav-btn[aria-current="true"] { background: var(--fg); color: var(--bg); border-style: solid; }

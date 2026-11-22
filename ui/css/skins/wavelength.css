@@ -10,7 +10,6 @@
 [data-skin="wavelength"] .nav { background: var(--wl-glass); backdrop-filter: blur(10px); border-radius: 99px; padding: 3px; }
 [data-skin="wavelength"] .i-year { color: #fff; }
 [data-skin="wavelength"] .brand { font-weight: 800; letter-spacing: -.03em; }
-[data-skin="wavelength"] .brand-mark { background: #fff; box-shadow: none; }
 [data-skin="wavelength"] .nav-btn, [data-skin="wavelength"] .icon-btn { color: #fff; }
 [data-skin="wavelength"] .nav-btn[aria-current="true"] { background: #fff; color: #0a0b0e; }
 [data-skin="wavelength"] .chrome .select { background-color: var(--wl-glass); color: #fff; border-color: transparent; backdrop-filter: blur(10px); }

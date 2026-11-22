@@ -129,7 +129,7 @@ export function mountStats(root) {
   const detail = h('div', { class: 'st-detail', role: 'tabpanel' });
   const mixBox = h('section', { class: 'st-sec st-mixes', 'aria-labelledby': 'st-mix-h' });
   const foot = h('p', { class: 'hint st-foot' });
-  const resetBtn = button('Reset listening history…', async () => {
+  const resetBtn = button('Reset listening history', async () => {
     if (!await confirmDialog('Reset listening history?', 'This clears everything the Stats screen and your mixes are built from: when and how long you listened. Play counts, favourites and playlists are not touched.', { ok: 'Continue' })) return;
     if (!await confirmDialog('Really erase it?', 'Your whole listening history will be deleted from this computer. This cannot be undone.', { ok: 'Erase listening history' })) return;
     try { await act(api.clearHistory()); toast('Listening history reset'); load(); } catch (e) { toast(`Could not reset it: ${e}`, 'error'); }

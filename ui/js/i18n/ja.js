@@ -787,7 +787,7 @@ export default {
   "Play counts reset": "再生回数をリセットしました",
   "Could not reset them: {x}": "リセットできませんでした:{x}",
   "Clears how often and when each song was played. Your listening history for the Stats screen is cleared from the Stats screen itself.": "各曲の再生回数と再生日時を消去します。統計画面の再生履歴は、統計画面から消去します。",
-  "Reset listening history…": "再生履歴をリセット…",
+  "Reset listening history": "再生履歴をリセット",
   "Reset listening history?": "再生履歴をリセットしますか?",
   "This clears everything the Stats screen and your mixes are built from: when and how long you listened. Play counts, favourites and playlists are not touched.": "統計画面とミックスの元になる、いつ・どれだけ聴いたかの記録をすべて消去します。再生回数、お気に入り、プレイリストは変更されません。",
   "Continue": "続ける",
@@ -1004,4 +1004,7 @@ export default {
   "Downloading: {n} MB": "ダウンロード中: {n} MB",
   "Installing… Redshift will close and start again.": "インストール中… Redshift は終了して再起動します。",
   "Asks api.github.com for the newest release when Redshift starts and every few hours after, sending only the name and version of this app. If there is one, you are asked whether to install it. Nothing is downloaded or installed unless you press Update now, and then only the release file from this project’s GitHub page (github.com), checked against the checksum GitHub lists for it.": "Redshift の起動時とその後数時間おきに、api.github.com に最新リリースを問い合わせます(送るのはこのアプリの名前とバージョンだけ)。新しいバージョンがあれば、インストールするか確認されます。「今すぐ更新」を押さない限り何もダウンロード・インストールされず、押した場合も、このプロジェクトの GitHub ページ(github.com)のリリースファイルだけを、GitHub が示すチェックサムで確認したうえで取得します。",
+  "Taken from the playing cover": "再生中のカバーから取得",
+  "Nothing taken: no cover is playing, or it has no colour.": "取得なし:再生中のカバーがないか、色がありません。",
+  "Main tone": "メインのトーン",
 };

@@ -787,7 +787,7 @@ export default {
   "Play counts reset": "Wiedergabezähler zurückgesetzt",
   "Could not reset them: {x}": "Zurücksetzen nicht möglich: {x}",
   "Clears how often and when each song was played. Your listening history for the Stats screen is cleared from the Stats screen itself.": "Löscht, wie oft und wann jeder Song gespielt wurde. Der Hörverlauf der Statistik wird in der Statistik selbst zurückgesetzt.",
-  "Reset listening history…": "Hörverlauf zurücksetzen…",
+  "Reset listening history": "Hörverlauf zurücksetzen",
   "Reset listening history?": "Hörverlauf zurücksetzen?",
   "This clears everything the Stats screen and your mixes are built from: when and how long you listened. Play counts, favourites and playlists are not touched.": "Dadurch wird alles gelöscht, worauf Statistik und deine Mixe beruhen: wann und wie lange du gehört hast. Wiedergabezähler, Favoriten und Playlists bleiben unberührt.",
   "Continue": "Weiter",
@@ -1004,4 +1004,7 @@ export default {
   "Downloading: {n} MB": "Heruntergeladen: {n} MB",
   "Installing… Redshift will close and start again.": "Wird installiert… Redshift schließt sich und startet neu.",
   "Asks api.github.com for the newest release when Redshift starts and every few hours after, sending only the name and version of this app. If there is one, you are asked whether to install it. Nothing is downloaded or installed unless you press Update now, and then only the release file from this project’s GitHub page (github.com), checked against the checksum GitHub lists for it.": "Fragt beim Start von Redshift und danach alle paar Stunden bei api.github.com nach der neuesten Version und sendet dabei nur Name und Version dieser App. Gibt es eine, wirst du gefragt, ob sie installiert werden soll. Es wird nichts heruntergeladen oder installiert, bis du auf Jetzt aktualisieren drückst, und dann nur die Release-Datei von der GitHub-Seite dieses Projekts (github.com), geprüft anhand der Prüfsumme, die GitHub dafür angibt.",
+  "Taken from the playing cover": "Aus dem laufenden Cover übernommen",
+  "Nothing taken: no cover is playing, or it has no colour.": "Nichts übernommen: Es läuft kein Cover oder es hat keine Farbe.",
+  "Main tone": "Grundton",
 };

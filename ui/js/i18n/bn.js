@@ -787,7 +787,7 @@ export default {
   "Play counts reset": "প্লে কাউন্ট রিসেট হয়েছে",
   "Could not reset them: {x}": "রিসেট করা যায়নি: {x}",
   "Clears how often and when each song was played. Your listening history for the Stats screen is cleared from the Stats screen itself.": "প্রতিটি গান কতবার ও কখন চালানো হয়েছে তা মুছে ফেলে। পরিসংখ্যান পর্দার শোনার ইতিহাস পরিসংখ্যান পর্দা থেকেই মুছতে হয়।",
-  "Reset listening history…": "শোনার ইতিহাস রিসেট করুন…",
+  "Reset listening history": "শোনার ইতিহাস রিসেট করুন",
   "Reset listening history?": "শোনার ইতিহাস রিসেট করবেন?",
   "This clears everything the Stats screen and your mixes are built from: when and how long you listened. Play counts, favourites and playlists are not touched.": "পরিসংখ্যান পর্দা ও আপনার মিক্স যা থেকে তৈরি হয় তা মুছে যাবে: কখন ও কতক্ষণ শুনেছেন। প্লে কাউন্ট, প্রিয় ও প্লেলিস্ট অপরিবর্তিত থাকবে।",
   "Continue": "চালিয়ে যান",
@@ -1004,4 +1004,7 @@ export default {
   "Downloading: {n} MB": "ডাউনলোড হচ্ছে: {n} MB",
   "Installing… Redshift will close and start again.": "ইনস্টল হচ্ছে… Redshift বন্ধ হয়ে আবার চালু হবে।",
   "Asks api.github.com for the newest release when Redshift starts and every few hours after, sending only the name and version of this app. If there is one, you are asked whether to install it. Nothing is downloaded or installed unless you press Update now, and then only the release file from this project’s GitHub page (github.com), checked against the checksum GitHub lists for it.": "Redshift চালু হলে এবং তারপর প্রতি কয়েক ঘণ্টা পরপর api.github.com-এর কাছে সর্বশেষ রিলিজ জানতে চায়, শুধু এই অ্যাপের নাম ও সংস্করণ পাঠিয়ে। থাকলে ইনস্টল করবেন কি না জিজ্ঞেস করা হয়। “এখনই আপডেট করুন” না চাপলে কিছুই ডাউনলোড বা ইনস্টল হয় না, আর চাপলে শুধু এই প্রজেক্টের GitHub পাতা (github.com) থেকে রিলিজ ফাইলটি নামে, GitHub যে চেকসাম দেখায় তার সাথে মিলিয়ে।",
+  "Taken from the playing cover": "বাজানো কভার থেকে নেওয়া",
+  "Nothing taken: no cover is playing, or it has no colour.": "কিছু নেওয়া হয়নি: কোনো কভার বাজছে না, অথবা তাতে রঙ নেই।",
+  "Main tone": "প্রধান সুর",
 };
