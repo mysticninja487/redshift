@@ -1849,7 +1849,10 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let (a, b, c) = (m.path().join("a.flac"), m.path().join("b.mp3"), m.path().join("c.opus"));
         {
-            let app = open(d.path());
+            // Slower than real time: the songs are one second long, and at the usual 4x a slow
+            // machine can let the second song end before the pause lands, moving on to the third.
+            let slow = PlayerConfig { device: None, offline: Some(OfflineConfig { sample_rate: 48_000, sink: Arc::new(Mutex::new(Vec::new())), speed: 0.25 }), ..Default::default() };
+            let app = App::new(d.path(), slow).unwrap().0;
             app.player.set_queue(vec![a.clone(), b.clone(), c.clone()], 1, true);
             wait_for("playback", || app.player.status() == crate::engine::Status::Playing);
             app.player.pause();
