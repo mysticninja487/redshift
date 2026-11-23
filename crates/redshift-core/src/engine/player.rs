@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -19,8 +19,8 @@ use crossbeam_channel::{after, bounded, select, unbounded, Receiver, Sender};
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 
-use super::mixer::{Command, Event, Mixer, MixerPorts, Shared, Track};
-use super::output::{start_output, OutputHandle, OutputKind};
+use super::mixer::{Command, Event, Mixer, MixerPorts, Shared, Track, PROC_CROSSFADE, PROC_EQ, PROC_GAIN, PROC_LIMITER, PROC_SPEED, PROC_VOLUME};
+use super::output::{start_output, DeviceOpts, OutputHandle, OutputInfo, OutputKind};
 use super::source::{open_source, wait_ready, SourceInfo};
 use crate::dsp::eq::EqParams;
 use crate::dsp::spectrum::{Analyzer, SpectrumConfig, VizFrame, VizTap};
@@ -48,6 +48,9 @@ pub struct OfflineConfig {
 pub struct PlayerConfig {
     /// Output device id; `None` is the system default.
     pub device: Option<String>,
+    /// Take the device exclusively and reopen it at each song's own sample rate (Windows). Falls
+    /// back to shared mode, with a reason in the output readout, when the device refuses.
+    pub exclusive: bool,
     /// Set to run without audio hardware (tests).
     pub offline: Option<OfflineConfig>,
 }
@@ -200,6 +203,15 @@ pub struct PlayerState {
     pub replaygain_preamp_db: f32,
     pub device_name: String,
     pub sample_rate: u32,
+    /// What the output is doing right now.
+    pub output: OutputInfo,
+    pub exclusive: bool,
+    pub bit_perfect_mode: bool,
+    /// Names of the stages currently changing the signal ("eq", "volume", ...).
+    pub processing: Vec<&'static str>,
+    /// The file's samples reach the device untouched: exclusive output, no processing, the song's
+    /// own rate, and a device format at least as wide as the file's.
+    pub bit_perfect: bool,
 }
 
 enum Msg {
@@ -222,6 +234,7 @@ enum Msg {
     SetQueuePolicy(QueuePolicy),
     SetRepeat(RepeatMode),
     SetDevice(Option<String>),
+    SetExclusive(bool),
     /// The ReplayGain settings changed: reload what's loaded so the new gain applies now.
     ReplayGainChanged,
     Shutdown,
@@ -236,6 +249,8 @@ pub struct Player {
     view: Arc<RwLock<QueueView>>,
     sample_rate: Arc<AtomicU32>,
     device_name: Arc<RwLock<String>>,
+    output_info: Arc<RwLock<OutputInfo>>,
+    exclusive: Arc<AtomicBool>,
     crossfade_secs: Arc<AtomicU32>,
     rate: Mutex<Rate>,
     replaygain: Arc<ReplayGainSettings>,
@@ -252,7 +267,9 @@ impl Player {
         let (tx, msg_rx) = unbounded();
         let (err_tx, err_rx) = unbounded();
 
-        let wiring = open_output(&config, &shared, &eq, &tap)?;
+        let wiring = open_output(&config, None, &shared, &eq, &tap)?;
+        let output_info = Arc::new(RwLock::new(wiring.out.info.clone()));
+        let exclusive = Arc::new(AtomicBool::new(config.exclusive));
         let sample_rate = Arc::new(AtomicU32::new(wiring.out.sample_rate));
         let device_name = Arc::new(RwLock::new(wiring.out.device_name.clone()));
         let analyzer = Arc::new(Mutex::new(Analyzer::new(tap.clone(), wiring.out.sample_rate, SpectrumConfig::default())));
@@ -271,6 +288,9 @@ impl Player {
             view: view.clone(),
             sample_rate: sample_rate.clone(),
             device_name: device_name.clone(),
+            output_info: output_info.clone(),
+            rate_hint: None,
+            last_rate_attempt: None,
             crossfade_secs: crossfade_secs.clone(),
             replaygain: replaygain.clone(),
             out: wiring.out,
@@ -302,6 +322,8 @@ impl Player {
             view,
             sample_rate,
             device_name,
+            output_info,
+            exclusive,
             crossfade_secs,
             rate: Mutex::new(Rate::default()),
             replaygain,
@@ -416,6 +438,15 @@ impl Player {
         &self.eq
     }
     /// Crossfade length in seconds; 0 turns it off (tracks still join gaplessly).
+    /// Exclusive output on or off (Windows). The device reopens at once.
+    pub fn set_exclusive(&self, on: bool) {
+        self.exclusive.store(on, Ordering::Relaxed);
+        self.send(Msg::SetExclusive(on));
+    }
+    /// Bit-perfect mode: EQ, ReplayGain, speed/pitch and crossfade are skipped entirely.
+    pub fn set_bit_perfect(&self, on: bool) {
+        self.shared.set_bypass(on);
+    }
     pub fn set_crossfade_secs(&self, secs: f32) {
         let secs = secs.clamp(0.0, 12.0);
         self.crossfade_secs.store(secs.to_bits(), Ordering::Relaxed);
@@ -465,7 +496,32 @@ impl Player {
     }
 
     pub fn state(&self) -> PlayerState {
+        let output = self.output_info.read().clone();
+        let bits = self.shared.processing();
+        let processing: Vec<&'static str> = [
+            (PROC_EQ, "eq"),
+            (PROC_SPEED, "speed"),
+            (PROC_VOLUME, "volume"),
+            (PROC_GAIN, "gain"),
+            (PROC_LIMITER, "limiter"),
+            (PROC_CROSSFADE, "crossfade"),
+        ]
+        .iter()
+        .filter(|(b, _)| bits & b != 0)
+        .map(|(_, n)| *n)
+        .collect();
+        let bit_perfect = output.exclusive
+            && !output.float
+            && processing.is_empty()
+            && self.current_track().is_some_and(|t| {
+                t.source_rate == output.sample_rate && t.bits_per_sample.is_some_and(|b| b <= u32::from(output.bits))
+            });
         PlayerState {
+            output,
+            exclusive: self.exclusive.load(Ordering::Relaxed),
+            bit_perfect_mode: self.shared.bypass(),
+            processing,
+            bit_perfect,
             status: self.status(),
             position_secs: self.position_secs(),
             volume: self.volume(),
@@ -518,13 +574,19 @@ struct Wiring {
     retired: Receiver<Track>,
 }
 
-fn open_output(config: &PlayerConfig, shared: &Arc<Shared>, eq: &Arc<EqParams>, tap: &VizTap) -> Result<Wiring> {
+fn open_output(config: &PlayerConfig, rate_hint: Option<u32>, shared: &Arc<Shared>, eq: &Arc<EqParams>, tap: &VizTap) -> Result<Wiring> {
     let (cmd, commands) = bounded(256);
     let (events_tx, events) = bounded(256);
     let (retired_tx, retired) = bounded(128);
     let kind = match &config.offline {
-        Some(o) => OutputKind::Offline { sample_rate: o.sample_rate, sink: o.sink.clone(), speed: o.speed },
-        None => OutputKind::Device(config.device.clone()),
+        Some(o) => OutputKind::Offline {
+            sample_rate: o.sample_rate,
+            sink: o.sink.clone(),
+            speed: o.speed,
+            follow_rate: config.exclusive,
+            rate_hint,
+        },
+        None => OutputKind::Device(DeviceOpts { id: config.device.clone(), exclusive: config.exclusive, rate_hint }),
     };
     let (shared, eq, tap) = (shared.clone(), eq.clone(), tap.clone());
     let out = start_output(kind, move |rate| {
@@ -543,6 +605,11 @@ struct Core {
     view: Arc<RwLock<QueueView>>,
     sample_rate: Arc<AtomicU32>,
     device_name: Arc<RwLock<String>>,
+    output_info: Arc<RwLock<OutputInfo>>,
+    /// The sample rate to ask an exclusive device for.
+    rate_hint: Option<u32>,
+    /// The last rate we reopened the device for, so a device that can't do it isn't asked twice.
+    last_rate_attempt: Option<u32>,
     crossfade_secs: Arc<AtomicU32>,
     replaygain: Arc<ReplayGainSettings>,
 
@@ -629,6 +696,7 @@ impl Core {
             total_frames: info.total_frames,
             start_frame: info.start_frame,
             gain: self.gain_for(&entry.path),
+            bits: info.bits_per_sample.and_then(|b| u8::try_from(b).ok()),
         };
         self.infos.insert(load_id, info);
         Ok(track)
@@ -637,14 +705,24 @@ impl Core {
     /// Starts the queue's current entry. With `skip_on_error`, unplayable entries are reported and
     /// passed over. Returns whether something is now playing.
     fn start_current(&mut self, mut start_secs: f64, fade_ms: u32, autoplay: bool, skip_on_error: bool, announce: bool) -> bool {
-        let fade_frames = (self.rate() as u64 * fade_ms as u64 / 1000) as u32;
         let mut attempts = 0;
         loop {
             let Some(entry) = self.queue.current().cloned() else {
                 self.halt();
                 return false;
             };
-            match self.load(&entry, start_secs) {
+            let mut loaded = self.load(&entry, start_secs);
+            if let Ok(track) = &loaded {
+                let src_rate = self.infos.get(&track.id).map(|i| i.source_rate);
+                if let Some(src_rate) = src_rate {
+                    if self.match_rate(src_rate) {
+                        // The device now runs at the song's rate; open the song again for it.
+                        loaded = self.load(&entry, start_secs);
+                    }
+                }
+            }
+            let fade_frames = (self.rate() as u64 * fade_ms as u64 / 1000) as u32;
+            match loaded {
                 Ok(track) => {
                     let id = track.id;
                     self.current_load = Some(id);
@@ -710,6 +788,18 @@ impl Core {
             }
             Some(entry) => match self.load(&entry, 0.0) {
                 Ok(track) => {
+                    // A song at another rate can't join gaplessly in exclusive mode: the device has to
+                    // be reopened for it. Leave it unloaded; the end of this song starts it.
+                    let differs = self.config.exclusive
+                        && self.infos.get(&track.id).is_some_and(|i| i.source_rate != self.rate());
+                    if differs {
+                        self.loads.remove(&track.id);
+                        self.infos.remove(&track.id);
+                        self.failed_next = Some(entry.id);
+                        self.send(Command::SetNext(None));
+                        self.next_load = None;
+                        return;
+                    }
                     self.next_load = Some((track.id, entry.id));
                     self.send(Command::SetNext(Some(track)));
                 }
@@ -862,6 +952,17 @@ impl Core {
             }
             Msg::SetDevice(id) => {
                 self.config.device = id;
+                self.last_rate_attempt = None;
+                self.rebuild_output();
+            }
+            Msg::SetExclusive(on) => {
+                if self.config.exclusive == on {
+                    return;
+                }
+                self.config.exclusive = on;
+                self.last_rate_attempt = None;
+                // Start from the playing song's own rate, so there's nothing to match afterwards.
+                self.rate_hint = self.current_load.and_then(|id| self.infos.get(&id)).map(|i| i.source_rate);
                 self.rebuild_output();
             }
             Msg::ReplayGainChanged => {
@@ -969,14 +1070,22 @@ impl Core {
         let was_playing = self.is_playing();
         let position = self.shared.position_frames() as f64 / self.rate() as f64;
         let had_current = self.current_load.is_some();
+        if self.reopen() && had_current {
+            self.start_current(position, 0, was_playing, false, false);
+        }
+    }
 
-        // Release the old device first: some drivers won't open a second stream alongside it.
+    /// Closes the output and opens it again with the current settings (device, exclusive mode,
+    /// rate hint). Everything loaded is dropped; the caller loads again. Returns whether it opened.
+    fn reopen(&mut self) -> bool {
+        // Release the old device first: exclusive mode can't open a second stream beside it.
         let _ = self.cmd.try_send(Command::Stop);
+        self.out.close();
         let wiring = match self.try_open() {
             Ok(w) => w,
             Err(e) => {
                 self.emit(PlayerEvent::Error { message: format!("could not open audio device: {e}") });
-                return;
+                return false;
             }
         };
         self.out = wiring.out;
@@ -992,20 +1101,30 @@ impl Core {
         let rate = self.out.sample_rate;
         self.sample_rate.store(rate, Ordering::Relaxed);
         *self.device_name.write() = self.out.device_name.clone();
+        *self.output_info.write() = self.out.info.clone();
         let viz_config = self.analyzer.lock().config();
         *self.analyzer.lock() = Analyzer::new(self.tap.clone(), rate, viz_config);
         // Crossfade length is stored in seconds; the mixer wants frames at the new rate.
         let secs = f32::from_bits(self.crossfade_secs.load(Ordering::Relaxed));
         self.shared.set_crossfade_frames((secs * rate as f32) as u32);
         self.emit(PlayerEvent::DeviceChanged { name: self.out.device_name.clone(), sample_rate: rate });
+        true
+    }
 
-        if had_current {
-            self.start_current(position, 0, was_playing, false, false);
+    /// In exclusive mode, reopens the device at a song's own sample rate so nothing resamples.
+    /// Returns whether the output changed (the caller then loads the song again).
+    fn match_rate(&mut self, source_rate: u32) -> bool {
+        if !self.config.exclusive || self.rate() == source_rate || self.last_rate_attempt == Some(source_rate) {
+            return false;
         }
+        self.last_rate_attempt = Some(source_rate);
+        self.rate_hint = Some(source_rate);
+        let before = self.rate();
+        self.reopen() && self.rate() != before
     }
 
     fn try_open(&self) -> Result<Wiring> {
-        open_output(&self.config, &self.shared, &self.eq, &self.tap)
+        open_output(&self.config, self.rate_hint, &self.shared, &self.eq, &self.tap)
     }
 }
 

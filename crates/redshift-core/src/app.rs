@@ -159,6 +159,11 @@ pub struct Settings {
     pub eq: EqSettings,
     /// Output device id; `None` is the system default.
     pub device: Option<String>,
+    /// Take the output device exclusively and match its sample rate to each song (Windows).
+    pub exclusive: bool,
+    /// Skip every processing stage (EQ, ReplayGain, speed and pitch, crossfade) so the file's
+    /// samples are what is played.
+    pub bit_perfect: bool,
     pub viz: SpectrumConfig,
     pub custom_eq_presets: Vec<CustomPreset>,
     pub tray: TraySettings,
@@ -253,6 +258,8 @@ impl Default for Settings {
             replaygain_preamp_db: 0.0,
             eq: EqSettings::default(),
             device: None,
+            exclusive: false,
+            bit_perfect: false,
             viz: SpectrumConfig::default(),
             custom_eq_presets: Vec::new(),
             tray: TraySettings::default(),
@@ -421,6 +428,7 @@ impl App {
         let mut settings = load_settings(&data_dir.join(SETTINGS_FILE));
 
         let saved_device = settings.device.clone();
+        player_config.exclusive |= settings.exclusive;
         if player_config.device.is_none() {
             player_config.device = saved_device.clone();
         }
@@ -442,6 +450,7 @@ impl App {
         player.set_crossfade_secs(settings.crossfade_secs);
         player.set_rate(settings.rate);
         player.set_replaygain(settings.replaygain, settings.replaygain_preamp_db);
+        player.set_bit_perfect(settings.bit_perfect);
         player.configure_viz(settings.viz);
         let eq = player.eq();
         eq.set_enabled(settings.eq.enabled);
@@ -981,6 +990,14 @@ impl App {
             s.replaygain = mode;
             s.replaygain_preamp_db = preamp_db;
         });
+    }
+    pub fn set_exclusive(&self, on: bool) {
+        self.player.set_exclusive(on);
+        self.update(|s| s.exclusive = on);
+    }
+    pub fn set_bit_perfect(&self, on: bool) {
+        self.player.set_bit_perfect(on);
+        self.update(|s| s.bit_perfect = on);
     }
     pub fn set_device(&self, id: Option<String>) {
         self.player.set_device(id.clone());
@@ -1621,7 +1638,7 @@ mod tests {
     }
 
     fn offline() -> PlayerConfig {
-        PlayerConfig { device: None, offline: Some(OfflineConfig { sample_rate: 48_000, sink: Arc::new(Mutex::new(Vec::new())), speed: 4.0 }) }
+        PlayerConfig { device: None, offline: Some(OfflineConfig { sample_rate: 48_000, sink: Arc::new(Mutex::new(Vec::new())), speed: 4.0 }), ..Default::default() }
     }
 
     fn open(dir: &Path) -> App {
@@ -1920,6 +1937,8 @@ mod tests {
             app.set_repeat(RepeatMode::All);
             app.set_crossfade_secs(3.5);
             app.set_replaygain(ReplayGainMode::Album, 2.0);
+            app.set_bit_perfect(true);
+            app.set_exclusive(true);
             app.set_eq_enabled(false);
             app.set_eq_preamp_db(-2.0);
             app.set_eq_band_db(3, 4.5);
@@ -1934,6 +1953,8 @@ mod tests {
         assert!(st.muted);
         assert!((st.crossfade_secs - 3.5).abs() < 1e-6);
         assert_eq!((st.replaygain, st.replaygain_preamp_db), (ReplayGainMode::Album, 2.0));
+        assert!(st.bit_perfect_mode && st.exclusive, "exclusive and bit-perfect come back after a restart");
+        assert!(app.settings().exclusive && app.settings().bit_perfect);
         assert!(!p.eq().enabled());
         assert_eq!(p.eq().preamp_db(), -2.0);
         assert_eq!(p.eq().band_db(3), 4.5);
@@ -2413,7 +2434,7 @@ mod tests {
     fn playing_a_track_records_a_start_and_then_a_play() {
         let state = tempfile::tempdir().unwrap();
         // Real-time speed, because plays are counted in wall-clock time.
-        let slow = PlayerConfig { device: None, offline: Some(OfflineConfig { sample_rate: 48_000, sink: Arc::new(Mutex::new(Vec::new())), speed: 1.0 }) };
+        let slow = PlayerConfig { device: None, offline: Some(OfflineConfig { sample_rate: 48_000, sink: Arc::new(Mutex::new(Vec::new())), speed: 1.0 }), ..Default::default() };
         let app = App::new(state.path(), slow).unwrap().0;
         let f = fixture("chirp_44k_stereo.flac");
         app.player.set_queue(vec![f.clone()], 0, true);
@@ -2445,7 +2466,7 @@ mod tests {
     #[test]
     fn listening_is_logged_summed_and_can_be_switched_off_or_cleared() {
         let state = tempfile::tempdir().unwrap();
-        let slow = PlayerConfig { device: None, offline: Some(OfflineConfig { sample_rate: 48_000, sink: Arc::new(Mutex::new(Vec::new())), speed: 1.0 }) };
+        let slow = PlayerConfig { device: None, offline: Some(OfflineConfig { sample_rate: 48_000, sink: Arc::new(Mutex::new(Vec::new())), speed: 1.0 }), ..Default::default() };
         let app = App::new(state.path(), slow).unwrap().0;
         let f = fixture("chirp_44k_stereo.flac");
         app.player.set_queue(vec![f.clone()], 0, true);

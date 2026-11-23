@@ -24,6 +24,7 @@ const GUIDE = [
     ['Import a playlist', 'In Library > Playlists, Import online turns a public Deezer, Spotify or YouTube playlist link, or a pasted list of songs (Artist - Title on each line, or a Spotify CSV export), into a playlist of the matching files in your library. Songs are matched by title and artist, and the ones that are not in your library are listed so you can copy them. Links need Go online; pasted lists work offline. Spotify and YouTube links show only the first 100 songs.'],
     ['Sleep timer', 'The clock in the top bar stops playback after a set time or at the end of the song, fading the volume out over the last ten seconds.'],
     ['Speed and pitch', 'The gauge in the top bar (or < and > on the keyboard) plays songs from half speed to double, and shifts the pitch up or down by up to an octave. Turn off Keep pitch for a tape or record feel.'],
+    ['Exclusive and bit-perfect', 'Settings > Playback > Output. Exclusive mode takes your sound device for Redshift alone and opens it at each song\u2019s own sample rate, so nothing is resampled; other apps go quiet while it is on. Bit-perfect mode also switches off the equaliser, ReplayGain, speed, pitch and crossfade. Now Playing shows a Bit-perfect tag when the file\u2019s own samples reach the device, and Song info says what changes them when it does not.'],
     ['Song info', 'Right-click a song > Song info, press I, or use the info button beside the title on Now Playing.'],
   ]],
   ['Your listening', [

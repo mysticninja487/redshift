@@ -199,7 +199,16 @@ const queueView = () => {
     current: t ? { entry_id: S.cur, path: t.path, codec: t.format, source_rate: t.sample_rate, source_channels: 2, bits_per_sample: t.bit_depth, duration_secs: t.duration_secs } : null,
   };
 };
-const playerState = () => ({ status: S.status, position_secs: Math.min(position(), curTrack()?.duration_secs ?? 0), volume: S.volume, muted: S.muted, crossfade_secs: S.crossfade, rate: S.rate, replaygain: S.rg, replaygain_preamp_db: S.rgPre, device_name: 'Speakers (mock)', sample_rate: 48000 });
+// The output the real engine would report: exclusive reopens at the song's rate, shared stays put.
+const outRate = () => (S.exclusive ? curTrack()?.sample_rate ?? 48000 : 48000);
+const outputState = () => {
+  const rate = outRate(), exclusive = !!S.exclusive;
+  const processing = S.bitPerfect ? [] : [...(S.eq?.enabled ? ['eq'] : []), ...(S.rg !== 'off' ? ['gain'] : []), ...(S.volume < 1 ? ['volume'] : [])];
+  const t = curTrack();
+  return { output: { device_name: 'Speakers (mock)', sample_rate: rate, exclusive, bits: exclusive ? 24 : 32, float: !exclusive, fallback: null },
+    exclusive, bit_perfect_mode: !!S.bitPerfect, processing, bit_perfect: exclusive && !processing.length && !!t && (t.bit_depth ?? 16) <= 24 };
+};
+const playerState = () => ({ status: S.status, position_secs: Math.min(position(), curTrack()?.duration_secs ?? 0), volume: S.volume, muted: S.muted, crossfade_secs: S.crossfade, rate: S.rate, replaygain: S.rg, replaygain_preamp_db: S.rgPre, device_name: 'Speakers (mock)', sample_rate: outRate(), ...outputState() });
 
 // ---------------------------------------------------------------- analysis
 function vizFrame() {
@@ -335,7 +344,7 @@ function mockMixes() {
   return history().length ? out : out.filter((m) => m.kind === 'favourites');
 }
 
-const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, viz: {}, custom_eq_presets: CUSTOM_PRESETS, tray: TRAY, restore_session: S.restore !== false, watch_folders: S.watch, record_history: S.record !== false, count_percent: S.countPercent ?? 50, queue_no_duplicates: S.noDup ?? false, keep_shuffle: S.keepShuffle ?? true, shuffle_whole_queue: S.wholeQueue ?? true, notify_on_track: S.notify ?? false, online: S.online, presence: S.presence ?? { enabled: false }, ui: ui() });
+const settings = () => ({ volume: S.volume, muted: S.muted, shuffle: S.shuffle, repeat: S.repeat, crossfade_secs: S.crossfade, replaygain: S.rg, replaygain_preamp_db: S.rgPre, eq: S.eq, device: S.device, exclusive: !!S.exclusive, bit_perfect: !!S.bitPerfect, viz: {}, custom_eq_presets: CUSTOM_PRESETS, tray: TRAY, restore_session: S.restore !== false, watch_folders: S.watch, record_history: S.record !== false, count_percent: S.countPercent ?? 50, queue_no_duplicates: S.noDup ?? false, keep_shuffle: S.keepShuffle ?? true, shuffle_whole_queue: S.wholeQueue ?? true, notify_on_track: S.notify ?? false, online: S.online, presence: S.presence ?? { enabled: false }, ui: ui() });
 const addEntries = (paths, at = S.entries.length) => S.entries.splice(at, 0, ...paths.map((path) => ({ id: S.seq++, path })));
 const cmds = {
   set_queue: ({ paths, start, autoplay }) => { S.entries = []; addEntries(paths); S.cur = S.entries[start]?.id ?? null; S.pos = 0; S.t0 = performance.now(); S.status = autoplay && S.cur ? 'playing' : 'stopped'; if (S.status === 'playing') noteStart(curEntry()?.path); emit('player-event', { type: 'queue_changed' }); emit('player-event', { type: 'track_changed', entry_id: S.cur }); },
@@ -353,7 +362,7 @@ const cmds = {
   player_state: playerState, queue_view: queueView, get_settings: settings,
   set_volume: ({ volume }) => { S.volume = volume; }, set_muted: ({ muted }) => { S.muted = muted; },
   set_shuffle: ({ on }) => { S.shuffle = on; if (on) reshuffle(); emit('player-event', { type: 'queue_changed' }); }, set_repeat: ({ mode }) => { S.repeat = mode; },
-  set_crossfade_secs: ({ secs }) => { S.crossfade = secs; }, set_rate: ({ speed, pitchSemitones, keepPitch }) => { S.rate = { speed, pitch_semitones: pitchSemitones, keep_pitch: keepPitch }; }, set_replaygain: ({ mode, preampDb }) => { S.rg = mode; S.rgPre = preampDb; },
+  set_crossfade_secs: ({ secs }) => { S.crossfade = secs; }, set_rate: ({ speed, pitchSemitones, keepPitch }) => { S.rate = { speed, pitch_semitones: pitchSemitones, keep_pitch: keepPitch }; }, set_replaygain: ({ mode, preampDb }) => { S.rg = mode; S.rgPre = preampDb; }, set_exclusive: ({ on }) => { S.exclusive = on; }, set_bit_perfect: ({ on }) => { S.bitPerfect = on; },
   output_devices: () => [{ id: 'spk', name: 'Speakers (Mock Audio)', is_default: true }, { id: 'hp', name: 'Headphones (Mock USB DAC)', is_default: false }],
   set_output_device: ({ id }) => { S.device = id; },
   eq_info: () => ({ settings: S.eq, band_freqs_hz: EQ_FREQS, presets: PRESETS, custom_presets: CUSTOM_PRESETS }),
@@ -379,7 +388,7 @@ const cmds = {
   sleep_status: () => sleepStatus(),
   listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
   listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
-  app_info: () => ({ version: '0.6.7', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
+  app_info: () => ({ version: '0.7.0', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
   open_data_folder: () => null,
   song_info: ({ path }) => {
     const t = tracks.find((x) => x.path === path); if (!t) throw new Error('That file isn\u2019t there any more');
@@ -468,7 +477,7 @@ const cmds = {
     if (!S.online.enabled) throw 'online features are turned off';
     NET_LOG.unshift({ time: Math.floor(Date.now() / 1000), purpose: 'Update check', host: 'api.github.com', url: 'https://api.github.com/repos/mysticninja487/redshift/releases/latest', status: 200, bytes: 1180, cached: false, error: null });
     await new Promise((r) => setTimeout(r, 300));
-    return globalThis.__mockUpdate ?? { current: '0.6.7', latest: '0.6.8', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.6', notes: 'Online playlist import for YouTube.\nFixes and small improvements.', asset: { name: 'Redshift_0.6.6_x64-setup.exe', url: 'https://github.com/mysticninja487/redshift/releases/download/v0.6.6/Redshift_0.6.6_x64-setup.exe', size: 31457280, sha256: null, kind: 'installer' } };
+    return globalThis.__mockUpdate ?? { current: '0.7.0', latest: '0.7.1', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.6', notes: 'Online playlist import for YouTube.\nFixes and small improvements.', asset: { name: 'Redshift_0.6.6_x64-setup.exe', url: 'https://github.com/mysticninja487/redshift/releases/download/v0.6.6/Redshift_0.6.6_x64-setup.exe', size: 31457280, sha256: null, kind: 'installer' } };
   },
   download_update: async ({ asset }) => { for (let i = 1; i <= 10; i++) { emit('update-progress', { done: asset.size * i / 10, total: asset.size }); await new Promise((r) => setTimeout(r, 120)); } return '/mock/updates/' + asset.name; },
   install_update: () => { globalThis.__mockInstalled = true; },

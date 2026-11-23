@@ -24,9 +24,14 @@ struct Rig {
 }
 
 fn rig(speed: f32) -> Rig {
+    rig_with(speed, false)
+}
+
+fn rig_with(speed: f32, exclusive: bool) -> Rig {
     let sink = Arc::new(Mutex::new(Vec::new()));
     let (player, events) = Player::new(PlayerConfig {
         device: None,
+        exclusive,
         offline: Some(OfflineConfig { sample_rate: RATE, sink: sink.clone(), speed }),
     })
     .unwrap();
@@ -626,4 +631,55 @@ fn replaygain_settings_are_clamped_and_readable() {
     assert_eq!(r.player.replaygain(), (ReplayGainMode::Album, -12.0));
     let s = r.player.state();
     assert_eq!((s.replaygain, s.replaygain_preamp_db), (ReplayGainMode::Album, -12.0));
+}
+
+#[test]
+fn exclusive_output_reopens_at_each_songs_own_rate() {
+    let mut r = rig_with(8.0, true);
+    r.player.set_queue(paths(&["chirp_44k_stereo.flac", "tone_96k_24bit_mono.flac"]), 0, true);
+    r.wait_event("the device at 44.1 kHz", |e| matches!(e, PlayerEvent::DeviceChanged { sample_rate: 44_100, .. }));
+    r.wait_event("the device at 96 kHz", |e| matches!(e, PlayerEvent::DeviceChanged { sample_rate: 96_000, .. }));
+    assert_eq!(r.player.state().output.sample_rate, 96_000);
+    assert!(r.player.state().output.exclusive);
+    r.wait_ended();
+}
+
+#[test]
+fn shared_output_keeps_its_rate_for_every_song() {
+    let mut r = rig(8.0);
+    r.player.set_queue(paths(&["chirp_44k_stereo.flac", "tone_96k_24bit_mono.flac"]), 0, true);
+    r.wait_ended();
+    assert!(
+        !r.seen.iter().any(|e| matches!(e, PlayerEvent::DeviceChanged { sample_rate, .. } if *sample_rate != RATE)),
+        "a shared device must not be reopened: {:#?}",
+        r.seen
+    );
+}
+
+#[test]
+fn a_24_bit_file_reaches_an_exclusive_device_untouched() {
+    let mut r = rig_with(8.0, true);
+    r.player.set_queue(paths(&["tone_96k_24bit_mono.flac"]), 0, true);
+    r.wait_position("the song to be playing", |p| p > 0.2);
+    let st = r.player.state();
+    assert_eq!(st.output.sample_rate, 96_000);
+    assert!(st.bit_perfect, "expected bit-perfect, processing: {:?}, output: {:?}", st.processing, st.output);
+    r.wait_ended();
+    let left = r.left();
+    let (first, last) = audible(&left);
+    // The first ~20 ms is the click-free fade-in every play start has; everything after it is exact.
+    let body = &left[first + 2_048..last];
+    let scale = 8_388_608.0_f32;
+    let off_grid = body.iter().filter(|v| ((**v * scale) - (**v * scale).round()).abs() > 1e-3).count();
+    assert_eq!(off_grid, 0, "samples were altered on the way: {off_grid} of {} are not whole 24-bit steps", body.len());
+}
+
+#[test]
+fn volume_below_full_means_the_stream_is_no_longer_bit_perfect() {
+    let mut r = rig_with(2.0, true);
+    r.player.set_queue(paths(&["tone_96k_24bit_mono.flac"]), 0, true);
+    r.wait_position("the song to be playing", |p| p > 0.2);
+    r.player.set_volume(0.5);
+    r.wait_position("the volume change to show", |_| r.player.state().processing.contains(&"volume"));
+    assert!(!r.player.state().bit_perfect);
 }

@@ -60,6 +60,8 @@ export const api = {
   setCrossfade: (secs) => invoke('set_crossfade_secs', { secs }),
   setRate: (speed, pitchSemitones, keepPitch) => invoke('set_rate', { speed, pitchSemitones, keepPitch }),
   setReplayGain: (mode, preampDb) => invoke('set_replaygain', { mode, preampDb }),
+  setExclusive: (on) => invoke('set_exclusive', { on }),
+  setBitPerfect: (on) => invoke('set_bit_perfect', { on }),
   outputDevices: () => invoke('output_devices'), setOutputDevice: (id) => invoke('set_output_device', { id }),
   // eq
   eqInfo: () => invoke('eq_info'), eqEnabled: (on) => invoke('set_eq_enabled', { on }), eqPreamp: (db) => invoke('set_eq_preamp_db', { db }),

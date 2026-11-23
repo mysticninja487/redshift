@@ -4,6 +4,7 @@ import { setView, toggleFavourite } from '../controller.js';
 import { get } from '../prefs.js';
 import { state } from '../state.js';
 import { fmtKhz, h } from '../util.js';
+import { pathChip } from '../output.js';
 import { icon } from '../ui/icons.js';
 import { lifecycle } from './common.js';
 
@@ -73,12 +74,14 @@ export function mount(el) {
     if (c?.bits_per_sample) bits.push(`${c.bits_per_sample}-bit`);
     else if (t.bitrate_kbps) bits.push(`${t.bitrate_kbps} kbps`);
     if (c?.source_channels) bits.push(c.source_channels === 1 ? 'Mono' : c.source_channels === 2 ? 'Stereo' : `${c.source_channels} ch`);
-    const rg = state.player.replaygain !== 'off' && get('info.replaygain');
+    const chip = pathChip(state.player, c);
+    if (chip) bits.push({ text: chip.text, tone: chip.tone });
+    const rg = state.player.replaygain !== 'off' && !state.player.bit_perfect_mode && get('info.replaygain');
     const db = state.player.replaygain === 'album' ? t.replaygain_album_db ?? t.replaygain_track_db : t.replaygain_track_db ?? t.replaygain_album_db;
     if (rg && db != null) bits.push(`${db > 0 ? '+' : ''}${db.toFixed(1)} dB`);
-    tech.replaceChildren(...bits.map((b) => h('li', null, b)));
+    tech.replaceChildren(...bits.map((b) => (typeof b === 'string' ? h('li', null, b) : h('li', { class: `tech-${b.tone}` }, b.text))));
   }
-  L.on(['track', 'queue', 'ui', 'player-event', 'favs'], render);
+  L.on(['track', 'queue', 'ui', 'player-event', 'favs', 'player'], render);
   L.on('status', render);
   render();
   return { destroy: () => L.destroy() };

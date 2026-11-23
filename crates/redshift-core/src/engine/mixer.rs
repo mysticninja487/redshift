@@ -41,6 +41,8 @@ pub struct Track {
     pub start_frame: u64,
     /// Linear gain applied to this track (ReplayGain).
     pub gain: f32,
+    /// Bits per sample of the file, when known; decides whether a 16-bit output needs dither.
+    pub bits: Option<u8>,
 }
 
 pub enum Command {
@@ -77,7 +79,20 @@ pub struct Shared {
     current_id: AtomicU64,
     playing: AtomicBool,
     underruns: AtomicU64,
+    /// Bit-perfect mode: no equaliser, speed or pitch, ReplayGain or crossfade, so the decoded
+    /// audio reaches the output untouched.
+    bypass: AtomicBool,
+    /// Which stages are changing the signal right now (`PROC_*` bits), published by the mixer.
+    processing: AtomicU32,
 }
+
+/// Bits of [`Shared::processing`].
+pub const PROC_EQ: u32 = 1;
+pub const PROC_SPEED: u32 = 2;
+pub const PROC_VOLUME: u32 = 4;
+pub const PROC_GAIN: u32 = 8;
+pub const PROC_LIMITER: u32 = 16;
+pub const PROC_CROSSFADE: u32 = 32;
 
 impl Shared {
     pub fn new() -> Arc<Self> {
@@ -91,7 +106,19 @@ impl Shared {
             current_id: AtomicU64::new(0),
             playing: AtomicBool::new(false),
             underruns: AtomicU64::new(0),
+            bypass: AtomicBool::new(false),
+            processing: AtomicU32::new(0),
         })
+    }
+    pub fn bypass(&self) -> bool {
+        self.bypass.load(Ordering::Relaxed)
+    }
+    pub fn set_bypass(&self, on: bool) {
+        self.bypass.store(on, Ordering::Relaxed);
+    }
+    /// The `PROC_*` bits for what is changing the sound at the moment.
+    pub fn processing(&self) -> u32 {
+        self.processing.load(Ordering::Relaxed)
     }
     pub fn volume(&self) -> f32 {
         f32::from_bits(self.volume.load(Ordering::Relaxed))
@@ -188,6 +215,8 @@ pub struct Mixer {
     play_gain: f32,
     /// The smoothed volume actually applied.
     volume: f32,
+    /// 0 = the limiter is out of the signal path, 1 = fully in; eased so switching it doesn't click.
+    limit_mix: f32,
 
     in_buf: Vec<f32>,
     out_buf: Vec<f32>,
@@ -224,6 +253,7 @@ impl Mixer {
             playing: false,
             play_gain: 0.0,
             volume: 1.0,
+            limit_mix: 0.0,
             in_buf: vec![0.0; CHUNK * 2],
             out_buf: vec![0.0; CHUNK * 2],
         }
@@ -235,22 +265,57 @@ impl Mixer {
     /// chunk boundary, and a source must never be read for audio that is then thrown away.
     pub fn render(&mut self, out: &mut [f32]) {
         self.drain_commands();
-        let (tempo, pitch) = (self.shared.tempo(), self.shared.pitch());
+        let bypass = self.shared.bypass();
+        let (tempo, pitch) = if bypass { (1.0, 1.0) } else { (self.shared.tempo(), self.shared.pitch()) };
         if tempo != 1.0 || pitch != 1.0 {
             self.stretching = true;
         }
         for chunk in out.chunks_mut(CHUNK * 2) {
-            if self.stretching {
+            if self.stretching && !bypass {
                 self.stretched_chunk(chunk, tempo, pitch);
             } else {
                 self.mix_chunk(chunk, false);
             }
-            self.eq.process(chunk);
+            if !bypass {
+                self.eq.process(chunk);
+            }
             self.tap.write(chunk);
-            self.apply_output_stage(chunk);
+            self.apply_output_stage(chunk, bypass);
         }
+        self.publish_processing(bypass, tempo, pitch);
         self.shared.position_frames.store(self.current.as_ref().map_or(0, Active::position), Ordering::Relaxed);
         self.shared.current_id.store(self.current.as_ref().map_or(0, |a| a.track.id), Ordering::Relaxed);
+    }
+
+    /// Whether rounding to a 16-bit output needs dither: only when the sound was changed on the way
+    /// or the file has more than 16 bits. A 16-bit file passed through untouched must stay exact.
+    pub fn dither_wanted(&self) -> bool {
+        self.shared.processing() != 0 || self.current.as_ref().is_none_or(|a| a.track.bits.is_none_or(|b| b > 16))
+    }
+
+    fn publish_processing(&self, bypass: bool, tempo: f32, pitch: f32) {
+        let mut p = 0;
+        if !bypass {
+            if self.eq.engaged() {
+                p |= PROC_EQ;
+            }
+            if tempo != 1.0 || pitch != 1.0 {
+                p |= PROC_SPEED;
+            }
+            if self.current.as_ref().is_some_and(|a| a.track.gain != 1.0) {
+                p |= PROC_GAIN;
+            }
+        }
+        if self.shared.volume() != 1.0 || self.shared.muted() {
+            p |= PROC_VOLUME;
+        }
+        if self.limit_mix > 0.0 {
+            p |= PROC_LIMITER;
+        }
+        if self.fade.is_some() {
+            p |= PROC_CROSSFADE;
+        }
+        self.shared.processing.store(p, Ordering::Relaxed);
     }
 
     /// One chunk through the speed and pitch stage. Paused, nothing is read: the stage only runs while
@@ -353,7 +418,7 @@ impl Mixer {
         if self.fade.is_some() {
             return;
         }
-        let cf = self.shared.crossfade_frames() as u64;
+        let cf = if self.shared.bypass() { 0 } else { self.shared.crossfade_frames() as u64 };
         if cf == 0 {
             return;
         }
@@ -391,6 +456,7 @@ impl Mixer {
         }
         let chunk = &mut chunk[..n * 2];
         self.maybe_start_crossfade();
+        let bypass = self.shared.bypass();
 
         // --- current track ---
         self.in_buf[..n * 2].fill(0.0);
@@ -398,7 +464,7 @@ impl Mixer {
         while filled < n {
             let Some(cur) = self.current.as_mut() else { break };
             let (got, ended) = cur.track.source.read(&mut self.in_buf[filled * 2..n * 2]);
-            let g = cur.track.gain;
+            let g = if bypass { 1.0 } else { cur.track.gain };
             if g != 1.0 {
                 for s in &mut self.in_buf[filled * 2..(filled + got) * 2] {
                     *s *= g;
@@ -425,7 +491,7 @@ impl Mixer {
                 self.out_buf[..n * 2].fill(0.0);
                 let (got, _) = fade.outgoing.track.source.read(&mut self.out_buf[..n * 2]);
                 fade.outgoing.played += got as u64;
-                let g = fade.outgoing.track.gain;
+                let g = if bypass { 1.0 } else { fade.outgoing.track.gain };
                 for i in 0..n {
                     let t = ((fade.done + i as u64) as f32 / fade.len as f32).min(1.0);
                     // Equal power: constant loudness across the fade for unrelated material.
@@ -444,20 +510,47 @@ impl Mixer {
         }
     }
 
-    /// Volume, pause ramp, and a soft limiter so EQ boosts can't hard-clip.
-    fn apply_output_stage(&mut self, out: &mut [f32]) {
+    /// Volume, pause ramp, and a soft limiter so boosts can't hard-clip. The limiter is only in the
+    /// signal path while something can push the signal over full scale (an equaliser boost, a gain
+    /// above 1, a volume above 100%, speed/pitch processing, a crossfade); otherwise the audio is
+    /// only guarded against going past full scale, and everything inside it, loud peaks included,
+    /// passes unchanged.
+    fn apply_output_stage(&mut self, out: &mut [f32], bypass: bool) {
         let sr = self.sample_rate as f32;
         let target_vol = if self.shared.muted() { 0.0 } else { self.shared.volume() };
         // ~10 ms smoothing for volume changes.
         let vol_k = 1.0 - (-1.0 / (0.010 * sr)).exp();
         let ramp = 1.0 / PAUSE_RAMP_FRAMES as f32;
         let play_target = if self.playing { 1.0 } else { 0.0 };
+        let may_overshoot = (!bypass
+            && (self.eq.engaged()
+                || self.stretching
+                || self.fade.is_some()
+                || self.current.as_ref().is_some_and(|a| a.track.gain > 1.0)))
+            || target_vol > 1.0;
+        let limit_target = if may_overshoot { 1.0 } else { 0.0 };
+        let limit_step = 1.0 / (0.010 * sr);
         for frame in out.chunks_exact_mut(2) {
             self.volume += (target_vol - self.volume) * vol_k;
+            // The smoothing alone would creep towards the target without ever landing on it (below about 5e-5 away each step rounds to nothing, so it can
+            // stall one step short of 1.0), and a volume of 0.99999994 is not bit-perfect.
+            if (target_vol - self.volume).abs() < 5e-5 {
+                self.volume = target_vol;
+            }
             self.play_gain += (play_target - self.play_gain).clamp(-ramp, ramp);
+            self.limit_mix += (limit_target - self.limit_mix).clamp(-limit_step, limit_step);
             let g = self.volume * self.play_gain;
-            frame[0] = soft_clip(frame[0] * g);
-            frame[1] = soft_clip(frame[1] * g);
+            for s in frame.iter_mut() {
+                let x = *s * g;
+                let hard = x.clamp(-1.0, 1.0);
+                *s = if self.limit_mix <= 0.0 {
+                    hard
+                } else if self.limit_mix >= 1.0 {
+                    soft_clip(x)
+                } else {
+                    hard + (soft_clip(x) - hard) * self.limit_mix
+                };
+            }
         }
     }
 }
@@ -550,7 +643,7 @@ mod tests {
     }
 
     fn track(id: u64, source: Box<dyn FrameSource>, frames: usize) -> Track {
-        Track { id, source, total_frames: Some(frames as u64), start_frame: 0, gain: 1.0 }
+        Track { id, source, total_frames: Some(frames as u64), start_frame: 0, gain: 1.0, bits: None }
     }
 
     impl Rig {
@@ -590,6 +683,62 @@ mod tests {
         fn settle(&mut self) {
             self.run(4800);
         }
+    }
+
+    /// A 24-bit style signal with loud peaks (above the old limiter's 0.8 knee) leaves the mixer
+    /// unchanged, bit for bit, once the volume has settled at 100%.
+    #[test]
+    fn loud_audio_passes_through_bit_for_bit_at_full_volume() {
+        let data: Vec<f32> = (0..20_000)
+            .flat_map(|i| {
+                let v = ((i as f32 * 0.37).sin() * 0.999_999_9).clamp(-1.0, 1.0);
+                // snap to a 24-bit grid like a decoded file would be
+                let q = (v * 8_388_608.0).round() / 8_388_608.0;
+                [q, -q]
+            })
+            .collect();
+        let mut r = rig().ready();
+        r.start(1, VecSource::new(data.clone()), 20_000);
+        let out = r.run(20_000);
+        let want: Vec<f32> = data.chunks_exact(2).map(|f| f[0]).collect();
+        assert_eq!(out.len(), want.len());
+        assert!(out.iter().zip(&want).all(|(a, b)| a == b), "samples changed on the way through");
+        assert!(want.iter().any(|v| v.abs() > 0.9), "the test signal has loud peaks");
+        assert_eq!(r.shared.processing(), 0, "nothing is reported as changing the sound");
+    }
+
+    /// Easing the volume back up to 100% lands exactly on 1.0 (it used to be able to stall a hair below).
+    #[test]
+    fn volume_returns_to_exactly_one() {
+        let mut r = rig().ready();
+        r.start(1, VecSource::constant(0.7, 600_000), 600_000);
+        r.shared.set_volume(0.3);
+        r.settle();
+        r.shared.set_volume(1.0);
+        r.run(48_000);
+        assert_eq!(r.mixer.volume, 1.0);
+        assert!(r.run(100).iter().all(|&v| v == 0.7));
+    }
+
+    /// Bit-perfect mode ignores the equaliser, ReplayGain, speed and pitch.
+    #[test]
+    fn bypass_mode_skips_eq_gain_and_stretch() {
+        let mut r = rig().ready();
+        r.eq.set_enabled(true);
+        r.eq.set_preamp_db(6.0);
+        r.shared.set_stretch(1.5, 1.0);
+        let t = Track { gain: 0.5, ..track(1, VecSource::constant(0.4, 100_000), 100_000) };
+        r.cmd.send(Command::Start { track: t, fade_frames: 0 }).unwrap();
+        r.shared.set_bypass(true);
+        r.settle();
+        let out = r.run(2_000);
+        assert!(out.iter().all(|&v| v == 0.4), "untouched: {:?}", &out[..4]);
+        assert_eq!(r.shared.processing(), 0);
+        r.shared.set_bypass(false);
+        r.settle();
+        let out = r.run(100);
+        assert!(out.iter().any(|&v| v != 0.4), "with bypass off the gain and EQ apply again");
+        assert!(r.shared.processing() & (PROC_EQ | PROC_GAIN) != 0);
     }
 
     #[test]

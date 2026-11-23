@@ -49,7 +49,9 @@ Every shortcut can be changed in Settings > Shortcuts.
 
 ### Playback
 
-- FLAC up to 24-bit / 192 kHz, Opus, MP3, Ogg Vorbis, WAV and AAC / M4A / ALAC. Any sample rate is converted to what your sound device runs at.
+- FLAC up to 24-bit / 192 kHz, Opus, MP3, Ogg Vorbis, WAV and AAC / M4A / ALAC.
+- **Exclusive mode** (Settings > Playback > Output, Windows): Redshift takes the sound device for itself and opens it at each song's own sample rate and bit depth, so nothing is mixed in or resampled. If the device refuses, Redshift plays the usual way and says why. Without it, a song's rate is converted to what Windows runs the device at.
+- **Bit-perfect mode** switches off the equaliser, ReplayGain, speed, pitch and crossfade. Now Playing shows a **Bit-perfect** tag when the file's own samples reach the device untouched (exclusive output, the song's own rate, no processing, volume at 100%), and Song info shows the whole signal path, including what changes it when it isn't.
 - **Gapless** for every format (encoder padding is cut from MP3, Vorbis and M4A), or a **crossfade** of 0–12 s.
 - ReplayGain (track or album, with a pre-amp) and output device selection.
 - **Speed and pitch**: 0.5×–2× and ±12 semitones, either time-stretched (the key stays) or tape style (pitch follows speed).
@@ -202,10 +204,10 @@ Every online feature goes through `redshift-core::net`: add the provider as a mo
 
 ## Not done yet
 
-- Testing on more real Windows machines and sound hardware. The engine's tests use a simulated sound card, so device-specific bugs are likely.
+- Testing on more real Windows machines and sound hardware. The engine's tests use a simulated sound card, so device-specific bugs are likely. Exclusive mode has been compiled for Windows but not run on a real device yet.
 - Opus files with more than two channels (reported as unsupported).
 - Playlist import from Spotify and YouTube relies on formats those services do not promise, and has been tested against sample replies rather than live ones. Updating from the app (Update now) downloads the release's installer, or the portable `.exe` for a bare copy, and restarts; it has been compiled for Windows but not run there. Automatic updates. See the roadmap.
 
 ## Licence
 
-MIT.
+MIT, see [LICENSE](LICENSE). The open-source components Redshift is built from, and their licences, are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

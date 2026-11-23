@@ -15,6 +15,7 @@ use crossbeam_channel::{bounded, unbounded, Receiver};
 use parking_lot::Mutex;
 use serde::Serialize;
 
+use super::exclusive;
 use super::mixer::Mixer;
 use crate::error::{Error, Result};
 
@@ -42,29 +43,65 @@ pub fn list_output_devices() -> Vec<DeviceInfo> {
         .collect()
 }
 
+/// What the output actually is, for the readout in the app.
+#[derive(Debug, Clone, Serialize, Default, PartialEq)]
+pub struct OutputInfo {
+    pub device_name: String,
+    pub sample_rate: u32,
+    /// The device was opened exclusively (nothing else is mixed in, nothing resamples).
+    pub exclusive: bool,
+    /// Bits per sample sent to the device (valid bits for integer formats).
+    pub bits: u8,
+    /// Floating point samples (shared mode through Windows usually is).
+    pub float: bool,
+    /// Why exclusive mode was asked for but not used, when that happened.
+    pub fallback: Option<String>,
+}
+
+/// How to open a hardware output.
+#[derive(Debug, Clone, Default)]
+pub struct DeviceOpts {
+    /// Device id, or `None` for the system default.
+    pub id: Option<String>,
+    /// Try to take the device exclusively, at the rate below (Windows only).
+    pub exclusive: bool,
+    /// The rate to open at in exclusive mode; shared mode always uses the device's own rate.
+    pub rate_hint: Option<u32>,
+}
+
 pub enum OutputKind {
-    /// A hardware device by id, or the system default.
-    Device(Option<String>),
-    /// No hardware: render at `sample_rate` into `sink`, `speed` times faster than real time.
-    Offline { sample_rate: u32, sink: Arc<Mutex<Vec<f32>>>, speed: f32 },
+    /// A hardware device.
+    Device(DeviceOpts),
+    /// No hardware: render at `sample_rate` into `sink`, `speed` times faster than real time. With
+    /// `follow_rate`, a `rate_hint` is honoured the way an exclusive device would (for tests).
+    Offline { sample_rate: u32, sink: Arc<Mutex<Vec<f32>>>, speed: f32, follow_rate: bool, rate_hint: Option<u32> },
 }
 
 /// A running output. Dropping it stops the audio thread and releases the device.
 pub struct OutputHandle {
     pub sample_rate: u32,
     pub device_name: String,
+    pub info: OutputInfo,
     /// Stream errors, as text, for the player to react to (a device that vanished, say).
     pub errors: Receiver<String>,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
 
-impl Drop for OutputHandle {
-    fn drop(&mut self) {
+impl OutputHandle {
+    /// Stops the stream and waits for the device to be released (exclusive mode needs that before
+    /// the device can be opened again).
+    pub fn close(&mut self) {
         self.stop.store(true, Ordering::Release);
         if let Some(t) = self.thread.take() {
             let _ = t.join();
         }
+    }
+}
+
+impl Drop for OutputHandle {
+    fn drop(&mut self) {
+        self.close();
     }
 }
 
@@ -75,25 +112,40 @@ pub fn start_output(
     make_mixer: impl FnOnce(u32) -> Mixer + Send + 'static,
 ) -> Result<OutputHandle> {
     let stop = Arc::new(AtomicBool::new(false));
-    let (ready_tx, ready_rx) = bounded::<Result<(u32, String)>>(1);
+    let (ready_tx, ready_rx) = bounded::<Result<OutputInfo>>(1);
     let (err_tx, err_rx) = unbounded::<String>();
     let thread_stop = stop.clone();
 
     let thread = thread::Builder::new()
         .name("redshift-audio".into())
         .spawn(move || match kind {
-            OutputKind::Device(id) => run_device(id, make_mixer, thread_stop, ready_tx, err_tx),
-            OutputKind::Offline { sample_rate, sink, speed } => {
-                let _ = ready_tx.send(Ok((sample_rate, "offline".into())));
+            OutputKind::Device(opts) => run_device(opts, make_mixer, thread_stop, ready_tx, err_tx),
+            OutputKind::Offline { sample_rate, sink, speed, follow_rate, rate_hint } => {
+                let sample_rate = if follow_rate { rate_hint.unwrap_or(sample_rate) } else { sample_rate };
+                let info = OutputInfo {
+                    device_name: "offline".into(),
+                    sample_rate,
+                    exclusive: follow_rate,
+                    // A rate-following offline output stands in for an exclusive integer device.
+                    bits: if follow_rate { 24 } else { 32 },
+                    float: !follow_rate,
+                    fallback: None,
+                };
+                let _ = ready_tx.send(Ok(info));
                 run_offline(make_mixer(sample_rate), sample_rate, sink, speed, thread_stop);
             }
         })
         .map_err(Error::Io)?;
 
     match ready_rx.recv_timeout(Duration::from_secs(10)) {
-        Ok(Ok((sample_rate, device_name))) => {
-            Ok(OutputHandle { sample_rate, device_name, errors: err_rx, stop, thread: Some(thread) })
-        }
+        Ok(Ok(info)) => Ok(OutputHandle {
+            sample_rate: info.sample_rate,
+            device_name: info.device_name.clone(),
+            info,
+            errors: err_rx,
+            stop,
+            thread: Some(thread),
+        }),
         Ok(Err(e)) => {
             let _ = thread.join();
             Err(e)
@@ -117,12 +169,34 @@ fn run_offline(mut mixer: Mixer, sample_rate: u32, sink: Arc<Mutex<Vec<f32>>>, s
 }
 
 fn run_device(
-    id: Option<String>,
+    opts: DeviceOpts,
     make_mixer: impl FnOnce(u32) -> Mixer,
     stop: Arc<AtomicBool>,
-    ready: crossbeam_channel::Sender<Result<(u32, String)>>,
+    ready: crossbeam_channel::Sender<Result<OutputInfo>>,
     errors: crossbeam_channel::Sender<String>,
 ) {
+    // Exclusive first, when asked for. If it can't be had, say why and carry on in shared mode.
+    let mut fallback = None;
+    if opts.exclusive {
+        match exclusive::prepare(&opts.id, opts.rate_hint) {
+            Ok(prepared) => {
+                let info = OutputInfo {
+                    device_name: prepared.device_name.clone(),
+                    sample_rate: prepared.rate,
+                    exclusive: true,
+                    bits: prepared.format.valid_bits(),
+                    float: false,
+                    fallback: None,
+                };
+                let mixer = make_mixer(prepared.rate);
+                let _ = ready.send(Ok(info));
+                exclusive::run(prepared, mixer, stop, errors);
+                return;
+            }
+            Err(reason) => fallback = Some(reason),
+        }
+    }
+    let id = opts.id;
     let setup = || -> Result<(cpal::Device, cpal::SupportedStreamConfig, String)> {
         let host = cpal::default_host();
         let device = match &id {
@@ -163,7 +237,15 @@ fn run_device(
             return;
         }
     };
-    let _ = ready.send(Ok((sample_rate, name)));
+    let info = OutputInfo {
+        device_name: name,
+        sample_rate,
+        exclusive: false,
+        bits: (format.sample_size() * 8) as u8,
+        float: format.is_float(),
+        fallback,
+    };
+    let _ = ready.send(Ok(info));
 
     while !stop.load(Ordering::Acquire) {
         thread::sleep(Duration::from_millis(50));

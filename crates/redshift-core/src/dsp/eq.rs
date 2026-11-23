@@ -233,6 +233,11 @@ impl Equalizer {
         }
     }
 
+    /// Whether the equaliser is changing the signal (as of the last `process`).
+    pub fn engaged(&self) -> bool {
+        !(self.wet == 0.0 && self.wet_target == 0.0) && (self.preamp != 1.0 || self.active.iter().any(|a| *a))
+    }
+
     pub fn process(&mut self, buf: &mut [f32]) {
         self.refresh();
         if self.wet == 0.0 && self.wet_target == 0.0 {

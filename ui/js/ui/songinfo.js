@@ -7,6 +7,7 @@ import { dateLocale, fmtKhz, fmtTime, h, plural, toast } from '../util.js';
 import { icon } from './icons.js';
 import { button } from './controls.js';
 import { modal } from './dialog.js';
+import { outputLine, pathVerdict } from '../output.js';
 
 const CODEC = { flac: 'FLAC', opus: 'Opus', mp3: 'MP3', ogg: 'Ogg Vorbis', oga: 'Ogg Vorbis', m4a: 'AAC / ALAC (M4A)', aac: 'AAC', wav: 'WAV', wv: 'WavPack', ape: 'Monkey’s Audio', aiff: 'AIFF', aif: 'AIFF' };
 
@@ -25,6 +26,17 @@ const gain = (db) => (db == null ? '' : `${db > 0 ? '+' : ''}${db.toFixed(2)} dB
 /** The rows of the dialog, as [section title, [[label, value], …]] with empty values left out. */
 // Values taken from the song's own tags are never translated.
 const USER_TEXT = new Set(['Title', 'Artist', 'Album', 'Album artist', 'Composer', 'Genre', 'Comment', 'Location']);
+
+/** Where this song is going and whether it arrives untouched; only while it is the song playing. */
+function playingNow(path) {
+  const cur = state.queue.current;
+  if (!cur || state.trackPath !== path || state.player.status === 'stopped') return [];
+  const v = pathVerdict(state.player, cur);
+  return [
+    ['Output', outputLine(state.player)],
+    ['Signal path', v ? (v.kind === 'perfect' ? 'Bit-perfect: reaches the device untouched' : v.reasons.join(' · ')) : ''],
+  ];
+}
 
 export function infoSections(info) {
   const m = info.meta;
@@ -51,6 +63,7 @@ export function infoSections(info) {
       ['Channels', channels],
       ['ReplayGain', [m.replaygain_track_db != null ? `track ${gain(m.replaygain_track_db)}` : '', m.replaygain_album_db != null ? `album ${gain(m.replaygain_album_db)}` : ''].filter(Boolean).join(' · ')],
     ]],
+    ['Playing now', playingNow(m.path)],
     ['Listening', info.in_library || info.plays || info.listened_secs ? [
       ['Plays', plural(info.plays, 'play')],
       ['Time listened', info.listened_secs ? listened(info.listened_secs) : ''],

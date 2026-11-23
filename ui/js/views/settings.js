@@ -23,6 +23,7 @@ import { mount as mountEq } from '../panels/eq.js';
 import { confirmDialog } from '../ui/dialog.js';
 import { aboutBlock, openHelp } from '../ui/help.js';
 import { LANGUAGES } from '../i18n.js';
+import { outputLine, pathVerdict } from '../output.js';
 import { MAX_PITCH, MAX_SPEED, MIN_SPEED, formatPitch, formatSpeed, getRate, isNormal, resetRate, setRate } from '../rate.js';
 
 // [id, label, icon]. A tab with `SUBS` shows those as a second row of choices above its page.
@@ -383,6 +384,23 @@ export function mountSettings(root) {
   }
 
   // ---------- Playback ----------
+  /** What the sound path is doing right now; keeps itself current while Settings is open. */
+  function outputReadout() {
+    const box = h('div', { class: 'out-read', role: 'status' });
+    const paint = () => {
+      const p = state.player, cur = state.queue.current, v = pathVerdict(p, cur);
+      const line = outputLine(p);
+      const kids = [h('div', { class: 'out-line' }, line || 'No output yet')];
+      if (p.exclusive && !p.output?.exclusive && p.output?.fallback) kids.push(h('div', { class: 'out-note warn' }, `Exclusive mode didn’t start: ${p.output.fallback}`));
+      if (v) kids.push(h('div', { class: `out-note ${v.kind}` }, v.kind === 'perfect' ? 'Bit-perfect: this song reaches the device untouched.' : v.reasons.join(' · ')));
+      box.replaceChildren(...kids);
+    };
+    paint();
+    const offs = [on('player', paint), on('track', paint)];
+    previews.push({ destroy: () => offs.forEach((f) => f()) });
+    return box;
+  }
+
   function playback() {
     const p = state.player;
     const dev = h('div', { class: 'set-row-inline' }, select({ label: 'Output device', value: '', options: [{ value: '', label: 'Loading…' }] }));
@@ -404,7 +422,13 @@ export function mountSettings(root) {
       group('Loudness',
         row('ReplayGain', segmented({ label: 'ReplayGain', options: [{ value: 'off', label: 'Off' }, { value: 'track', label: 'Track' }, { value: 'album', label: 'Album' }], value: p.replaygain, onChange: (v) => act(api.setReplayGain(v, state.player.replaygain_preamp_db)).then(refreshPlayer) }), { hint: 'Evens out loudness using tags in the files. Never pushes a song past clipping.' }),
         row('Pre-amp', slider({ min: -12, max: 12, step: 0.5, value: p.replaygain_preamp_db, center: true, reset: 0, label: 'ReplayGain pre-amp', onChange: (v) => act(api.setReplayGain(state.player.replaygain, v)).then(refreshPlayer), format: (v) => `${v > 0 ? '+' : ''}${v} dB` }))),
-      group('Output', row('Device', dev), h('p', { class: 'hint' }, p.sample_rate ? `Running at ${p.sample_rate / 1000} kHz. Songs at other rates are converted.` : '')),
+      group('Output',
+        row('Device', dev),
+        row('Exclusive mode', toggle({ label: 'Exclusive mode', value: !!p.exclusive, onChange: async (v) => { await act(api.setExclusive(v)); await refreshSettings(); await refreshPlayer(); } }),
+          { hint: 'Takes the device for Redshift alone and opens it at each song’s own sample rate, so nothing is mixed in or resampled. Other apps go quiet while it is on, and songs at a new rate start with a brief pause. If the device refuses, Redshift plays the usual way and says why below.' }),
+        row('Bit-perfect mode', toggle({ label: 'Bit-perfect mode', value: !!p.bit_perfect_mode, onChange: async (v) => { await act(api.setBitPerfect(v)); await refreshSettings(); await refreshPlayer(); } }),
+          { hint: 'Switches off the equaliser, ReplayGain, speed, pitch and crossfade, so the file’s own samples are what gets played. Keep the volume at 100% for the exact signal.' }),
+        outputReadout()),
       group('Queue', queueOptions()));
   }
 

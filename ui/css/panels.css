@@ -11,6 +11,8 @@
 .i-album { display: flex; gap: 10px; color: var(--fg2); font-size: .9rem; }
 .i-year { color: var(--fg3); font-family: var(--font-mono); font-size: .8rem; align-self: center; }
 .i-tech { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; padding: 0; list-style: none; }
+.i-tech li.tech-perfect { color: var(--accent); border-color: var(--accent); }
+.i-tech li.tech-exclusive, .i-tech li.tech-resampled { color: var(--fg); }
 .i-tech li { font-family: var(--font-mono); font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border: var(--bw) solid var(--line); border-radius: var(--r-btn); color: var(--fg2); }
 .i-empty { display: grid; gap: 12px; justify-items: start; color: var(--fg2); margin-top: 6px; }
 .panel.is-idle .i-title { color: var(--fg2); }

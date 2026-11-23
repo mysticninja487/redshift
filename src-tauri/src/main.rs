@@ -146,6 +146,14 @@ fn set_rate(state: State<AppState>, speed: f32, pitch_semitones: f32, keep_pitch
     state.0.set_rate(Rate { speed, pitch_semitones, keep_pitch });
 }
 #[tauri::command(async)]
+fn set_exclusive(state: State<AppState>, on: bool) {
+    state.0.set_exclusive(on);
+}
+#[tauri::command(async)]
+fn set_bit_perfect(state: State<AppState>, on: bool) {
+    state.0.set_bit_perfect(on);
+}
+#[tauri::command(async)]
 fn set_replaygain(state: State<AppState>, mode: ReplayGainMode, preamp_db: f32) {
     state.0.set_replaygain(mode, preamp_db);
 }
@@ -1155,7 +1163,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             set_queue, set_queue_options, set_notify_on_track, set_online, set_presence, presence_status, presence_preview, online_lyrics, check_updates, download_update, install_update, net_report, clear_net_data, open_project_page, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
             queue_append, queue_play_next, queue_remove, queue_move, queue_clear, player_state, queue_view,
-            get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_rate, set_replaygain,
+            get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_rate, set_replaygain, set_exclusive, set_bit_perfect,
             output_devices, set_output_device,
             eq_info, set_eq_enabled, set_eq_preamp_db, set_eq_band_db, set_eq_gains_db, apply_eq_preset, eq_curve,
             save_eq_preset, delete_eq_preset, set_tray, toggle_mini_player, mini_size, mini_on_top, favourite_paths, favourites, set_favourite, play_stats,
