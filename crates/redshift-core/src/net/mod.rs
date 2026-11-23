@@ -499,9 +499,27 @@ pub(crate) mod testserver {
         std::thread::spawn(move || {
             for stream in listener.incoming() {
                 let Ok(mut stream) = stream else { break };
+                // Read the whole request, body included. Replying and closing with part of a POST
+                // still unread makes Windows reset the connection and drop the reply (os error 10054).
+                let mut data: Vec<u8> = Vec::new();
                 let mut buf = [0u8; 4096];
-                let n = stream.read(&mut buf).unwrap_or(0);
-                let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                loop {
+                    let n = stream.read(&mut buf).unwrap_or(0);
+                    if n == 0 {
+                        break;
+                    }
+                    data.extend_from_slice(&buf[..n]);
+                    let Some(end) = data.windows(4).position(|w| w == b"\r\n\r\n") else { continue };
+                    let head = String::from_utf8_lossy(&data[..end]).to_lowercase();
+                    let want = head
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:").and_then(|v| v.trim().parse::<usize>().ok()))
+                        .unwrap_or(0);
+                    if data.len() >= end + 4 + want {
+                        break;
+                    }
+                }
+                let text = String::from_utf8_lossy(&data).to_string();
                 r.lock().push(text);
                 let i = h.fetch_add(1, Ordering::SeqCst).min(replies.len() - 1);
                 let c = &replies[i];
@@ -512,6 +530,8 @@ pub(crate) mod testserver {
                 out.push_str("\r\n");
                 out.push_str(&c.body);
                 let _ = stream.write_all(out.as_bytes());
+                let _ = stream.flush();
+                let _ = stream.shutdown(std::net::Shutdown::Write);
             }
         });
         Server { base: format!("http://127.0.0.1:{port}"), hits, requests }
