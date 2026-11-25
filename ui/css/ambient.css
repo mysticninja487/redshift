@@ -26,7 +26,9 @@ html[data-ambient] .ambient { position: fixed; inset: 0; z-index: 80; overflow: 
 /* lyrics */
 .ambient .am-lyrics { position: relative; z-index: 1; align-self: stretch; justify-self: center; width: min(1180px, 88vw); margin-bottom: 84px; min-height: 0; background: none; border: 0; padding: 0; box-shadow: none; }
 .ambient[data-mode="viz"] .am-lyrics, .ambient[data-mode="viz"] .am-nolyrics { display: none; }
-.ambient .am-lyrics .lyrics[data-align] .ly-scroll { text-align: center; padding: 42cqh 0; }
+/* Side padding leaves room for the active line to grow (scale 1.04) and for its glow: the scroller clips whatever pokes out of it. */
+.ambient .am-lyrics .lyrics[data-align] .ly-scroll { text-align: center; padding: 42cqh 4%; }
+.ambient .am-lyrics .ly-line { overflow-wrap: anywhere; }
 .ambient .am-lyrics .ly-line { font-size: clamp(1.7rem, calc(4.6vh * var(--am-lyrics-size, 1)), 5.6rem); line-height: 1.2; margin-bottom: .5em; transform-origin: center; text-shadow: 0 2px 26px color-mix(in srgb, var(--bg) 70%, transparent); }
 .ambient .am-lyrics .ly-line.active { transform: scale(1.04); }
 .ambient .am-lyrics .ly-badge, .ambient .am-lyrics .ly-edit, .ambient .am-lyrics .ly-online { display: none; }

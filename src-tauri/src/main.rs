@@ -401,6 +401,14 @@ fn remove_from_playlist(state: State<AppState>, id: PlaylistId, positions: Vec<u
     state.0.remove_from_playlist(id, &positions).map_err(err)
 }
 #[tauri::command(async)]
+fn playlist_membership(state: State<AppState>, paths: Vec<PathBuf>) -> Vec<redshift_core::playlists::Membership> {
+    state.0.playlist_membership(&paths)
+}
+#[tauri::command(async)]
+fn remove_songs_from_playlist(state: State<AppState>, id: PlaylistId, paths: Vec<PathBuf>) -> CmdResult<usize> {
+    state.0.remove_songs_from_playlist(id, &paths).map_err(err)
+}
+#[tauri::command(async)]
 fn move_in_playlist(state: State<AppState>, id: PlaylistId, from: usize, to: usize) -> CmdResult<()> {
     state.0.move_in_playlist(id, from, to).map_err(err)
 }
@@ -1199,7 +1207,7 @@ fn main() {
             library_folders, add_library_folder, remove_library_folder, scan_library, is_scanning,
             library_tracks, search_library, library_albums, library_artists, recently_added, track_meta, lyrics, tag_form, write_tags, save_lyrics_file, write_look_file, read_look_file, image_preview, waveform,
             playlists, playlist, create_playlist, rename_playlist, delete_playlist, move_playlist,
-            add_to_playlist, remove_from_playlist, move_in_playlist, import_m3u, playlist_import_preview, export_m3u, play_playlist,
+            add_to_playlist, remove_from_playlist, playlist_membership, remove_songs_from_playlist, move_in_playlist, import_m3u, playlist_import_preview, export_m3u, play_playlist,
         ])
         .build(tauri::generate_context!())
         .expect("failed to build the Redshift window");

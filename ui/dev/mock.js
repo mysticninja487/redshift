@@ -136,7 +136,7 @@ function lyricsFor(path) {
   const start = 9000, span = (t.duration_secs - 20) * 1000 / n;
   for (let i = 0; i < n; i++) {
     if (i % 8 === 7) { continue; }
-    const words = Array.from({ length: 3 + Math.floor(r() * 4) }, () => LYRIC_WORDS[Math.floor(r() * LYRIC_WORDS.length)]);
+    const words = Array.from({ length: i % 5 === 2 ? 15 : 3 + Math.floor(r() * 4) }, () => LYRIC_WORDS[Math.floor(r() * LYRIC_WORDS.length)]);
     const time = Math.round(start + i * span);
     const ws = words.map((w, k) => ({ time_ms: time + Math.round((k / words.length) * span * 0.8), text: (k ? ' ' : '') + w }));
     lines.push({ time_ms: synced ? time : 0, text: words.join(' ').replace(/^./, (c) => c.toUpperCase()), words: t._album === 1 ? ws : [] });
@@ -405,7 +405,7 @@ const cmds = {
   sleep_status: () => sleepStatus(),
   listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
   listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
-  app_info: () => ({ version: '0.7.1', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
+  app_info: () => ({ version: '0.7.2', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
   open_data_folder: () => null,
   song_info: ({ path }) => {
     const t = tracks.find((x) => x.path === path); if (!t) throw new Error('That file isn\u2019t there any more');
@@ -494,7 +494,7 @@ const cmds = {
     if (!S.online.enabled) throw 'online features are turned off';
     NET_LOG.unshift({ time: Math.floor(Date.now() / 1000), purpose: 'Update check', host: 'api.github.com', url: 'https://api.github.com/repos/mysticninja487/redshift/releases/latest', status: 200, bytes: 1180, cached: false, error: null });
     await new Promise((r) => setTimeout(r, 300));
-    return globalThis.__mockUpdate ?? { current: '0.7.1', latest: '0.7.2', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.6', notes: 'Online playlist import for YouTube.\nFixes and small improvements.', asset: { name: 'Redshift_0.6.6_x64-setup.exe', url: 'https://github.com/mysticninja487/redshift/releases/download/v0.6.6/Redshift_0.6.6_x64-setup.exe', size: 31457280, sha256: null, kind: 'installer' } };
+    return globalThis.__mockUpdate ?? { current: '0.7.2', latest: '0.7.3', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.6', notes: 'Online playlist import for YouTube.\nFixes and small improvements.', asset: { name: 'Redshift_0.6.6_x64-setup.exe', url: 'https://github.com/mysticninja487/redshift/releases/download/v0.6.6/Redshift_0.6.6_x64-setup.exe', size: 31457280, sha256: null, kind: 'installer' } };
   },
   download_update: async ({ asset }) => { for (let i = 1; i <= 10; i++) { emit('update-progress', { done: asset.size * i / 10, total: asset.size }); await new Promise((r) => setTimeout(r, 120)); } return '/mock/updates/' + asset.name; },
   install_update: () => { globalThis.__mockInstalled = true; },
@@ -563,6 +563,8 @@ const cmds = {
   rename_playlist: ({ id, name }) => { PL.list.find((p) => p.id === id).name = name; }, delete_playlist: ({ id }) => { PL.list = PL.list.filter((p) => p.id !== id); },
   move_playlist: () => {}, add_to_playlist: ({ id, tracks: ts }) => { PL.list.find((p) => p.id === id).tracks.push(...ts); },
   remove_from_playlist: ({ id, positions }) => { const p = PL.list.find((x) => x.id === id); p.tracks = p.tracks.filter((_, i) => !positions.includes(i)); },
+  playlist_membership: ({ paths }) => PL.list.map((p) => ({ id: p.id, name: p.name, contains: new Set(p.tracks.filter((t) => paths.includes(t))).size })),
+  remove_songs_from_playlist: ({ id, paths }) => { const p = PL.list.find((x) => x.id === id); const n = p.tracks.length; p.tracks = p.tracks.filter((t) => !paths.includes(t)); return n - p.tracks.length; },
   move_in_playlist: ({ id, from, to }) => { const p = PL.list.find((x) => x.id === id); const [t] = p.tracks.splice(from, 1); p.tracks.splice(to, 0, t); },
   playlist_import_preview: async ({ input }) => {
     const text = String(input).trim();

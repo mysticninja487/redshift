@@ -61,7 +61,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .menu-item:hover, .menu-item:focus-visible { background: var(--accent); color: var(--on-accent); outline: none; }
 .menu-item:disabled { opacity: .4; }
 .menu-sep { height: 1px; background: var(--line); margin: 4px 6px; }
-.menu-sub { display: none; position: absolute; top: -6px; left: 100%; }
+.menu-sub { display: none; position: absolute; top: -6px; left: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .menu-item:hover > .menu-sub { display: grid; }
 .dialog-back { position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; background: rgba(0, 0, 0, .5); backdrop-filter: blur(4px); animation: fade .15s; }
 .dialog { width: min(420px, 90vw); padding: 22px; display: grid; gap: 14px; background: var(--bg2); border: var(--bw) solid var(--line); border-radius: var(--r-panel); box-shadow: 0 30px 80px rgba(0, 0, 0, .5); }

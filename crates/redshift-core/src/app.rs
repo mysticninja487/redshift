@@ -1629,6 +1629,14 @@ impl App {
     pub fn add_to_playlist(&self, id: PlaylistId, tracks: &[PathBuf], position: Option<usize>) -> Result<()> {
         self.with_playlists(|s| s.add_tracks(id, tracks, position))
     }
+    /// Which playlists already hold these songs (and how many of them).
+    pub fn playlist_membership(&self, paths: &[PathBuf]) -> Vec<crate::playlists::Membership> {
+        self.playlists.lock().membership(paths)
+    }
+    /// Takes these songs out of a playlist wherever they appear.
+    pub fn remove_songs_from_playlist(&self, id: PlaylistId, paths: &[PathBuf]) -> Result<usize> {
+        self.with_playlists(|s| s.remove_paths(id, paths))
+    }
     pub fn remove_from_playlist(&self, id: PlaylistId, positions: &[usize]) -> Result<usize> {
         self.with_playlists(|s| s.remove_at(id, positions))
     }
@@ -1944,7 +1952,8 @@ mod tests {
         }
         let app = open(d.path());
         assert!(app.restore_session());
-        wait_for("restored queue", || app.player.queue().entries.len() == 3 && app.player.current_track().is_some());
+        // The player loads the restored song on its own thread, so the queue, the track, the position and the paused state each show up a moment apart.
+        wait_for("restored queue", || app.player.queue().entries.len() == 3 && app.player.current_track().is_some() && app.player.status() == crate::engine::Status::Paused);
         let q = app.player.queue();
         assert_eq!(q.entries.iter().map(|e| e.path.clone()).collect::<Vec<_>>(), vec![a, b.clone(), c]);
         assert_eq!(app.player.current_track().unwrap().path, b);

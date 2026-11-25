@@ -97,6 +97,8 @@ export const api = {
   movePlaylist: (id, to) => invoke('move_playlist', { id, to }),
   addToPlaylist: (id, tracks, position = null) => invoke('add_to_playlist', { id, tracks, position }),
   removeFromPlaylist: (id, positions) => invoke('remove_from_playlist', { id, positions }),
+  playlistMembership: (paths) => invoke('playlist_membership', { paths }),
+  removeSongsFromPlaylist: (id, paths) => invoke('remove_songs_from_playlist', { id, paths }),
   moveInPlaylist: (id, from, to) => invoke('move_in_playlist', { id, from, to }),
   importM3u: (file) => invoke('import_m3u', { file }), playlistImportPreview: (input) => invoke('playlist_import_preview', { input }), exportM3u: (id, dest) => invoke('export_m3u', { id, dest }),
   playPlaylist: (id, start = 0) => invoke('play_playlist', { id, start }),

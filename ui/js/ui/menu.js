@@ -15,7 +15,14 @@ export function showMenu(items, x, y) {
         const sub = h('div', { class: 'menu menu-sub', role: 'menu' });
         build(it.submenu, sub);
         row.append(sub);
-        row.addEventListener('pointerenter', () => { const r = row.getBoundingClientRect(); sub.style.left = r.right + sub.offsetWidth > innerWidth ? `${-sub.offsetWidth}px` : '100%'; });
+        // Open to the right (or the left if there is no room), keep the whole submenu on screen and scroll it when it is taller than the window.
+        row.addEventListener('pointerenter', () => {
+          sub.style.maxHeight = `${innerHeight - 8}px`;
+          const r = row.getBoundingClientRect();
+          sub.style.left = r.right + sub.offsetWidth > innerWidth ? `${-sub.offsetWidth}px` : '100%';
+          const top = Math.max(4 - r.top, Math.min(-6, innerHeight - 4 - r.top - sub.offsetHeight)); // relative to the row
+          sub.style.top = `${top}px`;
+        });
       } else row.addEventListener('click', () => { closeMenu(); it.onClick?.(); });
       host.append(row);
     }

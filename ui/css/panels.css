@@ -184,8 +184,9 @@
 .i-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .i-title-row .i-title { min-width: 0; }
 .i-title-btns { display: flex; align-items: center; gap: 8px; flex: none; }
-.i-fav { opacity: 1; flex: none; width: 34px; height: 34px; }
-.i-fav:not(.on) { color: var(--fg3); }
+.fav-btn.i-fav { opacity: 1; flex: none; width: 34px; height: 34px; } /* .fav-btn (later in views.css) hides the heart until a row is hovered; this one is always shown */
+.i-fav:not(.on) { color: var(--fg2); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 24%, transparent); }
+.i-fav:not(.on):hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent); }
 .i-infobtn { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin-left: -4px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--fg3); cursor: pointer; transition: color .12s, transform .12s; }
 .i-infobtn:hover { color: var(--accent); transform: scale(1.1); }
 .i-infobtn[hidden] { display: none; }

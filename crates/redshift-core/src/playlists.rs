@@ -38,6 +38,15 @@ pub struct PlaylistSummary {
     pub modified: u64,
 }
 
+/// How many of some songs a playlist already holds, for "already in this playlist" and "remove from playlist".
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Membership {
+    pub id: PlaylistId,
+    pub name: String,
+    /// How many of the asked-about songs are in the playlist (each song counted once).
+    pub contains: usize,
+}
+
 /// What an M3U import found.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ImportReport {
@@ -119,6 +128,29 @@ impl PlaylistStore {
             .iter()
             .map(|p| PlaylistSummary { id: p.id, name: p.name.clone(), track_count: p.tracks.len(), modified: p.modified })
             .collect()
+    }
+
+    /// For every playlist, how many of `paths` it holds.
+    pub fn membership(&self, paths: &[PathBuf]) -> Vec<Membership> {
+        let wanted: std::collections::HashSet<&PathBuf> = paths.iter().collect();
+        self.playlists
+            .iter()
+            .map(|p| {
+                let held: std::collections::HashSet<&PathBuf> = p.tracks.iter().filter(|t| wanted.contains(t)).collect();
+                Membership { id: p.id, name: p.name.clone(), contains: held.len() }
+            })
+            .collect()
+    }
+
+    /// Removes every entry that is one of `paths`. Returns how many entries were removed.
+    pub fn remove_paths(&mut self, id: PlaylistId, paths: &[PathBuf]) -> Result<usize> {
+        let p = self.get_mut(id)?;
+        let before = p.tracks.len();
+        p.tracks.retain(|t| !paths.contains(t));
+        if p.tracks.len() != before {
+            p.modified = now();
+        }
+        Ok(before - p.tracks.len())
     }
 
     pub fn get(&self, id: PlaylistId) -> Option<&Playlist> {
@@ -449,6 +481,19 @@ mod tests {
         s.add_tracks(id, &paths(&["first"]), Some(0)).unwrap();
         assert_eq!(s.get(id).unwrap().tracks, paths(&["first", "a", "x", "y", "b", "a"]));
         assert!(s.add_tracks(42, &paths(&["a"]), None).is_err());
+    }
+
+    #[test]
+    fn membership_counts_each_song_once_and_remove_paths_takes_every_copy() {
+        let (mut s, _d) = store();
+        let a = s.create_with("A", paths(&["x.mp3", "y.mp3", "x.mp3"]));
+        let b = s.create_with("B", paths(&["z.mp3"]));
+        let m = s.membership(&["x.mp3".into(), "z.mp3".into(), "w.mp3".into()]);
+        assert_eq!(m.iter().find(|m| m.id == a).unwrap().contains, 1);
+        assert_eq!(m.iter().find(|m| m.id == b).unwrap().contains, 1);
+        assert_eq!(s.remove_paths(a, &["x.mp3".into()]).unwrap(), 2);
+        assert_eq!(s.get(a).unwrap().tracks, vec![PathBuf::from("y.mp3")]);
+        assert_eq!(s.remove_paths(a, &["nope.mp3".into()]).unwrap(), 0);
     }
 
     #[test]
