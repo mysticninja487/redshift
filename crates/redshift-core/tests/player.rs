@@ -33,6 +33,7 @@ fn rig_with(speed: f32, exclusive: bool) -> Rig {
         device: None,
         exclusive,
         offline: Some(OfflineConfig { sample_rate: RATE, sink: sink.clone(), speed }),
+        ..Default::default()
     })
     .unwrap();
     Rig { player, events, sink, seen: Vec::new() }

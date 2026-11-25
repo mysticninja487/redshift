@@ -91,7 +91,17 @@ pub fn open_source(
     error_tag: u64,
     errors: Sender<(u64, String)>,
 ) -> Result<(DecodedSource, SourceInfo)> {
-    let mut decoder = decode::open(path)?;
+    open_decoder(decode::open(path)?, out_rate, start_secs, error_tag, errors)
+}
+
+/// The same for a decoder that is already open (a stream from the internet).
+pub fn open_decoder(
+    mut decoder: Box<dyn Decoder>,
+    out_rate: u32,
+    start_secs: f64,
+    error_tag: u64,
+    errors: Sender<(u64, String)>,
+) -> Result<(DecodedSource, SourceInfo)> {
     let info = decoder.info().clone();
     if start_secs > 0.0 {
         decoder.seek(start_secs)?;

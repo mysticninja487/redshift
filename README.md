@@ -13,9 +13,9 @@
   <img src="docs/screenshots/now-playing-classic.jpg" alt="Redshift in the Classic skin: sidebar, cover and track in the middle, lyrics and queue on the right, player bar along the bottom" width="880">
 </p>
 
-Point Redshift at your music folders and play. There is no account, no streaming and no tracking, and it never changes your files unless you edit a tag yourself. It is built with Tauri 2 and a Rust audio engine, so it starts fast and idles at close to nothing.
+Point Redshift at your music folders and play. There is no account and no tracking, and it never changes your files unless you edit a tag yourself. It is built with Tauri 2 and a Rust audio engine, so it starts fast and idles at close to nothing.
 
-Everything that touches the internet (lyrics lookup, update check) is **off until you switch it on** in Settings > Online, which also shows every request that was made.
+Everything that touches the internet (lyrics lookup, update check, internet radio) is **off until you switch it on** in Settings > Online, which also shows every request that was made.
 
 > The screenshots use invented demo albums and a stand-in player, so the artists and songs are made up.
 
@@ -125,6 +125,10 @@ Redshift talks to the Discord app on the same computer (through its local pipe);
 
 It needs a Discord application ID. The release has one built in; otherwise paste your own under Advanced (create an application at discord.com/developers, name it Redshift, and upload `assets/brand/redshift-icon.png` as an image called `redshift` under Rich Presence assets).
 
+### Internet radio (optional, off by default)
+
+Press **5** for Radio. Stations come from the free [radio-browser.info](https://www.radio-browser.info) directory; you can search by name or genre, keep favourites, or paste any station address and press **Play address**. Lossless (FLAC) stations are marked and listed first by default, everything else is labelled **Lossy**, and plain `http` stations say **Not encrypted**. Now Playing shows **LIVE** instead of a length, the song the station announces (ICY or Ogg/Opus tags) and the stream's codec and bitrate, and the signal path says what happens to it like it does for a file. Streams can't be sought, and they are not counted in Stats or history. MP3, AAC (ADTS), Ogg Vorbis, Opus and FLAC streams play and reconnect on their own after a drop; HLS and HE-AAC stations are not supported yet, and a stream that follows a song starts with a short gap because it can't be preloaded.
+
 ### Online features (optional, off by default)
 
 Settings > Online has a main switch. Nothing goes over the network until it is on, and each feature says exactly what it sends.
@@ -133,6 +137,8 @@ Settings > Online has a main switch. Nothing goes over the network until it is o
 | --- | --- | --- |
 | Lyrics (BetterLyrics) | `api.betterlyrics.org` | Song title, artist, album and length in seconds |
 | Lyrics (LRCLIB) | `lrclib.net` | The same |
+| Radio search | `de1.api.radio-browser.info`, `de2.api.radio-browser.info`, `fi1.api.radio-browser.info` | Your search words (name, genre) and whether Lossless only is on, only when you search on the Radio screen |
+| Radio stations | the station's own address | Nothing but the request to play it: the station's server sees your IP address and the app's name and version. Plain `http` stations are not encrypted and are labelled so |
 | Discord cover art | `itunes.apple.com` | Artist and title of the song on the Discord card, once per song; only while the card shows album art |
 | Playlist import | `api.deezer.com`, `open.spotify.com`, `www.youtube.com` | The playlist link's address, only when you press Find songs in Library > Playlists > Import online; no account or sign-in, so only public playlists |
 | Update check | `api.github.com` | Nothing about you or your music; it asks for the latest release at startup (and every few hours) and tells you if there is a newer one |

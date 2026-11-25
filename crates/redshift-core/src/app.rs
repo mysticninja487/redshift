@@ -26,11 +26,12 @@ use crate::engine::{Player, PlayerConfig, PlayerEvent, Rate, ReplayGainMode};
 use crate::error::{Error, Result};
 use crate::library::{write_json_atomic, Album, Artist, Library, ScanProgress, ScanReport};
 use crate::lyrics::{self, Lyrics, LyricsSource};
-use crate::net::{self, artwork, betterlyrics, lrclib, remote_playlist, updates::{self, UpdateInfo}, Net, RequestRecord};
+use crate::net::{self, artwork, betterlyrics, lrclib, radiobrowser, remote_playlist, updates::{self, UpdateInfo}, Net, RequestRecord};
 use crate::playlist_import;
 use crate::meta::{self, Cover, TrackMeta};
 use crate::playlists::{ImportReport, Playlist, PlaylistId, PlaylistStore, PlaylistSummary, RelinkReport};
 use crate::queue::{QueuePolicy, RepeatMode};
+use crate::radio::{Station, StationStore};
 use crate::thumb;
 use crate::resolve::Resolver;
 use crate::history::{Heard, History};
@@ -48,6 +49,7 @@ const COVER_CACHE_SIZE: usize = 8;
 const THUMB_CACHE_BYTES: usize = 24 * 1024 * 1024;
 
 pub const SETTINGS_FILE: &str = "settings.json";
+const STATIONS_FILE: &str = "stations.json";
 pub const LIBRARY_FILE: &str = "library.json";
 pub const PLAYLISTS_FILE: &str = "playlists.json";
 pub const STATS_FILE: &str = "stats.json";
@@ -208,11 +210,13 @@ pub struct OnlineSettings {
     pub lyrics_provider: LyricsProvider,
     /// Check for a newer version when Redshift starts.
     pub updates: bool,
+    /// Allow the Radio screen: searching the station directory and playing streams.
+    pub radio: bool,
 }
 
 impl Default for OnlineSettings {
     fn default() -> Self {
-        Self { enabled: false, lyrics: true, auto_lyrics: true, lyrics_provider: LyricsProvider::Auto, updates: true }
+        Self { enabled: false, lyrics: true, auto_lyrics: true, lyrics_provider: LyricsProvider::Auto, updates: true, radio: true }
     }
 }
 
@@ -400,7 +404,8 @@ pub struct App {
     session_saved: Mutex<Option<(u64, f64)>>,
     sleep: Mutex<Option<SleepKind>>,
     /// The only way out to the internet; see [`crate::net`].
-    net: Net,
+    net: Arc<Net>,
+    stations: Mutex<StationStore>,
     /// Keeps the Discord profile line right; see [`crate::presence`].
     presence: Mutex<crate::presence::Runner>,
     /// The title, artist and album of the song on Discord, so the file is not read every second.
@@ -427,6 +432,13 @@ impl App {
         fs::create_dir_all(&data_dir)?;
         let mut settings = load_settings(&data_dir.join(SETTINGS_FILE));
 
+        let net = Arc::new(Net::new(
+            net::cache_dir_in(&data_dir),
+            &format!("Redshift/{} (+https://github.com/{})", env!("CARGO_PKG_VERSION"), updates::REPO),
+            &[lrclib::HOST, betterlyrics::HOST, updates::HOST, updates::DOWNLOAD_HOSTS[0], updates::DOWNLOAD_HOSTS[1], updates::DOWNLOAD_HOSTS[2], artwork::HOST, remote_playlist::DEEZER_HOST, remote_playlist::SPOTIFY_HOST, remote_playlist::YOUTUBE_HOST, radiobrowser::HOSTS[0], radiobrowser::HOSTS[1], radiobrowser::HOSTS[2]],
+        ));
+        net.set_enabled(settings.online.enabled);
+        player_config.net = Some(net.clone());
         let saved_device = settings.device.clone();
         player_config.exclusive |= settings.exclusive;
         if player_config.device.is_none() {
@@ -457,14 +469,9 @@ impl App {
         eq.set_preamp_db(settings.eq.preamp_db);
         eq.set_gains_db(&settings.eq.gains_db);
 
-        let net = Net::new(
-            net::cache_dir_in(&data_dir),
-            &format!("Redshift/{} (+https://github.com/{})", env!("CARGO_PKG_VERSION"), updates::REPO),
-            &[lrclib::HOST, betterlyrics::HOST, updates::HOST, updates::DOWNLOAD_HOSTS[0], updates::DOWNLOAD_HOSTS[1], updates::DOWNLOAD_HOSTS[2], artwork::HOST, remote_playlist::DEEZER_HOST, remote_playlist::SPOTIFY_HOST, remote_playlist::YOUTUBE_HOST],
-        );
-        net.set_enabled(settings.online.enabled);
 
         let app = App {
+            stations: Mutex::new(StationStore::open(data_dir.join(STATIONS_FILE))?),
             library: Mutex::new(Library::open(data_dir.join(LIBRARY_FILE))?),
             playlists: Mutex::new(PlaylistStore::open(data_dir.join(PLAYLISTS_FILE))?),
             stats: Mutex::new(Stats::open(data_dir.join(STATS_FILE))?),
@@ -657,7 +664,7 @@ impl App {
         let mut paths = Vec::new();
         let mut start = None;
         for (i, p) in session.paths.iter().enumerate() {
-            if !p.is_file() {
+            if !p.is_file() && !crate::util::is_url(p) {
                 continue;
             }
             if start.is_none() && i >= before {
@@ -1209,10 +1216,83 @@ impl App {
     }
     /// Tags for any file: from the library if it's there, else read from disk.
     pub fn track_meta(&self, path: &Path) -> Result<TrackMeta> {
+        if crate::util::is_url(path) {
+            return Ok(self.stream_meta(path));
+        }
         if let Some(m) = self.library.lock().get(path) {
             return Ok(m.clone());
         }
         meta::read_meta(path)
+    }
+
+    /// What the app knows about a stream: the station's name and kind, with the song it is playing
+    /// as the title when the station says what that is.
+    fn stream_meta(&self, path: &Path) -> TrackMeta {
+        let url = path.to_string_lossy().trim().to_string();
+        let station = self.stations.lock().find(&url).cloned().unwrap_or_else(|| Station::from_url(&url));
+        let now = self.player.state().live.filter(|l| l.url == url || l.url.is_empty() || self.player.current_track().is_some_and(|c| c.path == path));
+        let title = now.as_ref().map(|l| l.title.trim().to_string()).filter(|t| !t.is_empty());
+        let (artist, song) = match &title {
+            Some(t) => match t.split_once(" - ") {
+                Some((a, s)) => (a.trim().to_string(), s.trim().to_string()),
+                None => (station.name.clone(), t.clone()),
+            },
+            None => ("Internet radio".to_string(), station.name.clone()),
+        };
+        TrackMeta {
+            path: path.to_path_buf(),
+            title: song,
+            artist: artist.clone(),
+            album: station.name.clone(),
+            album_artist: artist,
+            genre: station.tags.split(',').next().unwrap_or("").trim().to_string(),
+            format: station.codec.to_ascii_lowercase(),
+            bitrate_kbps: Some(station.bitrate).filter(|b| *b > 0),
+            ..TrackMeta::default()
+        }
+    }
+
+    // ---- internet radio ----
+
+    pub fn radio_search(&self, q: &radiobrowser::Query) -> Result<Vec<Station>> {
+        let o = self.online();
+        if !o.enabled || !o.radio {
+            return Err(Error::Offline);
+        }
+        radiobrowser::search(&self.net, q)
+    }
+    /// A station for a web address typed in by hand.
+    pub fn radio_station_from_url(&self, url: &str) -> Result<Station> {
+        let url = url.trim();
+        if !crate::util::is_url(Path::new(url)) {
+            return Err(Error::Unsupported("that is not a web address (it should start with http:// or https://)".into()));
+        }
+        Ok(self.stations.lock().find(url).cloned().unwrap_or_else(|| Station::from_url(url)))
+    }
+    pub fn radio_favourites(&self) -> Vec<Station> {
+        self.stations.lock().favourites()
+    }
+    pub fn radio_recent(&self) -> Vec<Station> {
+        self.stations.lock().recent()
+    }
+    pub fn radio_set_favourite(&self, station: &Station, on: bool) -> Result<()> {
+        self.stations.lock().set_favourite(station, on)
+    }
+    /// Plays a station now. Needs the main switch and the radio switch.
+    pub fn radio_play(&self, station: &Station) -> Result<()> {
+        let o = self.online();
+        if !o.enabled || !o.radio {
+            return Err(Error::Offline);
+        }
+        let url = station.url.trim();
+        if !crate::util::is_url(Path::new(url)) {
+            return Err(Error::Unsupported("that is not a web address".into()));
+        }
+        let mut station = station.clone();
+        station.url = url.to_string();
+        self.stations.lock().remember(&station)?;
+        self.player.set_queue(vec![PathBuf::from(url)], 0, true);
+        Ok(())
     }
 
     // ---- editing tags ----
@@ -1290,6 +1370,8 @@ impl App {
             guard.1 = Some(now);
             (guard.0.tick(current.as_ref(), playing, pos, dt, f64::from(self.settings.lock().count_percent.clamp(1, 100)) / 100.0), dt)
         };
+        // A radio station isn't a song in the library: it stays out of history and stats.
+        let current = current.filter(|c| !crate::util::is_url(&c.path));
         if let Some(cur) = &current {
             if playing && self.settings.lock().record_history {
                 self.history.lock().add(&cur.path, now_secs(), dt.clamp(0.0, 5.0), u16::from(tick.counted));
@@ -1588,7 +1670,7 @@ impl App {
     }
     /// Which of these files exist right now, in the same order.
     pub fn paths_exist(&self, paths: &[PathBuf]) -> Vec<bool> {
-        paths.iter().map(|p| fs::metadata(p).is_ok()).collect()
+        paths.iter().map(|p| crate::util::is_url(p) || fs::metadata(p).is_ok()).collect()
     }
     /// Writes a playlist as M3U8, with durations and "Artist - Title" for tracks in the library.
     pub fn export_m3u(&self, id: PlaylistId, dest: &Path) -> Result<()> {
@@ -1868,6 +1950,44 @@ mod tests {
         assert_eq!(app.player.current_track().unwrap().path, b);
         assert_eq!(app.player.status(), crate::engine::Status::Paused, "restored paused, not playing");
         assert!((app.player.position_secs() - 0.6).abs() < 0.2, "position {}", app.player.position_secs());
+    }
+
+    #[test]
+    fn radio_needs_both_online_switches() {
+        let d = tempfile::tempdir().unwrap();
+        let app = open(d.path());
+        let st = Station { name: "Jazz FM".into(), url: "https://jazz.example/live".into(), ..Station::default() };
+        assert!(matches!(app.radio_play(&st), Err(Error::Offline)), "main switch off");
+        assert!(matches!(app.radio_search(&radiobrowser::Query::default()), Err(Error::Offline)));
+        app.set_online(OnlineSettings { enabled: true, radio: false, ..OnlineSettings::default() });
+        assert!(matches!(app.radio_play(&st), Err(Error::Offline)), "radio switch off");
+        assert!(app.player.queue().entries.is_empty());
+    }
+
+    #[test]
+    fn a_station_in_the_queue_is_shown_by_name_and_stays_out_of_the_stats() {
+        let d = tempfile::tempdir().unwrap();
+        let app = open(d.path());
+        let st = Station { name: "Jazz FM".into(), url: "https://jazz.example/live".into(), codec: "FLAC".into(), bitrate: 900, tags: "jazz,blues".into(), lossless: true, supported: true, ..Station::default() };
+        app.stations.lock().remember(&st).unwrap();
+        let m = app.track_meta(Path::new("https://jazz.example/live")).unwrap();
+        assert_eq!((m.title.as_str(), m.artist.as_str(), m.album.as_str(), m.format.as_str(), m.genre.as_str()), ("Jazz FM", "Internet radio", "Jazz FM", "flac", "jazz"));
+        assert_eq!(m.bitrate_kbps, Some(900));
+        let unknown = app.track_meta(Path::new("http://other.example:8000/x")).unwrap();
+        assert_eq!(unknown.title, "other.example");
+        assert_eq!(app.paths_exist(&[PathBuf::from("https://jazz.example/live"), PathBuf::from("/no/such/file.mp3")]), vec![true, false]);
+    }
+
+    #[test]
+    fn a_station_comes_back_after_a_restart() {
+        let m = music();
+        let d = tempfile::tempdir().unwrap();
+        let url = PathBuf::from("https://jazz.example/live");
+        write_json_atomic(&d.path().join(SESSION_FILE), &Session { paths: vec![m.path().join("a.flac"), url.clone()], current: 0, position_secs: 0.0 }).unwrap();
+        let app = open(d.path());
+        assert!(app.restore_session());
+        wait_for("queue", || app.player.queue().entries.len() == 2);
+        assert_eq!(app.player.queue().entries[1].path, url);
     }
 
     #[test]

@@ -2,7 +2,8 @@
 
 import { setView, toggleFavourite } from '../controller.js';
 import { get } from '../prefs.js';
-import { state } from '../state.js';
+import { isLive, state } from '../state.js';
+import { isFavStation, radio, refreshStations, setStationFavourite, stationPlaying } from '../radio.js';
 import { fmtKhz, h } from '../util.js';
 import { pathChip } from '../output.js';
 import { icon } from '../ui/icons.js';
@@ -27,12 +28,12 @@ export function mount(el) {
   const L = lifecycle();
   const art = cover();
   const title = h('h2', { class: 'i-title' });
-  const heart = h('button', { class: 'fav-btn i-fav', type: 'button', title: 'Favourite', 'aria-label': 'Favourite', onclick: () => state.trackPath && toggleFavourite([state.trackPath]) }, icon('heart', 20));
+  const heart = h('button', { class: 'fav-btn i-fav', type: 'button', title: 'Favourite', 'aria-label': 'Favourite', onclick: () => (isLive() ? favouriteStation() : state.trackPath && toggleFavourite([state.trackPath])) }, icon('heart', 20));
   const infoBtn = h('button', { class: 'i-infobtn', type: 'button', title: 'Song info (I)', 'aria-label': 'Song info', onclick: () => state.trackPath && import('../ui/songinfo.js').then((m) => m.openSongInfo(state.trackPath)) }, icon('info', 17));
   const titleRow = h('div', { class: 'i-title-row' }, title, h('span', { class: 'i-title-btns' }, infoBtn, heart));
   // Right-clicking the title (or anything in the title row) opens the same menu as a song in the library.
   titleRow.addEventListener('contextmenu', async (ev) => {
-    if (!state.trackPath) return;
+    if (!state.trackPath || isLive()) return;
     ev.preventDefault();
     const [{ showMenu }, { trackMenuItems }] = await Promise.all([import('../ui/menu.js'), import('../ui/trackmenu.js')]);
     showMenu(await trackMenuItems([state.trackPath]), ev.clientX, ev.clientY);
@@ -47,33 +48,44 @@ export function mount(el) {
   const text = h('div', { class: 'i-text' }, pos, titleRow, artist, album, tech, empty);
   el.append(h('div', { class: 'info' }, art.el, text));
 
+  // The heart on a station keeps the station (not a file) in the Radio screen's favourites.
+  async function favouriteStation() {
+    const st = stationPlaying();
+    if (st) await setStationFavourite(st, !isFavStation(st.url));
+  }
+
   function render() {
-    const t = state.track, idle = !t;
+    const t = state.track, idle = !t, live = !idle && isLive();
     el.classList.toggle('is-idle', idle);
     art.el.hidden = !get('info.cover');
     art.set(state.coverUrl);
     title.textContent = idle ? 'Nothing playing' : t.title || 'Untitled';
     title.title = title.textContent;
     heart.hidden = idle;
-    infoBtn.hidden = idle;
-    const fav = !!state.trackPath && state.favs.has(state.trackPath);
+    infoBtn.hidden = idle || live;
+    const fav = live ? isFavStation(state.trackPath) : !!state.trackPath && state.favs.has(state.trackPath);
     heart.classList.toggle('on', fav);
     heart.setAttribute('aria-pressed', String(fav));
-    heart.title = heart.ariaLabel = fav ? 'Remove from favourites' : 'Add to favourites';
+    heart.title = heart.ariaLabel = live ? (fav ? 'Remove station from favourites' : 'Add station to favourites') : fav ? 'Remove from favourites' : 'Add to favourites';
     artist.textContent = idle ? '' : t.artist || '';
     album.replaceChildren(...(idle ? [] : [h('span', { class: 'i-album-name' }, t.album || ''), t.year ? h('span', { class: 'i-year' }, String(t.year)) : null].filter(Boolean)));
     const idx = state.queue.entries.findIndex((e) => e.id === state.queue.current_entry);
-    pos.textContent = idle || idx < 0 ? '' : `${String(idx + 1).padStart(2, '0')} / ${String(state.queue.entries.length).padStart(2, '0')}`;
+    pos.textContent = idle || idx < 0 || live ? '' : `${String(idx + 1).padStart(2, '0')} / ${String(state.queue.entries.length).padStart(2, '0')}`;
     empty.hidden = !(idle && state.queue.entries.length === 0);
     tech.replaceChildren();
     if (idle || !get('info.format')) return;
-    const c = state.queue.current;
+    const c = state.queue.current, now = live ? state.player.live : null;
     const bits = [];
+    if (live) bits.push({ text: now?.reconnecting ? 'Reconnecting\u2026' : 'LIVE', tone: now?.reconnecting ? 'warn' : 'live' });
     if (c?.codec) bits.push(CODEC[c.codec] ?? c.codec.toUpperCase());
     if (c?.source_rate) bits.push(fmtKhz(c.source_rate));
     if (c?.bits_per_sample) bits.push(`${c.bits_per_sample}-bit`);
     else if (t.bitrate_kbps) bits.push(`${t.bitrate_kbps} kbps`);
     if (c?.source_channels) bits.push(c.source_channels === 1 ? 'Mono' : c.source_channels === 2 ? 'Stereo' : `${c.source_channels} ch`);
+    if (live && now) {
+      bits.push(now.lossless ? { text: 'Lossless', tone: 'perfect' } : { text: 'Lossy', tone: 'lossy' });
+      if (!now.secure) bits.push({ text: 'Not encrypted', tone: 'warn' });
+    }
     const chip = pathChip(state.player, c);
     if (chip) bits.push({ text: chip.text, tone: chip.tone });
     const rg = state.player.replaygain !== 'off' && !state.player.bit_perfect_mode && get('info.replaygain');
@@ -81,7 +93,8 @@ export function mount(el) {
     if (rg && db != null) bits.push(`${db > 0 ? '+' : ''}${db.toFixed(1)} dB`);
     tech.replaceChildren(...bits.map((b) => (typeof b === 'string' ? h('li', null, b) : h('li', { class: `tech-${b.tone}` }, b.text))));
   }
-  L.on(['track', 'queue', 'ui', 'player-event', 'favs', 'player'], render);
+  L.on(['track', 'queue', 'ui', 'player-event', 'favs', 'player', 'radio'], render);
+  if (!radio.loaded) refreshStations();
   L.on('status', render);
   render();
   return { destroy: () => L.destroy() };

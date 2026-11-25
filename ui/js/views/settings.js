@@ -483,6 +483,8 @@ export function mountSettings(root) {
         row('Go online', master, { hint: 'Off by default. While this is off, Redshift sends nothing over the internet, and everything below is switched off.' }),
         h('p', { class: 'hint' }, 'Your music files, your library and your listening history are never sent anywhere. Each feature below lists exactly what it sends.')),
       sub(
+        group('Internet radio',
+          flag('radio', 'Internet radio', 'Lets the Radio screen search the free radio-browser.info directory (de1, de2 and fi1.api.radio-browser.info), which is sent your search words, and play a station. Playing connects straight to that station\u2019s own server, so it sees your IP address and the name and version of this app, as with any website. Plain http stations are labelled Not encrypted. Radio is not counted in your Stats or history.')),
         group('Lyrics',
           flag('lyrics', 'Look up lyrics online', 'Finds lyrics at BetterLyrics (api.betterlyrics.org) and LRCLIB (lrclib.net), two free community services. They are sent the song\u2019s title, artist, album and length in seconds, plus your IP address and the name and version of this app, as with any website.'),
           row('Lyrics service', segmented({ label: 'Lyrics service', options: [{ value: 'auto', label: 'Automatic' }, { value: 'better_lyrics', label: 'BetterLyrics' }, { value: 'lrclib', label: 'LRCLIB' }], value: o.lyrics_provider, onChange: (v) => setOnline({ lyrics_provider: v }) }),

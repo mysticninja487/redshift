@@ -263,7 +263,7 @@ fn emit(
     }
 }
 
-fn new_decoder(channels: usize, gain_q8: i32) -> Result<OpusDecoder> {
+pub(super) fn new_decoder(channels: usize, gain_q8: i32) -> Result<OpusDecoder> {
     let layout = if channels == 1 { Channels::Mono } else { Channels::Stereo };
     let decoder = OpusDecoder::new(SampleRate::Hz48000, layout)
         .map_err(|e| Error::Decode(format!("creating Opus decoder: {e}")))?;
@@ -301,4 +301,78 @@ fn last_granule(path: &Path, serial: u32) -> Option<u64> {
 
 fn ogg_err(e: ogg::OggReadError) -> Error {
     Error::Decode(format!("Ogg: {e}"))
+}
+
+/// Reads a stream that can't seek (internet radio). `ogg`'s reader asks for `Seek` in its bounds but
+/// only uses it when told to seek, which a live stream never is.
+pub struct NoSeek<R>(pub R);
+
+impl<R: Read> Read for NoSeek<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.0.read(buf)
+    }
+}
+
+impl<R> Seek for NoSeek<R> {
+    fn seek(&mut self, _: SeekFrom) -> std::io::Result<u64> {
+        Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "a live stream can't be seeked"))
+    }
+}
+
+/// Ogg Opus from a live stream: no length, no seeking, no chained streams.
+pub struct OpusLiveDecoder {
+    reader: PacketReader<NoSeek<Box<dyn Read + Send + Sync>>>,
+    decoder: OpusDecoder,
+    channels: usize,
+    /// Warm-up frames still to throw away at the start (the header's pre-skip).
+    skip: usize,
+    info: StreamInfo,
+    pcm: Vec<f32>,
+}
+
+impl OpusLiveDecoder {
+    pub fn open(reader: Box<dyn Read + Send + Sync>) -> Result<Self> {
+        let mut reader = PacketReader::new(NoSeek(reader));
+        let head = reader.read_packet().map_err(ogg_err)?.ok_or_else(|| Error::Decode("the stream ended before it began".into()))?;
+        let d = &head.data;
+        if d.len() < 19 || &d[..8] != b"OpusHead" {
+            return Err(Error::Decode("missing OpusHead packet".into()));
+        }
+        let channels = d[9] as usize;
+        let skip = u16::from_le_bytes([d[10], d[11]]) as usize;
+        let gain_q8 = i16::from_le_bytes([d[16], d[17]]) as i32;
+        if d[18] != 0 || !(1..=2).contains(&channels) {
+            return Err(Error::Unsupported(format!("Opus with {channels} channels; only mono and stereo are supported")));
+        }
+        reader.read_packet().map_err(ogg_err)?; // OpusTags
+        Ok(Self {
+            reader,
+            decoder: new_decoder(channels, gain_q8)?,
+            channels,
+            skip,
+            info: StreamInfo { sample_rate: OPUS_RATE, channels, total_frames: None, codec: "opus", bits_per_sample: None },
+            pcm: vec![0.0; MAX_PACKET_FRAMES * channels],
+        })
+    }
+}
+
+impl Decoder for OpusLiveDecoder {
+    fn info(&self) -> &StreamInfo {
+        &self.info
+    }
+
+    fn read(&mut self, out: &mut Vec<f32>) -> Result<bool> {
+        let Some(packet) = self.reader.read_packet().map_err(ogg_err)? else { return Ok(false) };
+        let Ok(p) = OpusPacket::try_from(&packet.data[..]) else { return Ok(true) };
+        let Ok(signals) = MutSignals::try_from(&mut self.pcm[..]) else { return Ok(true) };
+        let Ok(frames) = self.decoder.decode_float(Some(p), signals, false) else { return Ok(true) };
+        let from = self.skip.min(frames);
+        self.skip -= from;
+        out.extend_from_slice(&self.pcm[from * self.channels..frames * self.channels]);
+        Ok(true)
+    }
+
+    fn seek(&mut self, _: f64) -> Result<()> {
+        Err(Error::Seek("a live stream can't be seeked".into()))
+    }
 }

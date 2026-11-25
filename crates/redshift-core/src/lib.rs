@@ -20,6 +20,7 @@ pub mod playlist_import;
 pub mod playlists;
 pub mod presence;
 pub mod queue;
+pub mod radio;
 pub mod resolve;
 pub mod stats;
 pub mod tags;

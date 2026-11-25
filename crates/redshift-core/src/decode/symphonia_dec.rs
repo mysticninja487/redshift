@@ -38,7 +38,21 @@ impl SymphoniaDecoder {
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             hint.with_extension(ext);
         }
+        Self::from_stream(mss, hint, Some(path))
+    }
 
+    /// A live stream that can't be rewound or sought (internet radio). `mime` is the station's
+    /// Content-Type, used only as a hint for the probe.
+    pub fn open_live(reader: Box<dyn std::io::Read + Send + Sync>, mime: &str) -> Result<Self> {
+        let mss = MediaSourceStream::new(Box::new(symphonia::core::io::ReadOnlySource::new(reader)), Default::default());
+        let mut hint = Hint::new();
+        if !mime.is_empty() {
+            hint.mime_type(mime);
+        }
+        Self::from_stream(mss, hint, None)
+    }
+
+    fn from_stream(mss: MediaSourceStream<'static>, hint: Hint, path: Option<&Path>) -> Result<Self> {
         let format = symphonia::default::get_probe()
             .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
             .map_err(map_err)?;
@@ -71,7 +85,7 @@ impl SymphoniaDecoder {
         let codec = decoder.codec_info().short_name;
 
         // MP4 audio carries its encoder delay and padding in the edit list, which Symphonia leaves in.
-        let trim = mp4_gapless::read_trim(path, sample_rate);
+        let trim = path.and_then(|p| mp4_gapless::read_trim(p, sample_rate));
         if let Some(t) = trim {
             total_frames = Some(t.valid);
         }

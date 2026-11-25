@@ -21,6 +21,7 @@
 pub mod artwork;
 pub mod betterlyrics;
 pub mod lrclib;
+pub mod radiobrowser;
 pub mod remote_playlist;
 pub mod updates;
 
@@ -120,10 +121,37 @@ struct CacheEntry {
     b: String,
 }
 
+/// What a station says about its stream in the reply headers.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct StreamHead {
+    /// The address that finally answered, after redirects.
+    pub url: String,
+    pub content_type: String,
+    pub icy_name: Option<String>,
+    pub icy_genre: Option<String>,
+    pub icy_bitrate: Option<u32>,
+    /// Bytes of audio between metadata blocks, when the station sends song titles inline.
+    pub icy_metaint: Option<usize>,
+    /// https. Plain http is allowed for stations, but it is said so.
+    pub encrypted: bool,
+}
+
+/// An open stream: the headers and a reader for the audio.
+pub struct LiveBody {
+    pub head: StreamHead,
+    pub reader: Box<dyn std::io::Read + Send>,
+}
+
+const STREAM_REDIRECTS: u8 = 5;
+
 pub struct Net {
     agent: ureq::Agent,
+    /// No overall time limit: a stream is meant to go on.
+    stream_agent: ureq::Agent,
     hosts: Vec<String>,
     enabled: AtomicBool,
+    /// Lets streams come from this computer (tests); never on in the app.
+    allow_local: AtomicBool,
     /// The same rules with time for a large file.
     download_agent: ureq::Agent,
     cache_dir: PathBuf,
@@ -180,8 +208,19 @@ impl Net {
         let net = Net {
             agent: build(Duration::from_secs(15)),
             download_agent: build(Duration::from_secs(20 * 60)),
+            stream_agent: ureq::Agent::config_builder()
+                .http_status_as_error(false)
+                .max_redirects(0)
+                .timeout_connect(Some(Duration::from_secs(8)))
+                .timeout_recv_response(Some(Duration::from_secs(12)))
+                .timeout_global(None)
+                .user_agent(user_agent)
+                .tls_config(ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build())
+                .build()
+                .into(),
             hosts: hosts.iter().map(|h| h.to_ascii_lowercase()).collect(),
             enabled: AtomicBool::new(false),
+            allow_local: AtomicBool::new(false),
             cache_dir: cache_dir.into(),
             log: Mutex::new(VecDeque::new()),
         };
@@ -191,6 +230,11 @@ impl Net {
 
     pub fn set_enabled(&self, on: bool) {
         self.enabled.store(on, Ordering::Relaxed);
+    }
+
+    #[doc(hidden)]
+    pub fn allow_local_streams(&self, on: bool) {
+        self.allow_local.store(on, Ordering::Relaxed);
     }
 
     pub fn enabled(&self) -> bool {
@@ -402,6 +446,72 @@ impl Net {
         }
     }
 
+    /// Opens a radio stream. Unlike everything else here this goes to any host: the address is one
+    /// the person chose to play, and stations live all over the internet. It still needs the online
+    /// switch, is logged like the rest, and accepts http as well as https (many stations have no
+    /// https), which [`StreamHead::encrypted`] reports so the app can say so.
+    pub fn open_stream(&self, url: &str, purpose: &str) -> Result<LiveBody> {
+        if !self.enabled() {
+            return Err(Error::Offline);
+        }
+        let req = Request::new(url, purpose);
+        let host = stream_host(url, self.allow_local.load(Ordering::Relaxed)).inspect_err(|e| self.record(&req, "", None, 0, false, Some(e.to_string())))?;
+        let mut current = url.to_string();
+        let mut redirects = 0u8;
+        let result = (|| -> Result<(u16, LiveBody)> {
+            loop {
+                stream_host(&current, self.allow_local.load(Ordering::Relaxed))?;
+                let resp = self
+                    .stream_agent
+                    .get(&current)
+                    .header("Icy-MetaData", "1")
+                    .header("Accept", "audio/*, application/ogg, */*;q=0.5")
+                    .call()
+                    .map_err(|e| Error::Network(stream_error(&e.to_string())))?;
+                let status = resp.status().as_u16();
+                if matches!(status, 301 | 302 | 303 | 307 | 308) {
+                    let loc = resp.headers().get("location").and_then(|v| v.to_str().ok()).map(str::to_string);
+                    let Some(loc) = loc else { return Err(Error::Network("redirect without a target".into())) };
+                    if redirects >= STREAM_REDIRECTS {
+                        return Err(Error::Network("too many redirects".into()));
+                    }
+                    redirects += 1;
+                    current = absolute_location(&current, &loc);
+                    continue;
+                }
+                if status != 200 {
+                    return Ok((status, LiveBody { head: StreamHead::default(), reader: Box::new(std::io::empty()) }));
+                }
+                let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+                let head = StreamHead {
+                    url: current.clone(),
+                    content_type: header("content-type").unwrap_or_default().split(';').next().unwrap_or("").trim().to_ascii_lowercase(),
+                    icy_name: header("icy-name"),
+                    icy_genre: header("icy-genre"),
+                    icy_bitrate: header("icy-br").and_then(|v| v.split(',').next().and_then(|n| n.trim().parse().ok())),
+                    icy_metaint: header("icy-metaint").and_then(|v| v.parse().ok()),
+                    encrypted: current.to_ascii_lowercase().starts_with("https://"),
+                };
+                let reader = resp.into_body().into_with_config().limit(u64::MAX).reader();
+                return Ok((200, LiveBody { head, reader: Box::new(reader) }));
+            }
+        })();
+        match result {
+            Ok((200, body)) => {
+                self.record(&req, &host, Some(200), 0, false, None);
+                Ok(body)
+            }
+            Ok((status, _)) => {
+                self.record(&req, &host, Some(status), 0, false, None);
+                Err(Error::Network(format!("the station answered {status}")))
+            }
+            Err(e) => {
+                self.record(&req, &host, None, 0, false, Some(e.to_string()));
+                Err(e)
+            }
+        }
+    }
+
     /// One GET with redirects (checked against the host list) and a single retry after 429/503.
     fn fetch(&self, req: &Request) -> Result<Reply> {
         let mut url = req.url.to_string();
@@ -457,6 +567,48 @@ impl Net {
             return Ok(Reply { status, body, cached: false });
         }
     }
+}
+
+/// The host of a stream address, after checking it is http(s) and not an address on this computer
+/// or the local network (a station list must not be able to point Redshift at those).
+fn stream_host(url: &str, allow_local: bool) -> Result<String> {
+    let uri: ureq::http::Uri = url.parse().map_err(|_| Error::Network("not a valid address".into()))?;
+    let scheme = uri.scheme_str().unwrap_or("").to_ascii_lowercase();
+    if scheme != "http" && scheme != "https" {
+        return Err(Error::Network(format!("{scheme}:// streams are not supported")));
+    }
+    let host = uri.host().ok_or_else(|| Error::Network("the address has no host".into()))?.to_ascii_lowercase();
+    if !allow_local {
+        let bare = host.trim_start_matches('[').trim_end_matches(']');
+        let local_name = bare == "localhost" || bare.ends_with(".local") || bare.ends_with(".internal");
+        let local_ip = bare.parse::<std::net::IpAddr>().is_ok_and(|ip| match ip {
+            std::net::IpAddr::V4(v) => v.is_loopback() || v.is_private() || v.is_link_local() || v.is_unspecified(),
+            std::net::IpAddr::V6(v) => v.is_loopback() || v.is_unspecified() || (v.segments()[0] & 0xfe00) == 0xfc00 || (v.segments()[0] & 0xffc0) == 0xfe80,
+        });
+        if local_name || local_ip {
+            return Err(Error::Network("streams from this computer or the local network are not played from the radio".into()));
+        }
+    }
+    Ok(host)
+}
+
+fn absolute_location(base: &str, loc: &str) -> String {
+    if loc.starts_with('/') {
+        if let Ok(uri) = base.parse::<ureq::http::Uri>() {
+            return format!("{}://{}{}", uri.scheme_str().unwrap_or("http"), uri.authority().map(|a| a.as_str()).unwrap_or(""), loc);
+        }
+    }
+    loc.to_string()
+}
+
+/// Old Shoutcast servers answer with "ICY 200 OK" instead of an HTTP status line, which the HTTP
+/// client rejects; say what that means instead of showing its parser error.
+fn stream_error(msg: &str) -> String {
+    let lower = msg.to_ascii_lowercase();
+    if lower.contains("version") || lower.contains("icy") || lower.contains("invalid") && lower.contains("status") {
+        return format!("this station speaks an old streaming protocol that Redshift can't read ({msg})");
+    }
+    msg.to_string()
 }
 
 /// Where the cache for network replies lives inside the app's data folder.

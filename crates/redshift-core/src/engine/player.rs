@@ -21,10 +21,11 @@ use serde::{Deserialize, Serialize};
 
 use super::mixer::{Command, Event, Mixer, MixerPorts, Shared, Track, PROC_CROSSFADE, PROC_EQ, PROC_GAIN, PROC_LIMITER, PROC_SPEED, PROC_VOLUME};
 use super::output::{start_output, DeviceOpts, OutputHandle, OutputInfo, OutputKind};
-use super::source::{open_source, wait_ready, SourceInfo};
+use super::source::{open_decoder, open_source, wait_ready, SourceInfo};
+use crate::decode::live::{self, LiveNow, SharedNow};
 use crate::dsp::eq::EqParams;
 use crate::dsp::spectrum::{Analyzer, SpectrumConfig, VizFrame, VizTap};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::meta::{self, TrackMeta};
 use crate::queue::{EntryId, Queue, QueueEntry, QueuePolicy, RepeatMode};
 
@@ -46,6 +47,8 @@ pub struct OfflineConfig {
 
 #[derive(Clone, Default)]
 pub struct PlayerConfig {
+    /// The network layer streams are opened through. Without it, a web address can't be played.
+    pub net: Option<Arc<crate::net::Net>>,
     /// Output device id; `None` is the system default.
     pub device: Option<String>,
     /// Take the device exclusively and reopen it at each song's own sample rate (Windows). Falls
@@ -206,6 +209,8 @@ pub struct PlayerState {
     /// What the output is doing right now.
     pub output: OutputInfo,
     pub exclusive: bool,
+    /// The station that is playing, when what plays is a stream.
+    pub live: Option<LiveNow>,
     pub bit_perfect_mode: bool,
     /// Names of the stages currently changing the signal ("eq", "volume", ...).
     pub processing: Vec<&'static str>,
@@ -251,6 +256,7 @@ pub struct Player {
     device_name: Arc<RwLock<String>>,
     output_info: Arc<RwLock<OutputInfo>>,
     exclusive: Arc<AtomicBool>,
+    live_loads: Arc<RwLock<HashMap<u64, SharedNow>>>,
     crossfade_secs: Arc<AtomicU32>,
     rate: Mutex<Rate>,
     replaygain: Arc<ReplayGainSettings>,
@@ -270,6 +276,7 @@ impl Player {
         let wiring = open_output(&config, None, &shared, &eq, &tap)?;
         let output_info = Arc::new(RwLock::new(wiring.out.info.clone()));
         let exclusive = Arc::new(AtomicBool::new(config.exclusive));
+        let live_loads: Arc<RwLock<HashMap<u64, SharedNow>>> = Arc::default();
         let sample_rate = Arc::new(AtomicU32::new(wiring.out.sample_rate));
         let device_name = Arc::new(RwLock::new(wiring.out.device_name.clone()));
         let analyzer = Arc::new(Mutex::new(Analyzer::new(tap.clone(), wiring.out.sample_rate, SpectrumConfig::default())));
@@ -289,6 +296,7 @@ impl Player {
             sample_rate: sample_rate.clone(),
             device_name: device_name.clone(),
             output_info: output_info.clone(),
+            live_loads: live_loads.clone(),
             rate_hint: None,
             last_rate_attempt: None,
             crossfade_secs: crossfade_secs.clone(),
@@ -324,6 +332,7 @@ impl Player {
             device_name,
             output_info,
             exclusive,
+            live_loads,
             crossfade_secs,
             rate: Mutex::new(Rate::default()),
             replaygain,
@@ -516,7 +525,9 @@ impl Player {
             && self.current_track().is_some_and(|t| {
                 t.source_rate == output.sample_rate && t.bits_per_sample.is_some_and(|b| b <= u32::from(output.bits))
             });
+        let live = self.live_loads.read().get(&self.shared.current_id()).map(|n| n.lock().clone());
         PlayerState {
+            live,
             output,
             exclusive: self.exclusive.load(Ordering::Relaxed),
             bit_perfect_mode: self.shared.bypass(),
@@ -606,6 +617,7 @@ struct Core {
     sample_rate: Arc<AtomicU32>,
     device_name: Arc<RwLock<String>>,
     output_info: Arc<RwLock<OutputInfo>>,
+    live_loads: Arc<RwLock<HashMap<u64, SharedNow>>>,
     /// The sample rate to ask an exclusive device for.
     rate_hint: Option<u32>,
     /// The last rate we reopened the device for, so a device that can't do it isn't asked twice.
@@ -687,15 +699,25 @@ impl Core {
         let load_id = self.next_load_id;
         self.next_load_id += 1;
         let rate = self.rate();
-        let (source, info) = open_source(&entry.path, rate, start_secs, load_id, self.decode_errors_tx.clone())?;
-        wait_ready(&source, (rate as f64 * PRELOAD_SECS) as usize, Duration::from_secs(2));
+        let live = crate::util::is_url(&entry.path);
+        let (source, info) = if live {
+            let net = self.config.net.clone().ok_or(Error::Offline)?;
+            let url = entry.path.to_string_lossy().trim().to_string();
+            let now = SharedNow::default();
+            let decoder = live::open(net, &url, now.clone())?;
+            self.live_loads.write().insert(load_id, now);
+            open_decoder(Box::new(decoder), rate, 0.0, load_id, self.decode_errors_tx.clone())?
+        } else {
+            open_source(&entry.path, rate, start_secs, load_id, self.decode_errors_tx.clone())?
+        };
+        wait_ready(&source, (rate as f64 * PRELOAD_SECS) as usize, Duration::from_secs(if live { 6 } else { 2 }));
         self.loads.insert(load_id, entry.id);
         let track = Track {
             id: load_id,
             source: Box::new(source),
             total_frames: info.total_frames,
             start_frame: info.start_frame,
-            gain: self.gain_for(&entry.path),
+            gain: if live { 1.0 } else { self.gain_for(&entry.path) },
             bits: info.bits_per_sample.and_then(|b| u8::try_from(b).ok()),
         };
         self.infos.insert(load_id, info);
@@ -786,6 +808,13 @@ impl Core {
                 self.send(Command::SetNext(None));
                 self.next_load = None;
             }
+            // A stream isn't opened ahead of time: it would play old audio and the connection would
+            // sit idle. It starts when the song before it ends.
+            Some(entry) if crate::util::is_url(&entry.path) => {
+                self.failed_next = Some(entry.id);
+                self.send(Command::SetNext(None));
+                self.next_load = None;
+            }
             Some(entry) => match self.load(&entry, 0.0) {
                 Ok(track) => {
                     // A song at another rate can't join gaplessly in exclusive mode: the device has to
@@ -795,6 +824,7 @@ impl Core {
                     if differs {
                         self.loads.remove(&track.id);
                         self.infos.remove(&track.id);
+                        self.live_loads.write().remove(&track.id);
                         self.failed_next = Some(entry.id);
                         self.send(Command::SetNext(None));
                         self.next_load = None;
@@ -926,7 +956,8 @@ impl Core {
             }
             Msg::Stop => self.halt(),
             Msg::Seek(secs) => {
-                if self.current_load.is_none() {
+                // A live stream has no timeline to move along.
+                if self.current_load.is_none() || self.current_path().is_some_and(|p| crate::util::is_url(&p)) {
                     return;
                 }
                 let mut secs = secs.max(0.0);
@@ -982,6 +1013,10 @@ impl Core {
                 }
             }
         }
+    }
+
+    fn current_path(&self) -> Option<PathBuf> {
+        self.queue.current().map(|e| e.path.clone())
     }
 
     fn current_duration(&self) -> Option<f64> {
@@ -1060,6 +1095,7 @@ impl Core {
             if Some(track.id) != self.current_load && self.next_load.map(|n| n.0) != Some(track.id) {
                 self.loads.remove(&track.id);
                 self.infos.remove(&track.id);
+                self.live_loads.write().remove(&track.id);
             }
             drop(track);
         }
@@ -1094,6 +1130,7 @@ impl Core {
         self.retired = wiring.retired;
         self.loads.clear();
         self.infos.clear();
+        self.live_loads.write().clear();
         self.current_load = None;
         self.next_load = None;
         self.failed_next = None;

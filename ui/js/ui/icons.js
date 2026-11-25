@@ -15,6 +15,7 @@ const P = {
   lyrics: '<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4.5 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 9h8M8 12h5"/>',
   eq: '<path d="M6 4v16M12 4v16M18 4v16"/><circle cx="6" cy="14" r="2" fill="currentColor"/><circle cx="12" cy="8" r="2" fill="currentColor"/><circle cx="18" cy="15" r="2" fill="currentColor"/>',
   settings: '<circle cx="12" cy="12" r="3.2"/><path d="M19.4 13.5a7.7 7.7 0 0 0 0-3l1.9-1.5-1.9-3.3-2.3.9a7.6 7.6 0 0 0-2.6-1.5l-.4-2.6H9.9l-.4 2.6a7.6 7.6 0 0 0-2.6 1.5l-2.3-.9L2.7 9l1.9 1.5a7.7 7.7 0 0 0 0 3L2.7 15l1.9 3.3 2.3-.9a7.6 7.6 0 0 0 2.6 1.5l.4 2.6h4.2l.4-2.6a7.6 7.6 0 0 0 2.6-1.5l2.3.9 1.9-3.3z"/>',
+  radio: '<rect x="3.5" y="8.5" width="17" height="11" rx="2"/><path d="m8 8.5 8.5-4.5"/><circle cx="9" cy="14" r="2.6"/><path d="M14.5 12.5h3.5M14.5 15.5h3.5"/>',
   library: '<rect x="4" y="4" width="4" height="16" rx=".8"/><rect x="10" y="4" width="4" height="16" rx=".8"/><path d="m16.2 5.6 3.6-1 3 14.6-3.6 1z"/>',
   search: '<circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',

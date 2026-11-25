@@ -769,6 +769,32 @@ fn set_queue_options(state: State<AppState>, no_duplicates: bool, keep_shuffle: 
 fn set_online(state: State<AppState>, online: OnlineSettings) {
     state.0.set_online(online);
 }
+/// Searches the radio station directory (online features and the radio switch must be on).
+#[tauri::command]
+async fn radio_search(state: State<'_, AppState>, query: redshift_core::net::radiobrowser::Query) -> CmdResult<Vec<redshift_core::radio::Station>> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.radio_search(&query)).await.map_err(err)?.map_err(err)
+}
+#[tauri::command]
+fn radio_favourites(state: State<AppState>) -> Vec<redshift_core::radio::Station> {
+    state.0.radio_favourites()
+}
+#[tauri::command]
+fn radio_recent(state: State<AppState>) -> Vec<redshift_core::radio::Station> {
+    state.0.radio_recent()
+}
+#[tauri::command]
+fn radio_set_favourite(state: State<AppState>, station: redshift_core::radio::Station, on: bool) -> CmdResult<()> {
+    state.0.radio_set_favourite(&station, on).map_err(err)
+}
+#[tauri::command]
+fn radio_station_from_url(state: State<AppState>, url: String) -> CmdResult<redshift_core::radio::Station> {
+    state.0.radio_station_from_url(&url).map_err(err)
+}
+#[tauri::command]
+fn radio_play(state: State<AppState>, station: redshift_core::radio::Station) -> CmdResult<()> {
+    state.0.radio_play(&station).map_err(err)
+}
 /// Turns Discord rich presence on or off and sets what it shows.
 #[tauri::command]
 fn set_presence(state: State<AppState>, presence: redshift_core::presence::PresenceSettings) {
@@ -1161,7 +1187,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            set_queue, set_queue_options, set_notify_on_track, set_online, set_presence, presence_status, presence_preview, online_lyrics, check_updates, download_update, install_update, net_report, clear_net_data, open_project_page, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
+            set_queue, set_queue_options, set_notify_on_track, set_online, radio_search, radio_favourites, radio_recent, radio_set_favourite, radio_station_from_url, radio_play, set_presence, presence_status, presence_preview, online_lyrics, check_updates, download_update, install_update, net_report, clear_net_data, open_project_page, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
             queue_append, queue_play_next, queue_remove, queue_move, queue_clear, player_state, queue_view,
             get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_rate, set_replaygain, set_exclusive, set_bit_perfect,
             output_devices, set_output_device,

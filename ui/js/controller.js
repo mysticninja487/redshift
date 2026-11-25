@@ -5,7 +5,7 @@ import { api, bumpCover, COVER, coverUrl, listen } from './api.js';
 import { asleep as hostAsleep } from './host.js';
 import { emit } from './bus.js';
 import { getPrefs, setPref } from './prefs.js';
-import { state } from './state.js';
+import { isStreamPath, state } from './state.js';
 import { updateArt } from './theme.js';
 import { plural, toast } from './util.js';
 
@@ -35,11 +35,13 @@ async function loadTrack(entryId) {
     return;
   }
   state.trackPath = path;
+  const live = isStreamPath(path);
   state.lyrics = null; state.waveform = null; state.lyricsLocal = null; state.lyricsOnline = null; state.lyricsFetched = {}; state.lyricsSource = ''; state.lyricsView = ''; state.lyricsStatus = ''; state.lyricsError = '';
-  state.coverUrl = coverUrl(path, COVER.big);
+  state.coverUrl = live ? null : coverUrl(path, COVER.big);
   state.track = (await getMeta(path)) ?? { path, title: path.split(/[\\/]/).pop(), artist: '', album: '' };
   if (mine !== loadToken) return;
   emit('track'); emit('lyrics'); emit('waveform');
+  if (live) { updateArt(null); return; } // a station has no lyrics, waveform or cover of its own
   // The rest can arrive later; each is dropped if another track has started since.
   api.lyrics(path).then((l) => {
     if (mine !== loadToken) return;
@@ -188,11 +190,25 @@ export function refreshQueue() {
   return queueFetch;
 }
 
+/** The song a radio station says is playing changes while the stream runs: fetch the tags again when it does. */
+let liveKey = '';
+function followLiveTitle(p) {
+  const key = p.live ? `${p.live.url}\n${p.live.title}` : '';
+  if (key === liveKey) return;
+  liveKey = key;
+  const path = state.trackPath;
+  if (!p.live || !path || !isStreamPath(path)) return;
+  metaCache.delete(path);
+  const mine = loadToken;
+  getMeta(path).then((m) => { if (m && mine === loadToken && state.trackPath === path) { state.track = m; emit('track'); } });
+}
+
 export async function refreshPlayer() {
   const p = await api.playerState();
   const wasStatus = state.player.status;
   state.player = p;
   state.stamp = performance.now();
+  followLiveTitle(p);
   emit('player');
   if (wasStatus !== p.status) emit('status');
 }

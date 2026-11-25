@@ -20,3 +20,12 @@ pub fn percent_decode(s: &str) -> String {
     }
     String::from_utf8_lossy(&out).into_owned()
 }
+
+/// An address a stream is played from, as opposed to a file on disk. Streams ride through the queue
+/// and the player as a "path" that is the address itself.
+pub fn is_url(path: &std::path::Path) -> bool {
+    path.to_str().is_some_and(|s| {
+        let s = s.trim_start();
+        s.len() > 8 && (s[..7].eq_ignore_ascii_case("http://") || s[..8].eq_ignore_ascii_case("https://"))
+    })
+}

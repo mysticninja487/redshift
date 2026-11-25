@@ -55,7 +55,23 @@ let tracks = params.has('empty') ? [] : makeLibrary();
 let folders = params.has('empty') ? [] : ['/music'];
 const byPath = () => new Map(makeLibrary().map((t) => [t.path, t]));
 const pub = (t) => { const { _album, ...rest } = t; return rest; };
-const find = (path) => tracks.find((t) => t.path === path) ?? byPath().get(path);
+// Internet radio: a few invented stations, and a song title that changes every 20 seconds.
+const STATIONS = [
+  { id: 'a1', name: 'Glasshouse Lossless', url: 'https://radio.example/glasshouse.flac', country: 'Netherlands', tags: 'jazz, ambient', codec: 'FLAC', bitrate: 1411, lossless: true, secure: true, supported: true, homepage: '' },
+  { id: 'a2', name: 'Harbour FM', url: 'https://radio.example/harbour.mp3', country: 'United Kingdom', tags: 'indie, rock', codec: 'MP3', bitrate: 128, lossless: false, secure: true, supported: true, homepage: '' },
+  { id: 'a3', name: 'Night Signal', url: 'http://radio.example/night.ogg', country: 'Germany', tags: 'electronic, techno', codec: 'OGG', bitrate: 160, lossless: false, secure: false, supported: true, homepage: '' },
+  { id: 'a4', name: 'Tide Radio', url: 'https://radio.example/tide.aac', country: 'Australia', tags: 'chill, pop', codec: 'AAC+', bitrate: 64, lossless: false, secure: true, supported: false, homepage: '' },
+  { id: 'a5', name: 'Quartz Chamber', url: 'https://radio.example/quartz.flac', country: 'Austria', tags: 'classical, chamber', codec: 'FLAC', bitrate: 1000, lossless: true, secure: true, supported: true, homepage: '' },
+];
+const SONGS = ['Halden Vey - Harbour Light', 'Mira Solano - Neon Corridor', 'Okonkwo & Reyes - Fern Logic', 'Vesper Lines - Gradient'];
+const isUrl = (p) => /^https?:\/\//i.test(p);
+let radioFavs = [STATIONS[0]], radioRecent = [];
+const stationAt = (url) => STATIONS.find((x) => x.url === url) ?? { name: new URL(url).host, url, codec: '', bitrate: 0, lossless: false, secure: url.startsWith('https'), supported: true, tags: '' };
+function liveMeta(url) {
+  const st = stationAt(url), song = SONGS[Math.floor(performance.now() / 20000) % SONGS.length], [a, t] = song.split(' - ');
+  return { path: url, title: t, artist: a, album: st.name, album_artist: a, genre: (st.tags || '').split(',')[0].trim(), year: null, track_no: null, disc_no: null, duration_secs: 0, sample_rate: st.lossless ? 44100 : 44100, bit_depth: st.lossless ? 16 : null, channels: 2, bitrate_kbps: st.bitrate || null, format: st.codec.toLowerCase(), replaygain_track_db: null, replaygain_album_db: null, has_embedded_lyrics: false, modified: 0, size: 0, added: 0 };
+}
+const find = (path) => (isUrl(path) ? liveMeta(path) : tracks.find((t) => t.path === path) ?? byPath().get(path));
 
 function albums() {
   const map = new Map();
@@ -132,7 +148,7 @@ function lyricsFor(path) {
 const listeners = {};
 const emit = (name, payload) => (listeners[name] ?? []).forEach((cb) => setTimeout(() => cb({ payload })));
 const S = {
-  online: { enabled: new URLSearchParams(location.search).has('online'), lyrics: true, auto_lyrics: true, lyrics_provider: 'auto', updates: true },
+  online: { enabled: new URLSearchParams(location.search).has('online'), radio: true, lyrics: true, auto_lyrics: true, lyrics_provider: 'auto', updates: true },
   entries: [], seq: 1, cur: null, status: 'stopped', pos: 0, t0: 0, volume: 0.8, muted: false, shuffle: false, repeat: 'off',
   crossfade: 4, rate: { speed: 1, pitch_semitones: 0, keep_pitch: true }, rg: 'track', rgPre: 0, device: null,
   eq: { enabled: true, preamp_db: 0, gains_db: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
@@ -166,7 +182,7 @@ const curEntry = () => S.entries.find((e) => e.id === S.cur) ?? null;
 const curTrack = () => { const e = curEntry(); return e ? find(e.path) : null; };
 function tick() {
   const t = curTrack();
-  if (S.status === 'playing' && t && position() >= t.duration_secs) {
+  if (S.status === 'playing' && t && !isUrl(t.path) && position() >= t.duration_secs) {
     if (S.repeat === 'one') { S.pos = 0; S.t0 = performance.now(); return; }
     go(1, true);
   }
@@ -196,7 +212,7 @@ const queueView = () => {
   const t = curTrack();
   return {
     entries: shown().map((e) => ({ id: e.id, path: e.path })), current_entry: S.cur, shuffle: S.shuffle, repeat: S.repeat,
-    current: t ? { entry_id: S.cur, path: t.path, codec: t.format, source_rate: t.sample_rate, source_channels: 2, bits_per_sample: t.bit_depth, duration_secs: t.duration_secs } : null,
+    current: t ? { entry_id: S.cur, path: t.path, codec: t.format, source_rate: t.sample_rate, source_channels: 2, bits_per_sample: t.bit_depth, duration_secs: isUrl(t.path) ? null : t.duration_secs } : null,
   };
 };
 // The output the real engine would report: exclusive reopens at the song's rate, shared stays put.
@@ -208,7 +224,8 @@ const outputState = () => {
   return { output: { device_name: 'Speakers (mock)', sample_rate: rate, exclusive, bits: exclusive ? 24 : 32, float: !exclusive, fallback: null },
     exclusive, bit_perfect_mode: !!S.bitPerfect, processing, bit_perfect: exclusive && !processing.length && !!t && (t.bit_depth ?? 16) <= 24 };
 };
-const playerState = () => ({ status: S.status, position_secs: Math.min(position(), curTrack()?.duration_secs ?? 0), volume: S.volume, muted: S.muted, crossfade_secs: S.crossfade, rate: S.rate, replaygain: S.rg, replaygain_preamp_db: S.rgPre, device_name: 'Speakers (mock)', sample_rate: outRate(), ...outputState() });
+const liveNow = () => { const t = curTrack(); if (!t || !isUrl(t.path)) return null; const st = stationAt(t.path); return { url: t.path, name: st.name, title: `${t.artist} - ${t.title}`, genre: t.genre, codec: st.codec.toLowerCase(), bitrate_kbps: st.bitrate || null, sample_rate: 44100, channels: 2, bits_per_sample: st.lossless ? 16 : null, lossless: st.lossless, secure: st.secure, reconnecting: false }; };
+const playerState = () => ({ live: liveNow(), status: S.status, position_secs: curTrack() && isUrl(curTrack().path) ? position() : Math.min(position(), curTrack()?.duration_secs ?? 0), volume: S.volume, muted: S.muted, crossfade_secs: S.crossfade, rate: S.rate, replaygain: S.rg, replaygain_preamp_db: S.rgPre, device_name: 'Speakers (mock)', sample_rate: outRate(), ...outputState() });
 
 // ---------------------------------------------------------------- analysis
 function vizFrame() {
@@ -388,7 +405,7 @@ const cmds = {
   sleep_status: () => sleepStatus(),
   listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
   listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
-  app_info: () => ({ version: '0.7.0', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
+  app_info: () => ({ version: '0.7.1', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
   open_data_folder: () => null,
   song_info: ({ path }) => {
     const t = tracks.find((x) => x.path === path); if (!t) throw new Error('That file isn\u2019t there any more');
@@ -477,7 +494,7 @@ const cmds = {
     if (!S.online.enabled) throw 'online features are turned off';
     NET_LOG.unshift({ time: Math.floor(Date.now() / 1000), purpose: 'Update check', host: 'api.github.com', url: 'https://api.github.com/repos/mysticninja487/redshift/releases/latest', status: 200, bytes: 1180, cached: false, error: null });
     await new Promise((r) => setTimeout(r, 300));
-    return globalThis.__mockUpdate ?? { current: '0.7.0', latest: '0.7.1', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.6', notes: 'Online playlist import for YouTube.\nFixes and small improvements.', asset: { name: 'Redshift_0.6.6_x64-setup.exe', url: 'https://github.com/mysticninja487/redshift/releases/download/v0.6.6/Redshift_0.6.6_x64-setup.exe', size: 31457280, sha256: null, kind: 'installer' } };
+    return globalThis.__mockUpdate ?? { current: '0.7.1', latest: '0.7.2', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.6', notes: 'Online playlist import for YouTube.\nFixes and small improvements.', asset: { name: 'Redshift_0.6.6_x64-setup.exe', url: 'https://github.com/mysticninja487/redshift/releases/download/v0.6.6/Redshift_0.6.6_x64-setup.exe', size: 31457280, sha256: null, kind: 'installer' } };
   },
   download_update: async ({ asset }) => { for (let i = 1; i <= 10; i++) { emit('update-progress', { done: asset.size * i / 10, total: asset.size }); await new Promise((r) => setTimeout(r, 120)); } return '/mock/updates/' + asset.name; },
   install_update: () => { globalThis.__mockInstalled = true; },
@@ -504,6 +521,18 @@ const cmds = {
   scan_library: scan, is_scanning: () => scanning,
   library_tracks: () => tracks.map(pub), search_library: ({ query }) => tracks.filter((t) => `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(query.toLowerCase())).map(pub),
   library_albums: albums, library_artists: artists, recently_added: ({ limit }) => tracks.slice(-limit).map(pub),
+  radio_search: ({ query }) => {
+    if (!S.online.enabled || S.online.radio === false) throw new Error('You are offline. Turn on Go online in Settings.');
+    const q = (query.name || '').toLowerCase(), tag = (query.tag || '').toLowerCase();
+    return STATIONS.filter((x) => (!q || `${x.name} ${x.tags}`.toLowerCase().includes(q)) && (!tag || x.tags.includes(tag)) && (!query.lossless_only || x.lossless));
+  },
+  radio_favourites: () => radioFavs, radio_recent: () => radioRecent,
+  radio_set_favourite: ({ station, on }) => { radioFavs = radioFavs.filter((x) => x.url !== station.url); if (on) radioFavs.unshift(station); },
+  radio_station_from_url: ({ url }) => { if (!isUrl(url)) throw new Error('that is not a web address (it should start with http:// or https://)'); return stationAt(url.trim()); },
+  radio_play: ({ station }) => {
+    radioRecent = [station, ...radioRecent.filter((x) => x.url !== station.url)].slice(0, 40);
+    cmds.set_queue({ paths: [station.url], start: 0, autoplay: true });
+  },
   track_meta: ({ path }) => { const t = find(path); if (!t) throw new Error('unreadable'); return pub(t); },
   tag_form: ({ path }) => {
     const t = find(path); if (!t) throw new Error('unreadable'); const e = EDITS.get(path) ?? {};

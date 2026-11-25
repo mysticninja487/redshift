@@ -3,7 +3,7 @@
 import { api } from '../api.js';
 import { act } from '../controller.js';
 import { featureOn, get, getPrefs, setPref } from '../prefs.js';
-import { duration, position, state } from '../state.js';
+import { duration, isLive, position, state } from '../state.js';
 import { tokens } from '../theme.js';
 import { clamp, fmtTime, h } from '../util.js';
 import { rgba } from '../viz/util.js';
@@ -30,7 +30,7 @@ export function mount(el) {
   };
   new ResizeObserver(resize).observe(wrap);
 
-  const progress = () => (scrub ?? (duration() > 0 ? clamp(position() / duration(), 0, 1) : 0));
+  const progress = () => (isLive() ? 1 : scrub ?? (duration() > 0 ? clamp(position() / duration(), 0, 1) : 0));
   const peakAt = (f) => {
     const p = state.waveform?.peaks;
     if (!p?.length) return null;
@@ -48,11 +48,13 @@ export function mount(el) {
   };
   // The right-hand time shows the track length, or what is left of it after a click (when that is switched on in Settings).
   const showLeft = () => featureOn('timeLeft') && !!getPrefs().timeLeft;
-  const totalText = (secs) => (showLeft() ? `-${fmtTime(Math.max(0, duration() - secs))}` : fmtTime(duration()));
+  const totalText = (secs) => (isLive() ? 'LIVE' : showLeft() ? `-${fmtTime(Math.max(0, duration() - secs))}` : fmtTime(duration()));
   const setText = () => {
     const secs = scrub != null ? scrub * duration() : position();
     cur.textContent = fmtTime(secs);
     total.textContent = totalText(secs);
+    wrap.classList.toggle('is-live', isLive());
+    total.classList.toggle('is-live', isLive());
   };
   const syncTotal = () => {
     const on = featureOn('timeLeft');
@@ -110,7 +112,7 @@ export function mount(el) {
     cur.textContent = fmtTime(secs);
     total.textContent = totalText(secs);
     wrap.setAttribute('aria-valuenow', String(Math.round(secs))); wrap.setAttribute('aria-valuemax', String(Math.round(duration())));
-    wrap.setAttribute('aria-valuetext', `${fmtTime(secs)} of ${fmtTime(duration())}`);
+    wrap.setAttribute('aria-valuetext', isLive() ? `Live, ${fmtTime(secs)} listened` : `${fmtTime(secs)} of ${fmtTime(duration())}`);
   }
 
   const fracOf = (ev) => { const r = wrap.getBoundingClientRect(); return clamp((ev.clientX - r.left) / r.width, 0, 1); };
@@ -121,6 +123,7 @@ export function mount(el) {
   wrap.addEventListener('pointermove', (ev) => {
     hover = fracOf(ev);
     if (scrub != null) scrub = hover;
+    if (!duration()) { tip.hidden = true; return; }
     tip.hidden = false; tip.textContent = fmtTime(hover * duration());
     tip.style.left = `${clamp(hover * W, 20, W - 20)}px`;
     draw();
@@ -136,6 +139,7 @@ export function mount(el) {
   wrap.addEventListener('pointerleave', () => { hover = null; tip.hidden = true; draw(); });
   wrap.addEventListener('keydown', (ev) => {
     const d = { ArrowRight: 5, ArrowLeft: -5, PageUp: 30, PageDown: -30 }[ev.key];
+    if (d !== undefined && isLive()) { ev.preventDefault(); return; }
     if (d !== undefined) { ev.preventDefault(); act(api.seek(clamp(position() + d, 0, duration()))); }
   });
 

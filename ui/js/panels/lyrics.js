@@ -5,7 +5,7 @@ import { api } from '../api.js';
 import { act, chooseLyrics, LYRICS_SERVICES, lyricsOnlineAllowed, saveOnlineLyrics, saveOnlineLyricsToTags, searchOnlineLyrics } from '../controller.js';
 import { askToGoOnline, online } from '../online.js';
 import { get } from '../prefs.js';
-import { isPlaying, position, state } from '../state.js';
+import { isLive, isPlaying, position, state } from '../state.js';
 import { h, toast } from '../util.js';
 import { icon } from '../ui/icons.js';
 import { confirmDialog } from '../ui/dialog.js';
@@ -56,17 +56,17 @@ export function mount(el) {
 
   /** The empty panel says what is going on: nothing yet, searching, nothing found, or a problem. */
   function fillEmpty() {
-    const st = state.lyricsStatus, o = online();
-    const [title, hint] = {
+    const st = state.lyricsStatus, o = online(), live = isLive();
+    const [title, hint] = live ? ['Live radio has no lyrics', 'The song the station is playing is shown under the cover.'] : {
       searching: ['Looking for lyrics online\u2026', ''],
       none: ['No lyrics found online', 'Nothing has been found for this song yet. You can add your own.'],
       instrumental: ['Instrumental', 'LRCLIB lists this song as having no lyrics.'],
       error: ['Could not look up lyrics', state.lyricsError],
     }[st] ?? ['No lyrics for this track', o.enabled ? 'Put a .lrc file with the same name next to the song, or embed lyrics in its tags.' : 'Put a .lrc file with the same name next to the song, embed lyrics in its tags, or let Redshift look them up online.'];
     emptyTitle.textContent = title; emptyHint.textContent = hint; emptyHint.hidden = !hint;
-    findBtn.hidden = st === 'searching' || st === 'instrumental' || !state.trackPath;
+    findBtn.hidden = live || st === 'searching' || st === 'instrumental' || !state.trackPath;
     findBtn.textContent = st === 'error' || st === 'none' ? 'Try again' : 'Find lyrics online\u2026';
-    addBtn.hidden = st === 'searching' || st === 'instrumental';
+    addBtn.hidden = live || st === 'searching' || st === 'instrumental';
     empty.dataset.busy = String(st === 'searching');
   }
 

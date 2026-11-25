@@ -2,7 +2,7 @@
 // right-click menu, the info button beside the title on Now Playing, or the I key.
 
 import { api, COVER, coverUrl } from '../api.js';
-import { state } from '../state.js';
+import { isStreamPath, state } from '../state.js';
 import { dateLocale, fmtKhz, fmtTime, h, plural, toast } from '../util.js';
 import { icon } from './icons.js';
 import { button } from './controls.js';
@@ -111,5 +111,5 @@ export async function openSongInfo(path) {
 
 /** The song that's playing, if any. */
 export function openCurrentSongInfo() {
-  if (state.trackPath) openSongInfo(state.trackPath);
+  if (state.trackPath && !isStreamPath(state.trackPath)) openSongInfo(state.trackPath);
 }

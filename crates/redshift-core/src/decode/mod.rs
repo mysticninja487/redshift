@@ -4,6 +4,7 @@
 //! goes through libopus (via `audiopus`) with the `ogg` crate doing the demuxing. [`open`] looks at
 //! the file's contents, not just its extension, because `.ogg` can hold either Vorbis or Opus.
 
+pub mod live;
 mod mp4_gapless;
 mod opus;
 mod symphonia_dec;
@@ -14,7 +15,7 @@ use std::path::Path;
 
 use crate::error::Result;
 
-pub use opus::OpusFileDecoder;
+pub use opus::{OpusFileDecoder, OpusLiveDecoder};
 pub use symphonia_dec::SymphoniaDecoder;
 
 /// What a decoder produces. Sample rate and channel count describe the PCM that `read` returns,
