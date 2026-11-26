@@ -5,6 +5,7 @@
 //! the file's contents, not just its extension, because `.ogg` can hold either Vorbis or Opus.
 
 pub mod live;
+pub mod remote;
 mod mp4_gapless;
 mod opus;
 mod symphonia_dec;

@@ -71,7 +71,7 @@ function liveMeta(url) {
   const st = stationAt(url), song = SONGS[Math.floor(performance.now() / 20000) % SONGS.length], [a, t] = song.split(' - ');
   return { path: url, title: t, artist: a, album: st.name, album_artist: a, genre: (st.tags || '').split(',')[0].trim(), year: null, track_no: null, disc_no: null, duration_secs: 0, sample_rate: st.lossless ? 44100 : 44100, bit_depth: st.lossless ? 16 : null, channels: 2, bitrate_kbps: st.bitrate || null, format: st.codec.toLowerCase(), replaygain_track_db: null, replaygain_album_db: null, has_embedded_lyrics: false, modified: 0, size: 0, added: 0 };
 }
-const find = (path) => (isUrl(path) ? liveMeta(path) : tracks.find((t) => t.path === path) ?? byPath().get(path));
+const find = (path) => (isUrl(path) ? liveMeta(path) : /^subsonic:\/\//i.test(path) ? svFindSong(path) : tracks.find((t) => t.path === path) ?? byPath().get(path));
 
 function albums() {
   const map = new Map();
@@ -89,7 +89,8 @@ const artists = () => {
 const coverCache = new Map();
 window.__REDSHIFT_FONT__ = (file) => `fonts/${file}`;
 window.__REDSHIFT_COVER__ = (path) => {
-  const t = find(decodeURIComponent(path));
+  const dp = decodeURIComponent(path), cm = /^subsonic-cover:\/\/al-(\d+)$/i.exec(dp);
+  const t = cm ? { path: dp, _album: Number(cm[1]) } : find(dp);
   if (!t) return 'data:,';
   const ec = EDITS.get(t.path)?.cover;
   if (ec === 'none') return 'missing://no-cover.png';
@@ -144,11 +145,25 @@ function lyricsFor(path) {
   return { synced, lines, offset_ms: 0, source: synced ? 'lrc' : 'embedded' };
 }
 
+
+// ---------------------------------------------------------------- your own server (a tiny fake Navidrome)
+const SV_ALBUMS = ALBUMS.map((a, i) => ({ id: `al${i}`, name: a.title, artist: a.artist, year: a.year, cover_art: `al-${i}`, genre: null, _i: i }));
+const svSongs = (i) => ALBUMS[i].titles.map((title, n) => {
+  const a = ALBUMS[i], lossless = i % 3 !== 2;
+  return { id: `s${i}-${n}`, title, artist: a.artist, album: a.title, album_id: `al${i}`, track: n + 1, disc: null, year: a.year, genre: null, duration_secs: 170 + ((i * 37 + n * 53) % 140),
+    bitrate_kbps: lossless ? 900 + n * 20 : 256, sample_rate: lossless ? a.rate : 44100, bit_depth: lossless ? (a.bits ?? 16) : null, channels: 2, suffix: lossless ? 'flac' : 'mp3', size: 20_000_000, cover_art: `al-${i}`, lossless };
+});
+const svAll = SV_ALBUMS.flatMap((al) => svSongs(al._i));
+const svFindSong = (path) => { const id = path.replace(/^subsonic:\/\//i, ''); const s = svAll.find((x) => x.id === id); if (!s) return null;
+  return { path, title: s.title, artist: s.artist, album: s.album, album_artist: s.artist, genre: '', year: s.year, track_no: s.track, disc_no: null, duration_secs: s.duration_secs, sample_rate: s.sample_rate, bit_depth: s.bit_depth, channels: 2, bitrate_kbps: s.bitrate_kbps, format: s.suffix, size: s.size, added: 0, modified: 0, _album: s._i ?? Number(id.slice(1).split('-')[0]) }; };
+const svAlbum = (a) => ({ ...a, song_count: svSongs(a._i).length, duration_secs: svSongs(a._i).reduce((t, x) => t + x.duration_secs, 0) });
+const svGate = () => { if (!S.online.enabled || S.online.server === false) throw new Error('You are offline. Turn on Go online in Settings.'); if (!S.server?.url) throw new Error('no server has been set up yet (Settings > Online)'); };
+
 // ---------------------------------------------------------------- player
 const listeners = {};
 const emit = (name, payload) => (listeners[name] ?? []).forEach((cb) => setTimeout(() => cb({ payload })));
 const S = {
-  online: { enabled: new URLSearchParams(location.search).has('online'), radio: true, lyrics: true, auto_lyrics: true, lyrics_provider: 'auto', updates: true },
+  online: { enabled: new URLSearchParams(location.search).has('online'), radio: true, server: true, lyrics: true, auto_lyrics: true, lyrics_provider: 'auto', updates: true },
   entries: [], seq: 1, cur: null, status: 'stopped', pos: 0, t0: 0, volume: 0.8, muted: false, shuffle: false, repeat: 'off',
   crossfade: 4, rate: { speed: 1, pitch_semitones: 0, keep_pitch: true }, rg: 'track', rgPre: 0, device: null,
   eq: { enabled: true, preamp_db: 0, gains_db: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
@@ -405,7 +420,7 @@ const cmds = {
   sleep_status: () => sleepStatus(),
   listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
   listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
-  app_info: () => ({ version: '0.7.2', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
+  app_info: () => ({ version: '0.7.3', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
   open_data_folder: () => null,
   song_info: ({ path }) => {
     const t = tracks.find((x) => x.path === path); if (!t) throw new Error('That file isn\u2019t there any more');
@@ -494,7 +509,7 @@ const cmds = {
     if (!S.online.enabled) throw 'online features are turned off';
     NET_LOG.unshift({ time: Math.floor(Date.now() / 1000), purpose: 'Update check', host: 'api.github.com', url: 'https://api.github.com/repos/mysticninja487/redshift/releases/latest', status: 200, bytes: 1180, cached: false, error: null });
     await new Promise((r) => setTimeout(r, 300));
-    return globalThis.__mockUpdate ?? { current: '0.7.2', latest: '0.7.3', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.6', notes: 'Online playlist import for YouTube.\nFixes and small improvements.', asset: { name: 'Redshift_0.6.6_x64-setup.exe', url: 'https://github.com/mysticninja487/redshift/releases/download/v0.6.6/Redshift_0.6.6_x64-setup.exe', size: 31457280, sha256: null, kind: 'installer' } };
+    return globalThis.__mockUpdate ?? { current: '0.7.3', latest: '0.7.4', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.6', notes: 'Online playlist import for YouTube.\nFixes and small improvements.', asset: { name: 'Redshift_0.6.6_x64-setup.exe', url: 'https://github.com/mysticninja487/redshift/releases/download/v0.6.6/Redshift_0.6.6_x64-setup.exe', size: 31457280, sha256: null, kind: 'installer' } };
   },
   download_update: async ({ asset }) => { for (let i = 1; i <= 10; i++) { emit('update-progress', { done: asset.size * i / 10, total: asset.size }); await new Promise((r) => setTimeout(r, 120)); } return '/mock/updates/' + asset.name; },
   install_update: () => { globalThis.__mockInstalled = true; },
@@ -521,6 +536,16 @@ const cmds = {
   scan_library: scan, is_scanning: () => scanning,
   library_tracks: () => tracks.map(pub), search_library: ({ query }) => tracks.filter((t) => `${t.title} ${t.artist} ${t.album}`.toLowerCase().includes(query.toLowerCase())).map(pub),
   library_albums: albums, library_artists: artists, recently_added: ({ limit }) => tracks.slice(-limit).map(pub),
+  server_settings: () => ({ url: S.server?.url ?? '', user: S.server?.user ?? '', has_password: !!S.server?.password, configured: !!(S.server?.url && S.server?.user), encrypted: /^https:/i.test(S.server?.url ?? '') }),
+  set_server_settings: ({ url, user, password }) => { S.server = { url, user, password: password ?? S.server?.password ?? '' }; if (!url && !user) S.server = null; },
+  server_test: async () => { svGate(); if (S.server.password === 'wrong') throw new Error('the user name or password was not accepted'); return { server_name: 'navidrome', server_version: '0.53.3', api_version: '1.16.1', encrypted: /^https:/i.test(S.server.url) }; },
+  server_albums: ({ kind, offset, size }) => { svGate(); let l = SV_ALBUMS.map(svAlbum); if (kind === 'alphabeticalByName') l.sort((a, b) => a.name.localeCompare(b.name)); if (kind === 'random') l = [...l].sort(() => Math.random() - .5); if (kind === 'starred') l = l.slice(0, 1); return l.slice(offset, offset + size); },
+  server_artists: () => { svGate(); return [...new Set(ALBUMS.map((a) => a.artist))].sort().map((name, i) => ({ id: `ar${i}`, name, album_count: 1 })); },
+  server_artist: ({ id }) => { svGate(); const names = [...new Set(ALBUMS.map((a) => a.artist))].sort(); const name = names[Number(id.slice(2))]; return { artist: { id, name, album_count: 1 }, albums: SV_ALBUMS.filter((a) => a.artist === name).map(svAlbum) }; },
+  server_album: ({ id }) => { svGate(); const a = SV_ALBUMS.find((x) => x.id === id); return { album: svAlbum(a), songs: svSongs(a._i) }; },
+  server_playlists: () => { svGate(); return [{ id: 'p1', name: 'Evening', song_count: 5, duration_secs: 1000 }, { id: 'p2', name: 'Lossless only', song_count: 3, duration_secs: 600 }]; },
+  server_playlist: ({ id }) => { svGate(); return { playlist: { id, name: id === 'p1' ? 'Evening' : 'Lossless only', song_count: 5, duration_secs: 1000 }, songs: svAll.filter((x) => id === 'p1' || x.lossless).slice(0, 5) }; },
+  server_search: ({ query }) => { svGate(); const q = query.toLowerCase(); return { artists: [], albums: SV_ALBUMS.filter((a) => a.name.toLowerCase().includes(q)).map(svAlbum), songs: svAll.filter((x) => x.title.toLowerCase().includes(q)).slice(0, 20) }; },
   radio_search: ({ query }) => {
     if (!S.online.enabled || S.online.radio === false) throw new Error('You are offline. Turn on Go online in Settings.');
     const q = (query.name || '').toLowerCase(), tag = (query.tag || '').toLowerCase();

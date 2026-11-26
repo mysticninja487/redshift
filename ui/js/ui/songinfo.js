@@ -2,7 +2,7 @@
 // right-click menu, the info button beside the title on Now Playing, or the I key.
 
 import { api, COVER, coverUrl } from '../api.js';
-import { isStreamPath, state } from '../state.js';
+import { isServerPath, isStreamPath, state } from '../state.js';
 import { dateLocale, fmtKhz, fmtTime, h, plural, toast } from '../util.js';
 import { icon } from './icons.js';
 import { button } from './controls.js';
@@ -72,7 +72,7 @@ export function infoSections(info) {
       ['Favourite', info.favourite ? 'Yes' : 'No'],
     ] : []],
     ['File', [
-      ['Location', m.path],
+      ['Location', isServerPath(m.path) ? 'Streamed from your server' : m.path],
       ['Size', bytes(m.size)],
       ['Modified', m.modified ? day(m.modified) : ''],
       ['Added to library', info.in_library && m.added ? day(m.added) : info.in_library ? '' : 'Not in your library'],
@@ -102,8 +102,9 @@ export async function openSongInfo(path) {
         h('div', { class: 'si-who' }, h('h3', { class: 'dialog-title', id: 'si-title' }, m.title), h('p', { class: 'si-sub' }, [m.artist, m.album].filter((x) => x && !x.startsWith('Unknown ')).join(' · ')))),
       h('div', { class: 'si-body' }, sections),
       h('div', { class: 'dialog-actions' },
-        button('Copy path', () => copy(m.path, 'Path'), { iconName: 'copy' }),
-        button('Edit tags…', async () => { done(); const { openTagEditor } = await import('./tageditor.js'); openTagEditor([path]); }, { iconName: 'edit' }),
+        ...(isServerPath(path) ? [] : [
+          button('Copy path', () => copy(m.path, 'Path'), { iconName: 'copy' }),
+          button('Edit tags…', async () => { done(); const { openTagEditor } = await import('./tageditor.js'); openTagEditor([path]); }, { iconName: 'edit' })]),
         button('Close', () => done(), { cls: 'primary' })));
     box.setAttribute('aria-labelledby', 'si-title');
   });

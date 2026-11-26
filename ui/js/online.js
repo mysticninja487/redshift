@@ -9,7 +9,7 @@ import { state } from './state.js';
 import { confirmDialog } from './ui/dialog.js';
 import { laterVersion, showUpdateDialog } from './ui/updatedialog.js';
 
-export const ONLINE_DEFAULTS = { enabled: false, radio: true, lyrics: true, auto_lyrics: true, lyrics_provider: 'auto', updates: true };
+export const ONLINE_DEFAULTS = { enabled: false, radio: true, server: true, lyrics: true, auto_lyrics: true, lyrics_provider: 'auto', updates: true };
 
 /** The online switches as saved (the main one is off until the user turns it on). */
 export const online = () => ({ ...ONLINE_DEFAULTS, ...(state.settings?.online ?? {}) });
@@ -26,7 +26,7 @@ export async function setOnline(patch) {
 export async function askToGoOnline() {
   if (online().enabled) return true;
   const ok = await confirmDialog('Go online?',
-    'Redshift stays offline unless you allow it. With this on, it can look up lyrics at BetterLyrics and LRCLIB (it sends the song’s title, artist, album and length), check GitHub for new versions and, only when you ask, search for radio stations (your search words go to radio-browser.info), play a station (Redshift connects straight to it; a plain http address is not encrypted), read a public playlist link or find a cover for your Discord card. Your music and library never leave this computer. You can turn it off again any time, and Settings > Online lists everything that was sent.',
+    'Redshift stays offline unless you allow it. With this on, it can look up lyrics at BetterLyrics and LRCLIB (it sends the song’s title, artist, album and length), check GitHub for new versions and, only when you ask, search for radio stations (your search words go to radio-browser.info), play a station (Redshift connects straight to it; a plain http address is not encrypted), read a public playlist link, find a cover for your Discord card or, if you set one up, talk to your own Navidrome / Subsonic server. Your music and library never leave this computer. You can turn it off again any time, and Settings > Online lists everything that was sent.',
     { ok: 'Turn on', danger: false });
   if (!ok) return false;
   await setOnline({ enabled: true });

@@ -18,17 +18,21 @@
 //! This is a blocking client (`ureq`), meant to be called from a worker thread, never from the audio
 //! thread or the UI thread.
 
+#[cfg(test)]
+pub(crate) mod fakesub;
 pub mod artwork;
 pub mod betterlyrics;
 pub mod lrclib;
 pub mod radiobrowser;
+pub mod ranged;
 pub mod remote_playlist;
+pub mod subsonic;
 pub mod updates;
 
 use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use parking_lot::Mutex;
@@ -144,11 +148,69 @@ pub struct LiveBody {
 
 const STREAM_REDIRECTS: u8 = 5;
 
+/// The person's own Navidrome or Subsonic server. Unlike the hosts Redshift ships with, this one
+/// is typed in by the person, may be on the local network and may be plain http, so it is the one
+/// extra place [`Net`] will talk to, and only while it is set.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ServerConfig {
+    /// For example `https://music.example.com` or `http://192.168.1.20:4533`.
+    pub url: String,
+    pub user: String,
+    /// Kept in plain text in the app's data folder (the Subsonic login needs the password itself to
+    /// make its one-time tokens). Use an account made for Redshift.
+    pub password: String,
+}
+
+#[derive(Debug, Clone)]
+struct ServerAccess {
+    /// `http(s)://host[:port][/path]` without a trailing slash.
+    base: String,
+    /// `host[:port]` in lowercase: the only authority requests may go to.
+    authority: String,
+    user: String,
+    password: String,
+}
+
+/// What a server answered to an audio request.
+pub struct ServerBody {
+    pub status: u16,
+    pub content_type: String,
+    /// The whole file's size, from `Content-Range` or `Content-Length`.
+    pub total: Option<u64>,
+    pub reader: Box<dyn std::io::Read + Send>,
+}
+
+impl ServerConfig {
+    pub fn is_set(&self) -> bool {
+        !self.url.trim().is_empty() && !self.user.trim().is_empty()
+    }
+    /// The address with a scheme (https if none was typed) and no trailing slash or `/rest`.
+    pub fn base_url(&self) -> String {
+        let mut u = self.url.trim().to_string();
+        if !u.contains("://") {
+            u = format!("https://{u}");
+        }
+        let mut u = u.trim_end_matches('/').to_string();
+        if u.to_ascii_lowercase().ends_with("/rest") {
+            u.truncate(u.len() - 5);
+        }
+        u
+    }
+}
+
+/// `scheme://authority/path` of an address, without its query: what the request log shows for
+/// the server, so the login token never lands in it.
+fn without_query(url: &str) -> String {
+    url.split('?').next().unwrap_or(url).to_string()
+}
+
 pub struct Net {
     agent: ureq::Agent,
     /// No overall time limit: a stream is meant to go on.
     stream_agent: ureq::Agent,
     hosts: Vec<String>,
+    server: parking_lot::RwLock<Option<ServerAccess>>,
+    salt_counter: AtomicU64,
     enabled: AtomicBool,
     /// Lets streams come from this computer (tests); never on in the app.
     allow_local: AtomicBool,
@@ -219,6 +281,8 @@ impl Net {
                 .build()
                 .into(),
             hosts: hosts.iter().map(|h| h.to_ascii_lowercase()).collect(),
+            server: parking_lot::RwLock::new(None),
+            salt_counter: AtomicU64::new(0),
             enabled: AtomicBool::new(false),
             allow_local: AtomicBool::new(false),
             cache_dir: cache_dir.into(),
@@ -226,6 +290,11 @@ impl Net {
         };
         net.prune_cache();
         net
+    }
+
+    /// Where cached replies (and downloaded songs that cannot be streamed) are kept.
+    pub fn cache_dir(&self) -> &Path {
+        &self.cache_dir
     }
 
     pub fn set_enabled(&self, on: bool) {

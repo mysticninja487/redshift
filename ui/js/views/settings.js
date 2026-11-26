@@ -4,6 +4,7 @@
 import { api, pickFile, pickSave } from '../api.js';
 import { promptText } from '../ui/dialog.js';
 import { on } from '../bus.js';
+import { refreshServer } from '../server.js';
 import { act, refreshPlayer, refreshSettings, refreshStats, setView } from '../controller.js';
 import { ACTIONS, captureKeys, comboFor, comboFromEvent, prettyCombo, setCombo } from '../keys.js';
 import { importFontFile, importedFonts, removeImportedFont } from '../fonts.js';
@@ -432,6 +433,53 @@ export function mountSettings(root) {
       group('Queue', queueOptions()));
   }
 
+
+  /** Your own Navidrome / Subsonic server: where it is, who to log in as, and a way to check it works. */
+  function serverGroup(serverFlag) {
+    const status = h('p', { class: 'hint set-status' });
+    const url = h('input', { class: 'text-input', type: 'url', placeholder: 'https://music.example.com', 'aria-label': 'Server address', translate: 'no', autocomplete: 'off', spellcheck: 'false' });
+    const user = h('input', { class: 'text-input', type: 'text', placeholder: 'User name', 'aria-label': 'Server user name', translate: 'no', autocomplete: 'off', spellcheck: 'false' });
+    const pass = h('input', { class: 'text-input', type: 'password', placeholder: 'Password', 'aria-label': 'Server password', translate: 'no', autocomplete: 'off' });
+    const warn = h('p', { class: 'hint set-warn', hidden: true }, 'This address is plain http, so your login token and your music cross the network unencrypted. That is usual on a home network; use https for anything reached over the internet.');
+    const paintWarn = () => { const v = url.value.trim().toLowerCase(); warn.hidden = !v.startsWith('http://'); };
+    url.addEventListener('input', paintWarn);
+    api.serverSettings().then((st) => {
+      url.value = st.url; user.value = st.user;
+      pass.placeholder = st.has_password ? 'Saved (leave empty to keep it)' : 'Password';
+      paintWarn();
+    }).catch(() => {});
+    const save = async () => {
+      await act(api.setServerSettings(url.value.trim(), user.value.trim(), pass.value ? pass.value : null));
+      pass.value = '';
+      const st = await api.serverSettings();
+      pass.placeholder = st.has_password ? 'Saved (leave empty to keep it)' : 'Password';
+      await refreshServer();
+    };
+    const test = async () => {
+      status.textContent = 'Connecting\u2026'; status.dataset.kind = '';
+      try {
+        await save();
+        const r = await api.serverTest();
+        status.textContent = `Connected to ${r.server_name}${r.server_version ? ` ${r.server_version}` : ''}.${r.encrypted ? '' : ' The connection is not encrypted.'}`;
+        status.dataset.kind = 'ok';
+      } catch (e) { status.textContent = `Could not connect: ${e?.message ?? e}`; status.dataset.kind = 'bad'; }
+    };
+    const forget = async () => {
+      if (!await confirmDialog('Forget this server?', 'The address, user name and saved password are removed from this computer. Songs from it that are in your queue or playlists stay listed but cannot play until you set it up again.', { ok: 'Forget', danger: true })) return;
+      await act(api.setServerSettings('', '', null));
+      url.value = ''; user.value = ''; pass.value = ''; pass.placeholder = 'Password'; status.textContent = ''; paintWarn(); await refreshServer();
+    };
+    return group('Your own server (Navidrome, Subsonic)',
+      serverFlag,
+      row('Address', url, { hint: 'The web address of your Navidrome or other Subsonic-compatible server, for example https://music.example.com or http://192.168.1.20:4533.' }),
+      row('User name', user),
+      row('Password', pass),
+      warn,
+      h('div', { class: 'set-row set-actions' }, button('Save and test connection', test, { cls: 'primary' }), button('Save', async () => { await save(); toast('Saved'); }), button('Forget this server', forget)),
+      status,
+      h('p', { class: 'hint' }, 'Redshift talks only to this one address, and only while Go online is on. It logs in with a one-time token made from your password (the password itself is never sent) and plays the original files, so a lossless library stays lossless. It sends the server what you browse, search and play. The password is kept as plain text in a file in this app\u2019s data folder, because the login needs it; use an account made for Redshift. Songs from your server are counted in your Stats and history like any other.'));
+  }
+
   // ---------- Online ----------
   function onlineTab() {
     const o = online();
@@ -485,6 +533,7 @@ export function mountSettings(root) {
       sub(
         group('Internet radio',
           flag('radio', 'Internet radio', 'Lets the Radio screen search the free radio-browser.info directory (de1, de2 and fi1.api.radio-browser.info), which is sent your search words, and play a station. Playing connects straight to that station\u2019s own server, so it sees your IP address and the name and version of this app, as with any website. Plain http stations are labelled Not encrypted. Radio is not counted in your Stats or history.')),
+        serverGroup(flag('server', 'Play from my server', 'Lets the Server screen browse and play your Navidrome / Subsonic server, once an address is set up below.')),
         group('Lyrics',
           flag('lyrics', 'Look up lyrics online', 'Finds lyrics at BetterLyrics (api.betterlyrics.org) and LRCLIB (lrclib.net), two free community services. They are sent the song\u2019s title, artist, album and length in seconds, plus your IP address and the name and version of this app, as with any website.'),
           row('Lyrics service', segmented({ label: 'Lyrics service', options: [{ value: 'auto', label: 'Automatic' }, { value: 'better_lyrics', label: 'BetterLyrics' }, { value: 'lrclib', label: 'LRCLIB' }], value: o.lyrics_provider, onChange: (v) => setOnline({ lyrics_provider: v }) }),

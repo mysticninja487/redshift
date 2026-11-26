@@ -9,7 +9,7 @@ import { toggleAmbient } from './ambient.js';
 import { toggleEqDrawer } from './ui/eqdrawer.js';
 import { skins } from './skins.js';
 import { VIZ } from './viz/index.js';
-import { isStreamPath, position, state } from './state.js';
+import { isServerPath, isStreamPath, position, state } from './state.js';
 import { clamp, toast } from './util.js';
 
 const seekBy = (d) => act(api.seek(clamp(position() + d, 0, Math.max(0, state.queue.current?.duration_secs ?? 1e9))));
@@ -32,6 +32,7 @@ export const ACTIONS = [
   { id: 'now', label: 'Now playing', key: '1', run: () => setView('now') },
   { id: 'library', label: 'Library', key: '2', run: () => setView('library') },
   { id: 'radio', label: 'Radio', key: '5', run: () => setView('radio') },
+  { id: 'server', label: 'Your server', key: '6', run: () => setView('server') },
   { id: 'stats', label: 'Stats', key: '4', run: () => setView('stats') },
   { id: 'settings', label: 'Settings', key: '3', run: () => toggleSettings() },
   { id: 'search', label: 'Search library', key: 'Ctrl+F', run: () => { setView('library'); setTimeout(() => document.querySelector('.lib-search')?.focus(), 30); } },
@@ -44,7 +45,7 @@ export const ACTIONS = [
   { id: 'mini', label: 'Mini player', key: 'Ctrl+M', run: () => api.toggleMiniPlayer() },
   { id: 'eqdrawer', label: 'Equaliser', key: 'E', run: () => toggleEqDrawer() },
   { id: 'scheme', label: 'Light / dark', key: 'D', run: () => { const cur = document.documentElement.dataset.scheme; set('color.scheme', cur === 'dark' ? 'light' : 'dark'); } },
-  { id: 'tags', label: 'Edit tags of the current track', key: 'T', run: async () => { if (!state.trackPath || isStreamPath(state.trackPath)) return; const { openTagEditor } = await import('./ui/tageditor.js'); openTagEditor([state.trackPath]); } },
+  { id: 'tags', label: 'Edit tags of the current track', key: 'T', run: async () => { if (!state.trackPath || isStreamPath(state.trackPath) || isServerPath(state.trackPath)) return; const { openTagEditor } = await import('./ui/tageditor.js'); openTagEditor([state.trackPath]); } },
   { id: 'songinfo', label: 'Song info of the current track', key: 'I', run: async () => { const { openCurrentSongInfo } = await import('./ui/songinfo.js'); openCurrentSongInfo(); } },
   { id: 'help', label: 'Help & about', key: 'F1', run: async () => { const { openHelp } = await import('./ui/help.js'); openHelp(); } },
   { id: 'ambient', label: 'Ambient mode', key: 'A', run: () => toggleAmbient() },

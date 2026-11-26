@@ -2,7 +2,7 @@
 
 import { api } from '../api.js';
 import { act, playPaths, queueAdd, queueNext, toggleFavourite } from '../controller.js';
-import { state } from '../state.js';
+import { isServerPath, state } from '../state.js';
 import { emit } from '../bus.js';
 import { toast } from '../util.js';
 import { confirmDialog, promptText } from './dialog.js';
@@ -26,6 +26,8 @@ export async function trackMenuItems(paths, extra = []) {
   const inLists = lists.filter((p) => held.get(p.id));
   // The playlist screen has its own Remove from playlist (by position), so don't offer a second one there.
   const hasOwnRemove = extra.some((x) => x.label === 'Remove from playlist');
+  // Songs on the person's server have no file here to edit tags in or save lyrics beside.
+  const local = !paths.some(isServerPath);
   return [
     ...extra,
     { label: 'Play now', onClick: () => playPaths(paths, 0) },
@@ -33,8 +35,10 @@ export async function trackMenuItems(paths, extra = []) {
     { label: 'Add to queue', onClick: () => queueAdd(paths) },
     { sep: true },
     ...(paths.length === 1 ? [{ label: 'Song info…', onClick: async () => { const { openSongInfo } = await import('./songinfo.js'); openSongInfo(paths[0]); } }] : []),
-    { label: paths.length > 1 ? `Edit tags (${paths.length} songs)…` : 'Edit tags…', disabled: !paths.length, onClick: async () => { const { openTagEditor } = await import('./tageditor.js'); openTagEditor(paths); } },
-    { label: paths.length > 1 ? `Find lyrics online (${paths.length} songs)…` : 'Find lyrics online…', disabled: !paths.length, onClick: async () => { const { findLyricsFor } = await import('./lyricsbatch.js'); findLyricsFor(paths); } },
+    ...(local ? [
+      { label: paths.length > 1 ? `Edit tags (${paths.length} songs)…` : 'Edit tags…', disabled: !paths.length, onClick: async () => { const { openTagEditor } = await import('./tageditor.js'); openTagEditor(paths); } },
+      { label: paths.length > 1 ? `Find lyrics online (${paths.length} songs)…` : 'Find lyrics online…', disabled: !paths.length, onClick: async () => { const { findLyricsFor } = await import('./lyricsbatch.js'); findLyricsFor(paths); } },
+    ] : []),
     { label: paths.every((p) => state.favs.has(p)) ? 'Remove from favourites' : 'Add to favourites', onClick: () => toggleFavourite(paths) },
     {
       label: 'Add to playlist',

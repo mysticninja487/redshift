@@ -700,6 +700,7 @@ impl Core {
         self.next_load_id += 1;
         let rate = self.rate();
         let live = crate::util::is_url(&entry.path);
+        let server_id = crate::util::server_song_id(&entry.path);
         let (source, info) = if live {
             let net = self.config.net.clone().ok_or(Error::Offline)?;
             let url = entry.path.to_string_lossy().trim().to_string();
@@ -707,17 +708,22 @@ impl Core {
             let decoder = live::open(net, &url, now.clone())?;
             self.live_loads.write().insert(load_id, now);
             open_decoder(Box::new(decoder), rate, 0.0, load_id, self.decode_errors_tx.clone())?
+        } else if let Some(id) = server_id.as_deref() {
+            // A song on the person's own server: the original file, read in pieces, seekable.
+            let net = self.config.net.clone().ok_or(Error::Offline)?;
+            let decoder = crate::decode::remote::open(net, id)?;
+            open_decoder(decoder, rate, start_secs, load_id, self.decode_errors_tx.clone())?
         } else {
             open_source(&entry.path, rate, start_secs, load_id, self.decode_errors_tx.clone())?
         };
-        wait_ready(&source, (rate as f64 * PRELOAD_SECS) as usize, Duration::from_secs(if live { 6 } else { 2 }));
+        wait_ready(&source, (rate as f64 * PRELOAD_SECS) as usize, Duration::from_secs(if live || server_id.is_some() { 6 } else { 2 }));
         self.loads.insert(load_id, entry.id);
         let track = Track {
             id: load_id,
             source: Box::new(source),
             total_frames: info.total_frames,
             start_frame: info.start_frame,
-            gain: if live { 1.0 } else { self.gain_for(&entry.path) },
+            gain: if live || server_id.is_some() { 1.0 } else { self.gain_for(&entry.path) },
             bits: info.bits_per_sample.and_then(|b| u8::try_from(b).ok()),
         };
         self.infos.insert(load_id, info);
@@ -1166,6 +1172,9 @@ impl Core {
 }
 
 fn file_name(p: &Path) -> String {
+    if crate::util::server_song_id(p).is_some() {
+        return "song from your server".to_string();
+    }
     p.file_name().map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into_owned())
 }
 

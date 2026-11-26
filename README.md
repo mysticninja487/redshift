@@ -15,7 +15,7 @@
 
 Point Redshift at your music folders and play. There is no account and no tracking, and it never changes your files unless you edit a tag yourself. It is built with Tauri 2 and a Rust audio engine, so it starts fast and idles at close to nothing.
 
-Everything that touches the internet (lyrics lookup, update check, internet radio) is **off until you switch it on** in Settings > Online, which also shows every request that was made.
+Everything that touches the internet (lyrics lookup, update check, internet radio, your own music server) is **off until you switch it on** in Settings > Online, which also shows every request that was made.
 
 > The screenshots use invented demo albums and a stand-in player, so the artists and songs are made up.
 
@@ -129,6 +129,12 @@ It needs a Discord application ID. The release has one built in; otherwise paste
 
 Press **5** for Radio. Stations come from the free [radio-browser.info](https://www.radio-browser.info) directory; you can search by name or genre, keep favourites, or paste any station address and press **Play address**. Lossless (FLAC) stations are marked and listed first by default, everything else is labelled **Lossy**, and plain `http` stations say **Not encrypted**. Now Playing shows **LIVE** instead of a length, the song the station announces (ICY or Ogg/Opus tags) and the stream's codec and bitrate, and the signal path says what happens to it like it does for a file. Streams can't be sought, and they are not counted in Stats or history. MP3, AAC (ADTS), Ogg Vorbis, Opus and FLAC streams play and reconnect on their own after a drop; HLS and HE-AAC stations are not supported yet, and a stream that follows a song starts with a short gap because it can't be preloaded.
 
+### Your own server (Navidrome, Subsonic; optional, off by default)
+
+Press **6** for Server. Add the address, user name and password of your [Navidrome](https://www.navidrome.org) (or any Subsonic-compatible server) in Settings > Online > Your own server and press **Save and test connection**. Then browse its albums (recently added, recently played, most played, random, A to Z, starred), artists and playlists, or search it, and play. Songs play as their **original files** (no transcoding), fetched in pieces, so a lossless library stays lossless, seeking jumps straight to the right place without downloading the whole file, and the next song is prepared for gapless playback. Each song is marked **Lossless** or **Lossy**, and an address that is plain `http` says **Not encrypted** (usual on a home network; use `https` for anything reached over the internet). Server songs go through the queue, favourites, playlists, history and Stats like your own files, but have no file here to edit tags in. Ogg Opus songs are saved to the cache folder before they play, because the Opus decoder needs a file.
+
+The login uses the Subsonic token scheme: each request carries your user name, a random salt and `md5(password + salt)`, never the password itself. The password is kept as **plain text** in `server.json` in the app's data folder, because the token needs it, so use an account made for Redshift. Redshift only talks to the one address you set, never follows a redirect to another host, and does nothing while Go online is off.
+
 ### Online features (optional, off by default)
 
 Settings > Online has a main switch. Nothing goes over the network until it is on, and each feature says exactly what it sends.
@@ -139,6 +145,7 @@ Settings > Online has a main switch. Nothing goes over the network until it is o
 | Lyrics (LRCLIB) | `lrclib.net` | The same |
 | Radio search | `de1.api.radio-browser.info`, `de2.api.radio-browser.info`, `fi1.api.radio-browser.info` | Your search words (name, genre) and whether Lossless only is on, only when you search on the Radio screen |
 | Radio stations | the station's own address | Nothing but the request to play it: the station's server sees your IP address and the app's name and version. Plain `http` stations are not encrypted and are labelled so |
+| Your own server | the address you set (and only that) | What you browse, search and play, the user name and a one-time login token (never the password), plus your IP address and the app's name and version. Plain `http` addresses are not encrypted and are labelled so |
 | Discord cover art | `itunes.apple.com` | Artist and title of the song on the Discord card, once per song; only while the card shows album art |
 | Playlist import | `api.deezer.com`, `open.spotify.com`, `www.youtube.com` | The playlist link's address, only when you press Find songs in Library > Playlists > Import online; no account or sign-in, so only public playlists |
 | Update check | `api.github.com` | Nothing about you or your music; it asks for the latest release at startup (and every few hours) and tells you if there is a newer one |

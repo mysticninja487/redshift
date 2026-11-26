@@ -21,7 +21,7 @@ import { debounce, h, toast } from './util.js';
 import { iconButton, select } from './ui/controls.js';
 import { icon } from './ui/icons.js';
 
-const NAV = [['now', 'Now playing', 'record'], ['library', 'Library', 'library'], ['radio', 'Radio', 'radio'], ['stats', 'Stats', 'stats'], ['settings', 'Settings', 'settings']];
+const NAV = [['now', 'Now playing', 'record'], ['library', 'Library', 'library'], ['radio', 'Radio', 'radio'], ['server', 'Server', 'server'], ['stats', 'Stats', 'stats'], ['settings', 'Settings', 'settings']];
 
 function buildChrome() {
   const nav = h('nav', { class: 'nav', 'aria-label': 'Sections' }, NAV.map(([id, label, ic]) =>
@@ -99,13 +99,14 @@ function buildViews(app) {
   const now = h('div', { id: 'now', class: 'view stage-grid' });
   const library = h('div', { id: 'library', class: 'view', hidden: true });
   const radio = h('div', { id: 'radio', class: 'view', hidden: true });
+  const server = h('div', { id: 'server', class: 'view', hidden: true });
   const stats = h('div', { id: 'stats', class: 'view', hidden: true });
   const settings = h('div', { id: 'settings', class: 'view', hidden: true });
-  const main = h('main', { class: 'views' }, now, library, radio, stats, settings);
+  const main = h('main', { class: 'views' }, now, library, radio, server, stats, settings);
   app.append(main);
   mountLayout(now);
   const mounted = {};
-  const loaders = { radio: () => import('./views/radio.js').then((m) => m.mountRadio(radio)), library: () => import('./views/library.js').then((m) => m.mountLibrary(library)), stats: () => import('./views/stats.js').then((m) => m.mountStats(stats)), settings: () => import('./views/settings.js').then((m) => m.mountSettings(settings)) };
+  const loaders = { server: () => import('./views/server.js').then((m) => m.mountServer(server)), radio: () => import('./views/radio.js').then((m) => m.mountRadio(radio)), library: () => import('./views/library.js').then((m) => m.mountLibrary(library)), stats: () => import('./views/stats.js').then((m) => m.mountStats(stats)), settings: () => import('./views/settings.js').then((m) => m.mountSettings(settings)) };
   // On a wide window Settings sits beside the live Now Playing view, so a change can be seen as it is made.
   // On a narrow one it fills the window, and "Hold to compare" shows Now Playing for as long as it is held.
   const SPLIT_MIN = 1020;
@@ -116,12 +117,13 @@ function buildViews(app) {
     root.dataset.view = split || peek ? 'now' : v;
     root.dataset.split = String(split);
     root.dataset.compare = String(isComparing());
-    now.hidden = !(v === 'now' || split || peek); library.hidden = v !== 'library'; radio.hidden = v !== 'radio'; stats.hidden = v !== 'stats'; settings.hidden = v !== 'settings';
+    now.hidden = !(v === 'now' || split || peek); library.hidden = v !== 'library'; radio.hidden = v !== 'radio'; server.hidden = v !== 'server'; stats.hidden = v !== 'stats'; settings.hidden = v !== 'settings';
     if (v !== 'now' && !mounted[v]) {
       mounted[v] = true;
       try { mounted[v] = await loaders[v](); } catch (e) { console.error(e); toast(`Could not open ${v}`, 'error'); mounted[v] = false; }
     } else if (v === 'library') mounted.library?.reload?.();
     else if (v === 'radio') mounted.radio?.reload?.();
+    else if (v === 'server') mounted.server?.reload?.();
   };
   on('view', show);
   on('compare', () => show(state.view));

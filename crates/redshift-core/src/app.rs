@@ -49,6 +49,9 @@ const COVER_CACHE_SIZE: usize = 8;
 const THUMB_CACHE_BYTES: usize = 24 * 1024 * 1024;
 
 pub const SETTINGS_FILE: &str = "settings.json";
+mod server;
+pub use server::{ServerAlbumView, ServerArtistView, ServerPlaylistView, ServerSettings};
+
 const STATIONS_FILE: &str = "stations.json";
 pub const LIBRARY_FILE: &str = "library.json";
 pub const PLAYLISTS_FILE: &str = "playlists.json";
@@ -212,11 +215,13 @@ pub struct OnlineSettings {
     pub updates: bool,
     /// Allow the Radio screen: searching the station directory and playing streams.
     pub radio: bool,
+    /// Allow playing from the person's own Navidrome / Subsonic server (when one is set up).
+    pub server: bool,
 }
 
 impl Default for OnlineSettings {
     fn default() -> Self {
-        Self { enabled: false, lyrics: true, auto_lyrics: true, lyrics_provider: LyricsProvider::Auto, updates: true, radio: true }
+        Self { enabled: false, lyrics: true, auto_lyrics: true, lyrics_provider: LyricsProvider::Auto, updates: true, radio: true, server: true }
     }
 }
 
@@ -406,6 +411,8 @@ pub struct App {
     /// The only way out to the internet; see [`crate::net`].
     net: Arc<Net>,
     stations: Mutex<StationStore>,
+    /// The person's own server: its login, the songs seen on it and their covers.
+    server: Mutex<server::ServerState>,
     /// Keeps the Discord profile line right; see [`crate::presence`].
     presence: Mutex<crate::presence::Runner>,
     /// The title, artist and album of the song on Discord, so the file is not read every second.
@@ -438,6 +445,8 @@ impl App {
             &[lrclib::HOST, betterlyrics::HOST, updates::HOST, updates::DOWNLOAD_HOSTS[0], updates::DOWNLOAD_HOSTS[1], updates::DOWNLOAD_HOSTS[2], artwork::HOST, remote_playlist::DEEZER_HOST, remote_playlist::SPOTIFY_HOST, remote_playlist::YOUTUBE_HOST, radiobrowser::HOSTS[0], radiobrowser::HOSTS[1], radiobrowser::HOSTS[2]],
         ));
         net.set_enabled(settings.online.enabled);
+        let (server_state, server_config) = server::ServerState::load(&data_dir);
+        net.set_server(Some(&server_config));
         player_config.net = Some(net.clone());
         let saved_device = settings.device.clone();
         player_config.exclusive |= settings.exclusive;
@@ -491,6 +500,7 @@ impl App {
             session_saved: Mutex::new(None),
             sleep: Mutex::new(None),
             net,
+            server: Mutex::new(server_state),
             presence: Mutex::new(crate::presence::Runner::default()),
             presence_meta: Mutex::new(None),
             presence_cover: Mutex::new(None),
@@ -520,6 +530,7 @@ impl App {
     pub fn flush(&self) -> Result<()> {
         self.save_session(false)?;
         self.save_history(false)?;
+        self.save_server_songs()?;
         if self.stats_dirty.swap(false, Ordering::AcqRel) {
             if let Err(e) = self.stats.lock().save() {
                 self.stats_dirty.store(true, Ordering::Release);
@@ -664,7 +675,7 @@ impl App {
         let mut paths = Vec::new();
         let mut start = None;
         for (i, p) in session.paths.iter().enumerate() {
-            if !p.is_file() && !crate::util::is_url(p) {
+            if !p.is_file() && !crate::util::is_url(p) && crate::util::server_song_id(p).is_none() {
                 continue;
             }
             if start.is_none() && i >= before {
@@ -1219,6 +1230,9 @@ impl App {
         if crate::util::is_url(path) {
             return Ok(self.stream_meta(path));
         }
+        if crate::util::server_song_id(path).is_some() {
+            return Ok(self.server_meta(path));
+        }
         if let Some(m) = self.library.lock().get(path) {
             return Ok(m.clone());
         }
@@ -1542,6 +1556,9 @@ impl App {
     }
     /// Cover art for an audio file (same restriction as [`lyrics`](Self::lyrics)).
     pub fn cover(&self, path: &Path) -> Option<Arc<Cover>> {
+        if crate::util::server_song_id(path).is_some() || crate::util::server_cover_id(path).is_some() {
+            return self.server_cover_of(path, 1000);
+        }
         if !meta::is_audio_file(path) {
             return None;
         }
@@ -1569,6 +1586,9 @@ impl App {
     /// Cover art no bigger than `max_px` on its longer side: lists and grids ask for these instead of
     /// the full picture. A cover that is already small enough is returned as it is.
     pub fn cover_sized(&self, path: &Path, max_px: u32) -> Option<Arc<Cover>> {
+        if crate::util::server_song_id(path).is_some() || crate::util::server_cover_id(path).is_some() {
+            return self.server_cover_of(path, max_px.clamp(32, 1000));
+        }
         if !meta::is_audio_file(path) {
             return None;
         }
@@ -1678,7 +1698,7 @@ impl App {
     }
     /// Which of these files exist right now, in the same order.
     pub fn paths_exist(&self, paths: &[PathBuf]) -> Vec<bool> {
-        paths.iter().map(|p| crate::util::is_url(p) || fs::metadata(p).is_ok()).collect()
+        paths.iter().map(|p| crate::util::is_url(p) || crate::util::server_song_id(p).is_some() || fs::metadata(p).is_ok()).collect()
     }
     /// Writes a playlist as M3U8, with durations and "Artist - Title" for tracks in the library.
     pub fn export_m3u(&self, id: PlaylistId, dest: &Path) -> Result<()> {

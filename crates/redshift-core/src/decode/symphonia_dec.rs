@@ -52,6 +52,20 @@ impl SymphoniaDecoder {
         Self::from_stream(mss, hint, None)
     }
 
+    /// A file that is not on this computer but can be read at any position (a song on the person's
+    /// own server, fetched in pieces). `ext` and `mime` are only hints for the probe.
+    pub fn open_seekable(source: Box<dyn symphonia::core::io::MediaSource>, ext: &str, mime: &str) -> Result<Self> {
+        let mss = MediaSourceStream::new(source, Default::default());
+        let mut hint = Hint::new();
+        if !ext.is_empty() {
+            hint.with_extension(ext);
+        }
+        if !mime.is_empty() {
+            hint.mime_type(mime);
+        }
+        Self::from_stream(mss, hint, None)
+    }
+
     fn from_stream(mss: MediaSourceStream<'static>, hint: Hint, path: Option<&Path>) -> Result<Self> {
         let format = symphonia::default::get_probe()
             .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())

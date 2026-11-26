@@ -783,6 +783,57 @@ async fn radio_search(state: State<'_, AppState>, query: redshift_core::net::rad
     let core = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || core.radio_search(&query)).await.map_err(err)?.map_err(err)
 }
+// ---- your own server (Navidrome / Subsonic) ----
+
+#[tauri::command]
+fn server_settings(state: State<AppState>) -> redshift_core::app::ServerSettings {
+    state.0.server_settings()
+}
+/// Saves the server's address and login. A password of `null` keeps the saved one.
+#[tauri::command]
+fn set_server_settings(state: State<AppState>, url: String, user: String, password: Option<String>) -> CmdResult<()> {
+    state.0.set_server_settings(&url, &user, password.as_deref()).map_err(err)
+}
+#[tauri::command]
+async fn server_test(state: State<'_, AppState>) -> CmdResult<redshift_core::net::subsonic::ServerStatus> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.server_test()).await.map_err(err)?.map_err(err)
+}
+#[tauri::command]
+async fn server_albums(state: State<'_, AppState>, kind: String, offset: usize, size: usize) -> CmdResult<Vec<redshift_core::net::subsonic::ServerAlbum>> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.server_albums(&kind, offset, size)).await.map_err(err)?.map_err(err)
+}
+#[tauri::command]
+async fn server_artists(state: State<'_, AppState>) -> CmdResult<Vec<redshift_core::net::subsonic::ServerArtist>> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.server_artists()).await.map_err(err)?.map_err(err)
+}
+#[tauri::command]
+async fn server_artist(state: State<'_, AppState>, id: String) -> CmdResult<redshift_core::app::ServerArtistView> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.server_artist(&id)).await.map_err(err)?.map_err(err)
+}
+#[tauri::command]
+async fn server_album(state: State<'_, AppState>, id: String) -> CmdResult<redshift_core::app::ServerAlbumView> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.server_album(&id)).await.map_err(err)?.map_err(err)
+}
+#[tauri::command]
+async fn server_playlists(state: State<'_, AppState>) -> CmdResult<Vec<redshift_core::net::subsonic::ServerPlaylist>> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.server_playlists()).await.map_err(err)?.map_err(err)
+}
+#[tauri::command]
+async fn server_playlist(state: State<'_, AppState>, id: String) -> CmdResult<redshift_core::app::ServerPlaylistView> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.server_playlist(&id)).await.map_err(err)?.map_err(err)
+}
+#[tauri::command]
+async fn server_search(state: State<'_, AppState>, query: String) -> CmdResult<redshift_core::net::subsonic::ServerSearch> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.server_search(&query)).await.map_err(err)?.map_err(err)
+}
 #[tauri::command]
 fn radio_favourites(state: State<AppState>) -> Vec<redshift_core::radio::Station> {
     state.0.radio_favourites()
@@ -1195,7 +1246,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            set_queue, set_queue_options, set_notify_on_track, set_online, radio_search, radio_favourites, radio_recent, radio_set_favourite, radio_station_from_url, radio_play, set_presence, presence_status, presence_preview, online_lyrics, check_updates, download_update, install_update, net_report, clear_net_data, open_project_page, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
+            set_queue, set_queue_options, set_notify_on_track, set_online, radio_search, radio_favourites, radio_recent, radio_set_favourite, radio_station_from_url, radio_play, server_settings, set_server_settings, server_test, server_albums, server_artists, server_artist, server_album, server_playlists, server_playlist, server_search, set_presence, presence_status, presence_preview, online_lyrics, check_updates, download_update, install_update, net_report, clear_net_data, open_project_page, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
             queue_append, queue_play_next, queue_remove, queue_move, queue_clear, player_state, queue_view,
             get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_rate, set_replaygain, set_exclusive, set_bit_perfect,
             output_devices, set_output_device,

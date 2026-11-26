@@ -1,0 +1,17 @@
+/* Server: browsing your own Navidrome / Subsonic server. Rows and tiles reuse the Library's styles. */
+.sv-body { padding-bottom: 28px; }
+.sv-chip { font-family: var(--font-mono); font-size: .7rem; padding: 2px 9px; border-radius: 999px; border: var(--bw) solid var(--line); color: var(--fg2); }
+.sv-chip.is-ok { color: var(--fg2); }
+.sv-chip.is-warn { color: var(--warn, #e0a030); border-color: color-mix(in srgb, var(--warn, #e0a030) 55%, transparent); }
+.sv-row { grid-template-columns: 44px minmax(0, 2fr) minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(230px, 1.6fr) 30px 56px; }
+.sv-quality { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sv-fmt { color: var(--fg3); font-family: var(--font-mono); font-size: .72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-q-line { display: flex; gap: 6px; }
+.sv-more { justify-self: start; margin-top: 14px; }
+.set-status[data-kind="ok"] { color: var(--ok, #5fbf7a); }
+.set-status[data-kind="bad"] { color: var(--warn, #e0a030); }
+.set-warn { color: var(--warn, #e0a030); margin: 0; }
+@media (max-width: 900px) {
+  .sv-row { grid-template-columns: 44px minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1.2fr) 30px 56px; }
+  .sv-quality { display: none; }
+}

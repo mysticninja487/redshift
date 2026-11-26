@@ -144,6 +144,7 @@ The licence column is the one the crate declares; where it offers a choice (`MIT
 | lofty_attr | 0.12.0 | MIT OR Apache-2.0 |
 | log | 0.4.35 | MIT OR Apache-2.0 |
 | markup5ever | 0.39.0 | MIT OR Apache-2.0 |
+| md-5 | 0.10.6 | MIT OR Apache-2.0 |
 | memchr | 2.8.3 | Unlicense OR MIT |
 | mime | 0.3.17 | MIT OR Apache-2.0 |
 | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
