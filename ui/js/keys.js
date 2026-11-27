@@ -33,6 +33,7 @@ export const ACTIONS = [
   { id: 'library', label: 'Library', key: '2', run: () => setView('library') },
   { id: 'radio', label: 'Radio', key: '5', run: () => setView('radio') },
   { id: 'server', label: 'Your server', key: '6', run: () => setView('server') },
+  { id: 'archive', label: 'Internet Archive', key: '7', run: () => setView('archive') },
   { id: 'stats', label: 'Stats', key: '4', run: () => setView('stats') },
   { id: 'settings', label: 'Settings', key: '3', run: () => toggleSettings() },
   { id: 'search', label: 'Search library', key: 'Ctrl+F', run: () => { setView('library'); setTimeout(() => document.querySelector('.lib-search')?.focus(), 30); } },

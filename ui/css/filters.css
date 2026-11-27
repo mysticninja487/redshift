@@ -1,0 +1,55 @@
+/* Library: the Filters button and panel, selecting songs in a list. */
+.lib-filter-btn { position: relative; }
+.lib-filter-btn.open, .lib-filter-btn.active { border-color: var(--accent); color: var(--accent-text); }
+.lf-badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--on-accent); font-family: var(--font-mono); font-size: .7rem; display: inline-grid; place-items: center; }
+.lf-badge[hidden] { display: none; }
+
+.lf-panel { flex: none; display: grid; gap: 12px; padding: 14px 16px; max-height: 44vh; overflow-y: auto; border: var(--bw) solid var(--line); border-radius: var(--r-panel); background: color-mix(in srgb, var(--fg) 4%, var(--bg2)); }
+.lf-panel[hidden] { display: none; }
+.lf-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+.lf-label { font-family: var(--font-mono); font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--fg3); }
+.lf-presets, .lf-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.lf-chip { border: var(--bw) solid var(--line); background: none; color: var(--fg2); padding: 4px 11px; border-radius: 999px; font-size: .8rem; }
+.lf-chip:hover { color: var(--fg); border-color: color-mix(in srgb, var(--fg) 35%, transparent); }
+.lf-chip.on, .lf-chip[aria-pressed="true"] { background: var(--accent); border-color: transparent; color: var(--on-accent); }
+.lf-match .seg-btn { padding: 4px 12px; font-size: .8rem; }
+.lf-rules { display: grid; gap: 8px; }
+.lf-empty { margin: 0; }
+.lf-rule { display: grid; grid-template-columns: minmax(150px, 190px) minmax(150px, 190px) minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.lf-rule.idle { opacity: .7; }
+.lf-rule.idle .lf-value::after { content: ''; }
+.lf-rule > .select { width: 100%; }
+.lf-pair .select { width: auto; }
+.lf-value { min-width: 0; display: flex; align-items: center; min-height: 34px; }
+.lf-input { max-width: 260px; }
+.lf-pair { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lf-pair .lf-input { width: 120px; }
+.lf-and { color: var(--fg3); font-size: .8rem; }
+.lf-remove { width: 30px; height: 30px; min-width: 30px; padding: 0; }
+.lf-foot { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 760px) { .lf-rule { grid-template-columns: 1fr 1fr auto; } .lf-value { grid-column: 1 / -1; grid-row: 2; } .lf-remove { grid-column: 3; grid-row: 1; } }
+
+/* picking songs */
+.t-row.sel { grid-template-columns: 26px 44px minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1.5fr) 30px 56px; }
+.t-row.sel.has-extra { grid-template-columns: 26px 44px minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1.5fr) 96px 30px 56px; }
+.t-row.sel.has-extra.wide { grid-template-columns: 26px 44px minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1.5fr) minmax(150px, 190px) 30px 56px; }
+.t-row.has-extra.wide:not(.sel) { grid-template-columns: 44px minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 1.5fr) minmax(150px, 190px) 30px 56px; }
+.t-check { display: grid; place-items: center; overflow: visible !important; }
+.t-check input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; opacity: 0; }
+.t-row:hover .t-check input, .t-row.selected .t-check input, .t-row:focus-within .t-check input, .t-head .t-check input, .t-table.picking .t-check input { opacity: 1; }
+.t-row.selected { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.t-row.selected:not(.t-head):hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.t-row.sel { cursor: default; user-select: none; }
+.sel-bar { position: sticky; top: 0; z-index: 4; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; margin-bottom: 6px; border: var(--bw) solid color-mix(in srgb, var(--accent) 55%, var(--line)); border-radius: var(--r-ctl); background: color-mix(in srgb, var(--accent) 12%, var(--bg2)); backdrop-filter: blur(8px); }
+.sel-bar[hidden] { display: none; }
+.sel-count { font-family: var(--font-mono); font-size: .8rem; margin-right: 6px; }
+.sel-spacer { flex: 1; }
+.sel-bar .btn { padding: 6px 11px; font-size: .82rem; }
+.t-table:focus { outline: none; }
+
+/* narrow windows: the album and format columns give way, so titles stay readable */
+@media (max-width: 860px) {
+  .t-row .t-album, .t-row .t-extra { display: none; }
+  .t-row, .t-row.has-extra, .t-row.has-extra.wide:not(.sel) { grid-template-columns: 44px minmax(0, 2fr) minmax(0, 1.2fr) 30px 56px; gap: 8px; }
+  .t-row.sel, .t-row.sel.has-extra, .t-row.sel.has-extra.wide { grid-template-columns: 26px 44px minmax(0, 2fr) minmax(0, 1.2fr) 30px 56px; }
+}

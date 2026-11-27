@@ -830,6 +830,20 @@ async fn server_playlist(state: State<'_, AppState>, id: String) -> CmdResult<re
     tauri::async_runtime::spawn_blocking(move || core.server_playlist(&id)).await.map_err(err)?.map_err(err)
 }
 #[tauri::command]
+async fn archive_search(state: State<'_, AppState>, query: redshift_core::net::archive::ArchiveQuery) -> CmdResult<redshift_core::net::archive::ArchiveSearch> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.archive_search(&query)).await.map_err(err)?.map_err(err)
+}
+#[tauri::command]
+async fn archive_item(state: State<'_, AppState>, identifier: String, lossless_only: bool) -> CmdResult<redshift_core::net::archive::ArchiveItem> {
+    let core = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || core.archive_item(&identifier, lossless_only)).await.map_err(err)?.map_err(err)
+}
+#[tauri::command]
+fn archive_play(state: State<AppState>, paths: Vec<String>, start: usize) -> CmdResult<()> {
+    state.0.archive_play(&paths, start).map_err(err)
+}
+#[tauri::command]
 async fn server_search(state: State<'_, AppState>, query: String) -> CmdResult<redshift_core::net::subsonic::ServerSearch> {
     let core = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || core.server_search(&query)).await.map_err(err)?.map_err(err)
@@ -980,7 +994,11 @@ fn clear_net_data(state: State<AppState>) -> usize {
 /// Anything else is refused.
 #[tauri::command]
 fn open_project_page(url: String) -> CmdResult<()> {
-    let ours = url.starts_with("https://github.com/mysticninja487/redshift") || url == "https://better-lyrics.boidu.dev" || url.starts_with("https://better-lyrics.boidu.dev/");
+    let ours = url.starts_with("https://github.com/mysticninja487/redshift") || url == "https://better-lyrics.boidu.dev" || url.starts_with("https://better-lyrics.boidu.dev/")
+        // An Internet Archive item page (to credit the source) and the licence text an item names.
+        || url.starts_with("https://archive.org/details/")
+        || url.starts_with("https://creativecommons.org/licenses/")
+        || url.starts_with("https://creativecommons.org/publicdomain/");
     if !ours || url.chars().any(|c| c.is_whitespace() || c == '"' || c == '^' || c == '`') {
         return Err("that address cannot be opened from here".into());
     }
@@ -1246,7 +1264,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            set_queue, set_queue_options, set_notify_on_track, set_online, radio_search, radio_favourites, radio_recent, radio_set_favourite, radio_station_from_url, radio_play, server_settings, set_server_settings, server_test, server_albums, server_artists, server_artist, server_album, server_playlists, server_playlist, server_search, set_presence, presence_status, presence_preview, online_lyrics, check_updates, download_update, install_update, net_report, clear_net_data, open_project_page, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
+            set_queue, set_queue_options, set_notify_on_track, set_online, radio_search, radio_favourites, radio_recent, radio_set_favourite, radio_station_from_url, radio_play, server_settings, set_server_settings, server_test, server_albums, server_artists, server_artist, server_album, server_playlists, server_playlist, server_search, archive_search, archive_item, archive_play, set_presence, presence_status, presence_preview, online_lyrics, check_updates, download_update, install_update, net_report, clear_net_data, open_project_page, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
             queue_append, queue_play_next, queue_remove, queue_move, queue_clear, player_state, queue_view,
             get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_rate, set_replaygain, set_exclusive, set_bit_perfect,
             output_devices, set_output_device,

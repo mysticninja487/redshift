@@ -1,4 +1,4 @@
-//! A song on the person's server, readable at any position.
+//! A song on the person's server or in the Internet Archive, readable at any position.
 //!
 //! The file is fetched in blocks with HTTP Range requests, so seeking jumps straight to the right
 //! part instead of downloading everything before it, and the next blocks are fetched ahead of the
@@ -40,9 +40,58 @@ struct State {
     closed: bool,
 }
 
+/// Where a song comes from.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Origin {
+    /// A song on the person's own Subsonic server, by the server's id.
+    Server(String),
+    /// A file in an Internet Archive item.
+    Archive { identifier: String, file: String },
+}
+
+impl Origin {
+    /// A name that is safe as part of a file name, for the cache.
+    pub fn cache_name(&self) -> String {
+        let raw = match self {
+            Origin::Server(id) => format!("s-{id}"),
+            Origin::Archive { identifier, file } => format!("a-{identifier}-{file}"),
+        };
+        raw.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect()
+    }
+
+    /// The file extension, when the name has one (a hint for telling the format).
+    pub fn extension(&self) -> String {
+        match self {
+            Origin::Archive { file, .. } => file.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default(),
+            Origin::Server(_) => String::new(),
+        }
+    }
+
+    /// Asks for the file (or the bytes `range` of it).
+    fn request(&self, net: &Net, range: Option<(u64, u64)>, log: bool) -> Result<super::ServerBody> {
+        match self {
+            Origin::Server(id) => {
+                let url = net.server_stream_url(id)?;
+                net.server_open(&url, range, "Server: song", log)
+            }
+            Origin::Archive { identifier, file } => {
+                let url = net.archive_stream_url(identifier, file)?;
+                net.archive_open(&url, "audio/*, */*", range, "Internet Archive: song", log)
+            }
+        }
+    }
+
+    fn source_word(&self) -> &'static str {
+        match self {
+            Origin::Server(_) => "the server",
+            Origin::Archive { .. } => "the Internet Archive",
+        }
+    }
+}
+
 struct Shared {
     net: Arc<Net>,
-    id: String,
+    origin: Origin,
     total: u64,
     /// The whole file, when the server could not do ranges.
     whole: Option<Vec<u8>>,
@@ -88,15 +137,14 @@ impl Shared {
                 return Err("closed".into());
             }
             let result = (|| -> Result<Vec<u8>> {
-                let url = self.net.server_stream_url(&self.id)?;
-                let mut body = self.net.server_open(&url, Some((start, end)), "Server: song", false)?;
+                let mut body = self.origin.request(&self.net, Some((start, end)), false)?;
                 if body.status != 206 {
-                    return Err(Error::Network(format!("the server answered {} to a request for part of a song", body.status)));
+                    return Err(Error::Network(format!("{} answered {} to a request for part of a song", self.origin.source_word(), body.status)));
                 }
                 let mut buf = Vec::with_capacity(want);
                 body.reader.by_ref().take(want as u64).read_to_end(&mut buf).map_err(|e| Error::Network(e.to_string()))?;
                 if buf.len() != want {
-                    return Err(Error::Network("the connection to the server ended early".into()));
+                    return Err(Error::Network("the connection ended early".into()));
                 }
                 Ok(buf)
             })();
@@ -172,13 +220,18 @@ impl Shared {
 }
 
 impl RangedReader {
+    /// Opens a song on the person's server.
+    pub fn open(net: Arc<Net>, id: &str) -> Result<Self> {
+        Self::open_origin(net, Origin::Server(id.to_string()))
+    }
+
     /// Opens a song. The first block is fetched here, so a wrong login, a missing song or an
     /// unreachable server shows up now and not in the middle of playback.
-    pub fn open(net: Arc<Net>, id: &str) -> Result<Self> {
-        let url = net.server_stream_url(id)?;
-        let mut body = net.server_open(&url, Some((0, BLOCK - 1)), "Server: play song", true)?;
+    pub fn open_origin(net: Arc<Net>, origin: Origin) -> Result<Self> {
+        let who = origin.source_word();
+        let mut body = origin.request(&net, Some((0, BLOCK - 1)), true)?;
         let kind = body.content_type.clone();
-        if kind.contains("json") || kind.contains("xml") || kind.starts_with("text/") {
+        if matches!(origin, Origin::Server(_)) && (kind.contains("json") || kind.contains("xml") || kind.starts_with("text/")) {
             // The Subsonic way of saying no: an error document where the song should be.
             let mut text = Vec::new();
             let _ = body.reader.by_ref().take(16 * 1024).read_to_end(&mut text);
@@ -186,38 +239,44 @@ impl RangedReader {
         }
         match body.status {
             206 => {
-                let total = body.total.ok_or_else(|| Error::Network("the server did not say how large the song is".into()))?;
+                let total = body.total.ok_or_else(|| Error::Network(format!("{who} did not say how large the song is")))?;
                 if total == 0 {
-                    return Err(Error::Network("the song on the server is empty".into()));
+                    return Err(Error::Network("the song is empty".into()));
                 }
                 let want = total.min(BLOCK) as usize;
                 let mut first = Vec::with_capacity(want);
                 body.reader.by_ref().take(want as u64).read_to_end(&mut first).map_err(|e| Error::Network(e.to_string()))?;
                 if first.len() != want {
-                    return Err(Error::Network("the connection to the server ended early".into()));
+                    return Err(Error::Network("the connection ended early".into()));
                 }
                 let mut st = State::default();
                 st.blocks.insert(0, Arc::new(first));
-                let shared = Arc::new(Shared { net, id: id.to_string(), total, whole: None, state: Mutex::new(st), cv: Condvar::new() });
+                let shared = Arc::new(Shared { net, origin, total, whole: None, state: Mutex::new(st), cv: Condvar::new() });
                 Ok(Self { shared, pos: 0, content_type: kind })
             }
             200 => {
                 // No range support: read it all.
                 if body.total.is_some_and(|t| t > WHOLE_MAX) {
-                    return Err(Error::Network("this server cannot send part of a song, and the song is too large to load whole".into()));
+                    return Err(Error::Network(format!("{who} cannot send part of a song, and the song is too large to load whole")));
                 }
                 let mut all = Vec::new();
                 body.reader.by_ref().take(WHOLE_MAX + 1).read_to_end(&mut all).map_err(|e| Error::Network(e.to_string()))?;
                 if all.len() as u64 > WHOLE_MAX {
-                    return Err(Error::Network("this server cannot send part of a song, and the song is too large to load whole".into()));
+                    return Err(Error::Network(format!("{who} cannot send part of a song, and the song is too large to load whole")));
                 }
                 let total = all.len() as u64;
-                let shared = Arc::new(Shared { net, id: id.to_string(), total, whole: Some(all), state: Mutex::new(State::default()), cv: Condvar::new() });
+                let shared = Arc::new(Shared { net, origin, total, whole: Some(all), state: Mutex::new(State::default()), cv: Condvar::new() });
                 Ok(Self { shared, pos: 0, content_type: kind })
             }
-            401 | 403 => Err(Error::Network("the server refused the login".into())),
-            404 => Err(Error::Network("the server does not have that song any more".into())),
-            s => Err(Error::Network(format!("the server answered {s}"))),
+            401 | 403 => Err(Error::Network(match origin {
+                Origin::Server(_) => "the server refused the login".to_string(),
+                Origin::Archive { .. } => "the Internet Archive does not let this file be played (it may be restricted)".to_string(),
+            })),
+            404 => Err(Error::Network(match origin {
+                Origin::Server(_) => "the server does not have that song any more".to_string(),
+                Origin::Archive { .. } => "the Internet Archive does not have that file any more".to_string(),
+            })),
+            s => Err(Error::Network(format!("{who} answered {s}"))),
         }
     }
 

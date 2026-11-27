@@ -21,7 +21,7 @@ export const state = {
   favs: new Set(),         // favourite track paths
   favOrder: [],            // the same, most recently added first
   stats: new Map(),        // path -> { plays, last_played } for tracks that have been played
-  view: 'now',             // 'now' | 'library' | 'radio' | 'server' | 'stats' | 'settings'
+  view: 'now',             // 'now' | 'library' | 'radio' | 'server' | 'archive' | 'stats' | 'settings'
   scan: null,              // library scan progress while one runs
   stamp: 0,                // performance.now() when player.position_secs was read
 };
@@ -40,6 +40,8 @@ export function duration() {
 export const isPlaying = () => state.player.status === 'playing';
 /** A web address in the queue is an internet radio station (or another live stream): no length, no seeking. */
 export const isStreamPath = (p) => /^https?:\/\//i.test(p ?? '');
-/** A song on the person's own Navidrome / Subsonic server: it plays like a file (it has a length and can be sought). */
-export const isServerPath = (p) => /^subsonic:\/\//i.test(p ?? '');
+/** A song that lives online, on the person's own Navidrome / Subsonic server or on the Internet Archive: it plays
+ *  like a file (it has a length and can be sought) but there is no file here to edit. */
+export const isServerPath = (p) => /^(subsonic|archive):\/\//i.test(p ?? '');
+export const isArchivePath = (p) => /^archive:\/\//i.test(p ?? '');
 export const isLive = () => isStreamPath(state.queue.current?.path ?? state.trackPath);

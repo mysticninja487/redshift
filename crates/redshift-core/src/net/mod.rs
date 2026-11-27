@@ -19,11 +19,14 @@
 //! thread or the UI thread.
 
 #[cfg(test)]
+pub(crate) mod fakearchive;
+#[cfg(test)]
 pub(crate) mod fakesub;
 pub mod artwork;
 pub mod betterlyrics;
 pub mod lrclib;
 pub mod radiobrowser;
+pub mod archive;
 pub mod ranged;
 pub mod remote_playlist;
 pub mod subsonic;
@@ -210,6 +213,8 @@ pub struct Net {
     stream_agent: ureq::Agent,
     hosts: Vec<String>,
     server: parking_lot::RwLock<Option<ServerAccess>>,
+    /// Where the Internet Archive is: `https://archive.org`, or a test server on this computer.
+    archive_base: parking_lot::RwLock<String>,
     salt_counter: AtomicU64,
     enabled: AtomicBool,
     /// Lets streams come from this computer (tests); never on in the app.
@@ -282,6 +287,7 @@ impl Net {
                 .into(),
             hosts: hosts.iter().map(|h| h.to_ascii_lowercase()).collect(),
             server: parking_lot::RwLock::new(None),
+            archive_base: parking_lot::RwLock::new(archive::OFFICIAL_BASE.to_string()),
             salt_counter: AtomicU64::new(0),
             enabled: AtomicBool::new(false),
             allow_local: AtomicBool::new(false),

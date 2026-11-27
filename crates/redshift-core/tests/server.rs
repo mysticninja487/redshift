@@ -14,7 +14,7 @@ use crossbeam_channel::Receiver;
 use parking_lot::Mutex;
 use redshift_core::engine::{OfflineConfig, Player, PlayerConfig, PlayerEvent, Status};
 use redshift_core::net::{Net, ServerConfig};
-use redshift_core::util::server_song_path;
+use redshift_core::util::{archive_song_path, server_song_path};
 
 struct Server {
     base: String,
@@ -73,10 +73,19 @@ struct Rig {
 }
 
 fn rig(base: &str, online: bool) -> Rig {
+    rig_for(base, online, false)
+}
+
+/// `archive`: the loopback server stands in for archive.org instead of for a Subsonic server.
+fn rig_for(base: &str, online: bool, archive: bool) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let net = Arc::new(Net::new(dir.path().join("cache"), "Redshift-test/0.0", &[]));
     net.set_enabled(online);
-    net.set_server(Some(&ServerConfig { url: base.to_string(), user: "me".into(), password: "secret".into() }));
+    if archive {
+        net.set_archive_base_for_tests(base);
+    } else {
+        net.set_server(Some(&ServerConfig { url: base.to_string(), user: "me".into(), password: "secret".into() }));
+    }
     let sink = Arc::new(Mutex::new(Vec::new()));
     let (player, events) = Player::new(PlayerConfig {
         net: Some(net),
@@ -136,6 +145,39 @@ fn nothing_is_fetched_while_online_features_are_off() {
     let s = server(std::fs::read(fixture("chirp_44k_stereo.flac")).unwrap(), "audio/flac");
     let mut r = rig(&s.base, false);
     r.player.set_queue(vec![server_song_path("s1")], 0, true);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline && !r.seen.iter().any(|e| matches!(e, PlayerEvent::Error { .. })) {
+        while let Ok(e) = r.events.try_recv() {
+            r.seen.push(e);
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(r.seen.iter().any(|e| matches!(e, PlayerEvent::Error { .. })), "an error is reported");
+    assert_eq!(s.hits.load(Ordering::SeqCst), 0, "no connection was made");
+}
+
+#[test]
+fn a_flac_from_the_archive_plays_with_a_length_and_seeks() {
+    let s = server(std::fs::read(fixture("chirp_44k_stereo.flac")).unwrap(), "audio/flac");
+    let mut r = rig_for(&s.base, true, true);
+    r.player.set_queue(vec![archive_song_path("demo-live", "disc 1/01 Opening.flac")], 0, true);
+    r.wait("the song to play", |p| p.status() == Status::Playing && p.current_track().is_some());
+    let cur = r.player.current_track().unwrap();
+    assert_eq!((cur.codec, cur.source_rate), ("flac", 44_100));
+    assert!(cur.duration_secs.is_some_and(|d| d > 0.5), "an Archive song has a length: {cur:?}");
+    assert!(r.player.state().live.is_none(), "it is not a live stream");
+    r.player.pause();
+    r.wait("pause", |p| p.status() == Status::Paused);
+    r.player.seek(0.5);
+    r.wait("the seek", |p| (p.position_secs() - 0.5).abs() < 0.1);
+    assert!(!s.ranges.lock().is_empty(), "it was fetched in ranges");
+}
+
+#[test]
+fn nothing_is_fetched_from_the_archive_while_online_features_are_off() {
+    let s = server(std::fs::read(fixture("chirp_44k_stereo.flac")).unwrap(), "audio/flac");
+    let mut r = rig_for(&s.base, false, true);
+    r.player.set_queue(vec![archive_song_path("demo-live", "01 Opening.flac")], 0, true);
     let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline && !r.seen.iter().any(|e| matches!(e, PlayerEvent::Error { .. })) {
         while let Ok(e) = r.events.try_recv() {

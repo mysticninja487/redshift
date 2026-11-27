@@ -71,7 +71,7 @@ function liveMeta(url) {
   const st = stationAt(url), song = SONGS[Math.floor(performance.now() / 20000) % SONGS.length], [a, t] = song.split(' - ');
   return { path: url, title: t, artist: a, album: st.name, album_artist: a, genre: (st.tags || '').split(',')[0].trim(), year: null, track_no: null, disc_no: null, duration_secs: 0, sample_rate: st.lossless ? 44100 : 44100, bit_depth: st.lossless ? 16 : null, channels: 2, bitrate_kbps: st.bitrate || null, format: st.codec.toLowerCase(), replaygain_track_db: null, replaygain_album_db: null, has_embedded_lyrics: false, modified: 0, size: 0, added: 0 };
 }
-const find = (path) => (isUrl(path) ? liveMeta(path) : /^subsonic:\/\//i.test(path) ? svFindSong(path) : tracks.find((t) => t.path === path) ?? byPath().get(path));
+const find = (path) => (isUrl(path) ? liveMeta(path) : /^subsonic:\/\//i.test(path) ? svFindSong(path) : /^archive:\/\//i.test(path) ? arFindSong(path) : tracks.find((t) => t.path === path) ?? byPath().get(path));
 
 function albums() {
   const map = new Map();
@@ -89,7 +89,7 @@ const artists = () => {
 const coverCache = new Map();
 window.__REDSHIFT_FONT__ = (file) => `fonts/${file}`;
 window.__REDSHIFT_COVER__ = (path) => {
-  const dp = decodeURIComponent(path), cm = /^subsonic-cover:\/\/al-(\d+)$/i.exec(dp);
+  const dp = decodeURIComponent(path), cm = /^subsonic-cover:\/\/al-(\d+)$/i.exec(dp) ?? /^archive-cover:\/\/item-(\d+)$/i.exec(dp);
   const t = cm ? { path: dp, _album: Number(cm[1]) } : find(dp);
   if (!t) return 'data:,';
   const ec = EDITS.get(t.path)?.cover;
@@ -159,11 +159,21 @@ const svFindSong = (path) => { const id = path.replace(/^subsonic:\/\//i, ''); c
 const svAlbum = (a) => ({ ...a, song_count: svSongs(a._i).length, duration_secs: svSongs(a._i).reduce((t, x) => t + x.duration_secs, 0) });
 const svGate = () => { if (!S.online.enabled || S.online.server === false) throw new Error('You are offline. Turn on Go online in Settings.'); if (!S.server?.url) throw new Error('no server has been set up yet (Settings > Online)'); };
 
+// ---------------------------------------------------------------- the Internet Archive (a tiny fake)
+const arTracks = (i) => ALBUMS[i].titles.map((title, n) => {
+  const a = ALBUMS[i], lossless = i % 3 !== 2, file = `${String(n + 1).padStart(2, '0')} ${title}.${lossless ? 'flac' : 'mp3'}`;
+  return { identifier: `item-${i}`, file, path: `archive://item-${i}/${file}`, title, artist: a.artist, album: a.title, track: n + 1, year: a.year, duration_secs: 170 + ((i * 41 + n * 47) % 150),
+    format: lossless ? 'Flac' : 'VBR MP3', suffix: lossless ? 'flac' : 'mp3', lossless, bitrate_kbps: lossless ? null : 245, sample_rate: lossless ? 44100 : null, bit_depth: null, size: 24_000_000, _i: i };
+});
+const arFindSong = (path) => { const m = /^archive:\/\/item-(\d+)\/(.+)$/i.exec(path); if (!m) return null; const t = arTracks(Number(m[1])).find((x) => x.file === decodeURIComponent(m[2]) || x.file === m[2]); if (!t) return null;
+  return { path, title: t.title, artist: t.artist, album: t.album, album_artist: t.artist, genre: '', year: t.year, track_no: t.track, disc_no: null, duration_secs: t.duration_secs, sample_rate: t.sample_rate ?? 44100, bit_depth: t.bit_depth, channels: 2, bitrate_kbps: t.bitrate_kbps, format: t.suffix, size: t.size, added: 0, modified: 0, _album: t._i }; };
+const arGate = () => { if (!S.online.enabled || S.online.archive === false) throw new Error('You are offline. Turn on Go online in Settings.'); };
+
 // ---------------------------------------------------------------- player
 const listeners = {};
 const emit = (name, payload) => (listeners[name] ?? []).forEach((cb) => setTimeout(() => cb({ payload })));
 const S = {
-  online: { enabled: new URLSearchParams(location.search).has('online'), radio: true, server: true, lyrics: true, auto_lyrics: true, lyrics_provider: 'auto', updates: true },
+  online: { enabled: new URLSearchParams(location.search).has('online'), radio: true, server: true, archive: true, lyrics: true, auto_lyrics: true, lyrics_provider: 'auto', updates: true },
   entries: [], seq: 1, cur: null, status: 'stopped', pos: 0, t0: 0, volume: 0.8, muted: false, shuffle: false, repeat: 'off',
   crossfade: 4, rate: { speed: 1, pitch_semitones: 0, keep_pitch: true }, rg: 'track', rgPre: 0, device: null,
   eq: { enabled: true, preamp_db: 0, gains_db: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
@@ -420,7 +430,7 @@ const cmds = {
   sleep_status: () => sleepStatus(),
   listening_totals: ({ ranges }) => ranges.map(([a, b]) => { const rows = heardIn(a, b); return { secs: rows.reduce((n, x) => n + x.secs, 0), plays: rows.reduce((n, x) => n + x.plays, 0) }; }),
   listening_report: ({ from, to, tzOffsetMin }) => listeningReport(from, to, tzOffsetMin),
-  app_info: () => ({ version: '0.7.3', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
+  app_info: () => ({ version: '0.7.4', data_dir: 'C:\\Users\\you\\AppData\\Roaming\\com.redshift.player', os: 'windows' }),
   open_data_folder: () => null,
   song_info: ({ path }) => {
     const t = tracks.find((x) => x.path === path); if (!t) throw new Error('That file isn\u2019t there any more');
@@ -509,7 +519,7 @@ const cmds = {
     if (!S.online.enabled) throw 'online features are turned off';
     NET_LOG.unshift({ time: Math.floor(Date.now() / 1000), purpose: 'Update check', host: 'api.github.com', url: 'https://api.github.com/repos/mysticninja487/redshift/releases/latest', status: 200, bytes: 1180, cached: false, error: null });
     await new Promise((r) => setTimeout(r, 300));
-    return globalThis.__mockUpdate ?? { current: '0.7.3', latest: '0.7.4', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.6', notes: 'Online playlist import for YouTube.\nFixes and small improvements.', asset: { name: 'Redshift_0.6.6_x64-setup.exe', url: 'https://github.com/mysticninja487/redshift/releases/download/v0.6.6/Redshift_0.6.6_x64-setup.exe', size: 31457280, sha256: null, kind: 'installer' } };
+    return globalThis.__mockUpdate ?? { current: '0.7.4', latest: '0.7.5', newer: true, url: 'https://github.com/mysticninja487/redshift/releases/tag/v0.6.6', notes: 'Online playlist import for YouTube.\nFixes and small improvements.', asset: { name: 'Redshift_0.6.6_x64-setup.exe', url: 'https://github.com/mysticninja487/redshift/releases/download/v0.6.6/Redshift_0.6.6_x64-setup.exe', size: 31457280, sha256: null, kind: 'installer' } };
   },
   download_update: async ({ asset }) => { for (let i = 1; i <= 10; i++) { emit('update-progress', { done: asset.size * i / 10, total: asset.size }); await new Promise((r) => setTimeout(r, 120)); } return '/mock/updates/' + asset.name; },
   install_update: () => { globalThis.__mockInstalled = true; },
@@ -545,6 +555,21 @@ const cmds = {
   server_album: ({ id }) => { svGate(); const a = SV_ALBUMS.find((x) => x.id === id); return { album: svAlbum(a), songs: svSongs(a._i) }; },
   server_playlists: () => { svGate(); return [{ id: 'p1', name: 'Evening', song_count: 5, duration_secs: 1000 }, { id: 'p2', name: 'Lossless only', song_count: 3, duration_secs: 600 }]; },
   server_playlist: ({ id }) => { svGate(); return { playlist: { id, name: id === 'p1' ? 'Evening' : 'Lossless only', song_count: 5, duration_secs: 1000 }, songs: svAll.filter((x) => id === 'p1' || x.lossless).slice(0, 5) }; },
+  archive_search: ({ query: q }) => {
+    arGate();
+    const words = (q.text || '').toLowerCase().split(/\s+/).filter(Boolean);
+    let list = ALBUMS.map((a, i) => ({ identifier: `item-${i}`, title: a.title, creator: a.artist, year: a.year, downloads: 120000 - i * 7300, formats: i % 3 === 2 ? ['VBR MP3', 'Ogg Vorbis'] : ['Flac', 'VBR MP3'], lossless: i % 3 !== 2 }));
+    list = list.filter((x) => words.every((w) => `${x.title} ${x.creator}`.toLowerCase().includes(w)) && (!q.lossless_only || x.lossless));
+    if (q.sort === 'newest') list.sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
+    const page = q.page || 1, size = 4, slice = list.slice((page - 1) * size, page * size);
+    return { hits: slice, total: list.length, page, page_size: size };
+  },
+  archive_item: ({ identifier, losslessOnly }) => {
+    arGate(); const i = Number(String(identifier).replace('item-', '')); if (!ALBUMS[i]) throw new Error('that item was not found on the Internet Archive');
+    const all = arTracks(i), tracks = losslessOnly ? all.filter((t) => t.lossless) : all;
+    return { identifier, title: ALBUMS[i].title, creator: ALBUMS[i].artist, date: String(ALBUMS[i].year), description: 'Recorded live. Taper notes: source > mics > recorder > FLAC. Shared with the artist\u2019s permission.', license_url: 'https://creativecommons.org/licenses/by-nc-sa/4.0/', tracks, hidden_lossy: all.length - tracks.length, details_url: `https://archive.org/details/${identifier}` };
+  },
+  archive_play: ({ paths, start }) => { arGate(); cmds.set_queue({ paths, start, autoplay: true }); },
   server_search: ({ query }) => { svGate(); const q = query.toLowerCase(); return { artists: [], albums: SV_ALBUMS.filter((a) => a.name.toLowerCase().includes(q)).map(svAlbum), songs: svAll.filter((x) => x.title.toLowerCase().includes(q)).slice(0, 20) }; },
   radio_search: ({ query }) => {
     if (!S.online.enabled || S.online.radio === false) throw new Error('You are offline. Turn on Go online in Settings.');

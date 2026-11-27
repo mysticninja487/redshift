@@ -135,6 +135,14 @@ Press **6** for Server. Add the address, user name and password of your [Navidro
 
 The login uses the Subsonic token scheme: each request carries your user name, a random salt and `md5(password + salt)`, never the password itself. The password is kept as **plain text** in `server.json` in the app's data folder, because the token needs it, so use an account made for Redshift. Redshift only talks to the one address you set, never follows a redirect to another host, and does nothing while Go online is off.
 
+### Internet Archive (optional, off by default)
+
+Press **7** for Archive. Search the [Internet Archive](https://archive.org)'s free audio (live concert recordings, netlabel releases and public-domain music), narrow it to a collection, sort by most downloaded, newest or best match, and open an item to see its songs. Each song plays as the **best file the item has for it**: 24-bit FLAC, FLAC, Apple Lossless or WAV first, then lossy files. Each is marked **Lossless** or **Lossy**, and **Lossless only** (on by default) hides items and songs that only exist as lossy files. Songs are fetched in pieces like server songs, so they seek instantly and the next one is prepared for gapless playback. They go through the queue, favourites, playlists, history and Stats, but have no file here to edit tags in. Items that have been taken down or are borrow-only cannot be played. AIFF, Shorten and WMA files are ignored. Needs **Go online** and Settings > Online > Internet Archive; only `archive.org` and its own subdomains are contacted (checked again on every redirect), and the Archive sees your search words, your IP address and the app's name and version.
+
+### Search and filters in the Library
+
+The Library search box finds songs by title, artist, album, album artist, genre or file name, ignoring case and accents. **Filters** adds rules over every tag and file property (year, length, track and disc number, sample rate, bit depth, bitrate, channels, file type, size, ReplayGain, lyrics in tags), play history (times played, last played), dates (added, last changed), favourites and playlists (in or not in any or a chosen playlist), matching **all** or **any** of them. Quick filters cover Lossless, Hi-res, Lossy, Favourites, Never played, Added this month, In no playlist, No lyrics in tags, No genre and No year. Results can be sorted and saved as a playlist. Click a song to select it, Ctrl-click or Shift-click for more, use the tick boxes or Ctrl+A, and Esc clears; the bar above the list plays, shuffles, queues, favourites or adds the selection to a playlist, and the right-click menu acts on the whole selection.
+
 ### Online features (optional, off by default)
 
 Settings > Online has a main switch. Nothing goes over the network until it is on, and each feature says exactly what it sends.
@@ -146,6 +154,7 @@ Settings > Online has a main switch. Nothing goes over the network until it is o
 | Radio search | `de1.api.radio-browser.info`, `de2.api.radio-browser.info`, `fi1.api.radio-browser.info` | Your search words (name, genre) and whether Lossless only is on, only when you search on the Radio screen |
 | Radio stations | the station's own address | Nothing but the request to play it: the station's server sees your IP address and the app's name and version. Plain `http` stations are not encrypted and are labelled so |
 | Your own server | the address you set (and only that) | What you browse, search and play, the user name and a one-time login token (never the password), plus your IP address and the app's name and version. Plain `http` addresses are not encrypted and are labelled so |
+| Internet Archive | `archive.org` and its `*.archive.org` hosts (checked on every redirect) | Your search words and the item and file you open or play, only on the Archive screen, plus your IP address and the app's name and version |
 | Discord cover art | `itunes.apple.com` | Artist and title of the song on the Discord card, once per song; only while the card shows album art |
 | Playlist import | `api.deezer.com`, `open.spotify.com`, `www.youtube.com` | The playlist link's address, only when you press Find songs in Library > Playlists > Import online; no account or sign-in, so only public playlists |
 | Update check | `api.github.com` | Nothing about you or your music; it asks for the latest release at startup (and every few hours) and tells you if there is a newer one |

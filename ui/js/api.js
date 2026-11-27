@@ -77,6 +77,10 @@ export const api = {
   serverPlaylists: () => invoke('server_playlists'),
   serverPlaylist: (id) => invoke('server_playlist', { id }),
   serverSearch: (query) => invoke('server_search', { query }),
+  // the Internet Archive
+  archiveSearch: (query) => invoke('archive_search', { query }),
+  archiveItem: (identifier, losslessOnly = true) => invoke('archive_item', { identifier, losslessOnly }),
+  archivePlay: (paths, start = 0) => invoke('archive_play', { paths, start }),
   setExclusive: (on) => invoke('set_exclusive', { on }),
   setBitPerfect: (on) => invoke('set_bit_perfect', { on }),
   outputDevices: () => invoke('output_devices'), setOutputDevice: (id) => invoke('set_output_device', { id }),

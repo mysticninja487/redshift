@@ -3,6 +3,7 @@
 import { api, COVER, coverUrl, pickFile, pickFolder, pickSave } from '../api.js';
 import { on, emit } from '../bus.js';
 import { act, playPaths, queueAdd, refreshStats, rescanLibrary, setView, shufflePlay, toggleFavourite } from '../controller.js';
+import { activeRules, applyFilter, detailLine, formatsIn, playlistsNeeded, RESULT_SORTS, sortResults } from '../filters.js';
 import { baseName, crumbs, folderContents, norm, tracksUnder } from '../folders.js';
 import { getPrefs, setPref } from '../prefs.js';
 import { state } from '../state.js';
@@ -11,6 +12,7 @@ import { button, iconButton, select } from '../ui/controls.js';
 import { confirmDialog, promptText } from '../ui/dialog.js';
 import { importOnlinePlaylist } from '../ui/playlistimport.js';
 import { icon } from '../ui/icons.js';
+import { filterPanel } from '../ui/libfilter.js';
 import { showMenu } from '../ui/menu.js';
 import { trackMenuItems } from '../ui/trackmenu.js';
 import { virtualList } from '../ui/vlist.js';
@@ -34,20 +36,39 @@ export function mountLibrary(root) {
   let folderPath = null; // normalised path of the folder being browsed; null lists the library folders
   let mostMode = 'tracks';
   let renderToken = 0;
+  const picked = new Set();   // paths of the selected songs; kept while the page is redrawn, dropped when you go somewhere else
+  const plSets = new Map();   // playlist id -> Set of its paths, for the playlist filters
 
-  const search = h('input', { class: 'text-input lib-search', type: 'search', placeholder: 'Search title, artist or album', 'aria-label': 'Search library', oninput: debounce((e) => { query = e.target.value.trim(); detail = null; render(); }, 160) });
+  const filterUI = filterPanel({ onChange: () => { detail = null; updateBadge(); render(); } });
+  const filter = filterUI.filter;
+  const search = h('input', { class: 'text-input lib-search', type: 'search', placeholder: 'Search your library', 'aria-label': 'Search library', oninput: debounce((e) => { query = filter.text = e.target.value.trim(); detail = null; updateBadge(); render(); }, 160) });
+  const badge = h('span', { class: 'lf-badge', hidden: true });
+  const filterBtn = h('button', { class: 'btn lib-filter-btn', type: 'button', 'aria-expanded': 'false', 'aria-controls': 'lib-filters', title: 'Filter by any tag, file property, play history or playlist', onclick: () => toggleFilters() }, icon('sliders', 16), 'Filters', badge);
+  function updateBadge() {
+    const n = activeRules(filter).length;
+    badge.hidden = !n; badge.textContent = String(n);
+    filterBtn.classList.toggle('active', n > 0);
+  }
+  function toggleFilters(force) {
+    const open = force ?? !filterUI.visible;
+    filterUI.show(open);
+    filterBtn.setAttribute('aria-expanded', String(open));
+    filterBtn.classList.toggle('open', open);
+  }
+  filterUI.el.id = 'lib-filters';
   const tabs = h('div', { class: 'lib-tabs', role: 'tablist' }, TABS.map(([id, name]) => h('button', { class: 'lib-tab', type: 'button', role: 'tab', dataset: { tab: id }, onclick: () => { tab = id; detail = null; setPref('library.tab', id); render(); } }, name)));
   const scanBox = h('div', { class: 'lib-scan', hidden: true });
   const head = h('header', { class: 'v-head' },
     iconButton('chevronLeft', 'Back to now playing', () => setView('now'), { cls: 'v-back' }),
     h('h1', { class: 'v-title' }, 'Library'),
-    h('div', { class: 'lib-tools' }, search, scanBox, iconButton('refresh', 'Rescan folders', () => rescanLibrary(), { cls: 'lib-rescan' })));
+    h('div', { class: 'lib-tools' }, search, filterBtn, scanBox, iconButton('refresh', 'Rescan folders', () => rescanLibrary(), { cls: 'lib-rescan' })));
   const body = h('div', { class: 'v-body lib-body' });
-  root.append(head, tabs, body);
+  root.append(head, tabs, filterUI.el, body);
 
   async function load() {
     const [albums, artists, tracks, playlists, folders] = await Promise.all([api.albums(), api.artists(), api.tracks(), api.playlists(), api.libraryFolders()]);
     data = { albums, artists, tracks, playlists, folders, byPath: new Map(tracks.map((t) => [t.path, t])) };
+    filterUI.setLists({ formats: formatsIn(tracks), playlists });
     render();
   }
 
@@ -76,9 +97,13 @@ export function mountLibrary(root) {
 
   function trackRow(t, i, list, opts = {}) {
     const playing = state.trackPath === t.path;
-    const gone = opts.missing?.has(t.path);
-    const r = h('div', { class: `t-row${playing ? ' current' : ''}${gone ? ' missing' : ''}${opts.extra ? ' has-extra' : ''}`, role: 'listitem', tabindex: '-1', title: gone ? 'This file was not found on this PC' : undefined,
-      ondblclick: () => !gone && playRow(t, i, list), onkeydown: (e) => { if (e.key === 'Enter' && !gone) playRow(t, i, list); } },
+    const gone = opts.missing?.has(t.path) || t.missing;
+    const sel = opts.sel;
+    const isPicked = !!sel?.has(t.path);
+    const r = h('div', { class: `t-row${playing ? ' current' : ''}${gone ? ' missing' : ''}${opts.extra ? ` has-extra${opts.extra.wide ? ' wide' : ''}` : ''}${sel ? ' sel' : ''}${isPicked ? ' selected' : ''}`, role: 'listitem', tabindex: '-1', 'aria-selected': sel ? String(isPicked) : undefined, title: gone ? 'This file was not found on this PC' : undefined,
+      onclick: (e) => { if (sel && !gone && !e.target.closest('button, input, a')) sel.click(i, e); },
+      ondblclick: (e) => { if (!gone && !e.target.closest('button, input')) playRow(t, i, list); }, onkeydown: (e) => { if (e.key === 'Enter' && !gone) playRow(t, i, list); } },
+      sel && h('span', { class: 't-check' }, h('input', { type: 'checkbox', checked: isPicked, disabled: gone, tabindex: '-1', 'aria-label': `Select ${t.title}`, onclick: (e) => { e.stopPropagation(); sel.toggle(i, e.shiftKey); } })),
       h('span', { class: 't-no' }, h('span', { class: 't-num' }, playing ? icon('play', 12) : String(i + 1)),
         gone ? null : h('button', { class: 'row-play', type: 'button', title: 'Play', 'aria-label': `Play ${t.title}`, onclick: (e) => { e.stopPropagation(); playRow(t, i, list); } }, icon('play', 12))),
       h('span', { class: 't-title' }, t.title), h('span', { class: 't-artist' }, t.artist), h('span', { class: 't-album' }, t.album),
@@ -86,20 +111,95 @@ export function mountLibrary(root) {
       favBtn(t.path), h('span', { class: 't-dur' }, fmtTime(t.duration_secs)));
     r.addEventListener('contextmenu', async (ev) => {
       ev.preventDefault();
+      // Right-clicking a song that is not selected selects just that one; on a selected song it acts on the whole selection.
+      if (sel && !gone && !sel.has(t.path)) sel.only(i);
+      const group = sel && !gone && sel.size() > 1 ? sel.paths() : null;
       const extra = [];
-      if (!gone && list.length > 1) extra.push({ label: 'Play from here', onClick: () => playPaths(list.filter((x) => !x.missing).map((x) => x.path), Math.max(0, list.filter((x) => !x.missing).indexOf(t))) });
+      if (!group && !gone && list.length > 1) extra.push({ label: 'Play from here', onClick: () => playPaths(list.filter((x) => !x.missing).map((x) => x.path), Math.max(0, list.filter((x) => !x.missing).indexOf(t))) });
       if (extra.length) extra.push({ sep: true });
-      showMenu(await trackMenuItems(gone ? [] : [t.path], [...extra, ...(opts.menuExtra?.(t, i) ?? [])]), ev.clientX, ev.clientY);
+      showMenu(await trackMenuItems(group ?? (gone ? [] : [t.path]), [...extra, ...(opts.menuExtra?.(t, i, group ? sel.indexes() : [i]) ?? [])]), ev.clientX, ev.clientY);
     });
     return r;
   }
 
+  /** What to do with the songs picked in a list: the bar above it. */
+  async function playlistMenu(paths, anchor) {
+    const items = await trackMenuItems(paths);
+    const sub = items.find((x) => x.label === 'Add to playlist')?.submenu ?? [];
+    const r = anchor.getBoundingClientRect();
+    showMenu(sub, r.left, r.bottom + 4);
+  }
+
   function trackTable(list, opts = {}) {
-    const header = h('div', { class: `t-row t-head${opts.extra ? ' has-extra' : ''}` }, h('span', { class: 't-no' }, '#'), h('span', { class: 't-title' }, 'Title'), h('span', { class: 't-artist' }, 'Artist'), h('span', { class: 't-album' }, 'Album'),
+    const selectable = opts.select !== false;
+    let anchor = -1, vl = null;
+    const have = new Set(list.map((t) => t.path));
+    for (const p of [...picked]) if (!have.has(p)) picked.delete(p);
+    const pickedList = () => list.filter((t) => picked.has(t.path));
+    const bar = h('div', { class: 'sel-bar', hidden: true, role: 'toolbar', 'aria-label': 'Selected songs' });
+    const headCheck = h('input', { type: 'checkbox', 'aria-label': 'Select all songs in this list', tabindex: '-1', onclick: () => { if (picked.size === list.filter((t) => !t.missing).length) picked.clear(); else list.forEach((t) => { if (!t.missing) picked.add(t.path); }); changed(); } });
+
+    const paintBar = () => {
+      const chosen = pickedList();
+      const paths = chosen.map((t) => t.path);
+      bar.hidden = !paths.length;
+      bar.parentElement?.classList.toggle('picking', paths.length > 0);
+      const all = list.filter((t) => !t.missing).length;
+      headCheck.checked = paths.length > 0 && paths.length === all;
+      headCheck.indeterminate = paths.length > 0 && paths.length < all;
+      if (!paths.length) return;
+      const allFav = paths.every((p) => state.favs.has(p));
+      clear(bar).append(
+        h('span', { class: 'sel-count' }, `${plural(paths.length, 'song')} selected · ${fmtTime(sum(chosen))}`),
+        button('Play', () => playPaths(paths, 0), { cls: 'primary', iconName: 'play' }),
+        button('Shuffle', () => shufflePlay(paths), { iconName: 'shuffle' }),
+        button('Add to queue', () => queueAdd(paths), { iconName: 'queue' }),
+        button('Add to playlist', (e) => playlistMenu(paths, e.currentTarget), { iconName: 'playlist' }),
+        button(allFav ? 'Unfavourite' : 'Favourite', () => toggleFavourite(paths), { iconName: 'heart' }),
+        button('More', async (e) => { const r = e.currentTarget.getBoundingClientRect(); showMenu(await trackMenuItems(paths), r.left, r.bottom + 4); }, { iconName: 'more' }),
+        h('span', { class: 'sel-spacer' }),
+        iconButton('close', 'Clear selection (Esc)', () => { picked.clear(); changed(); }, { size: 16 }));
+    };
+    let wrap = null;
+    // Redrawing the rows drops the keyboard focus; keep it in the table so Ctrl+A and Esc still work.
+    const changed = () => {
+      const keep = !wrap || document.activeElement === document.body || wrap.contains(document.activeElement);
+      vl?.refresh(); paintBar();
+      if (keep) wrap?.focus({ preventScroll: true });
+    };
+    const range = (from, to, add) => { for (let k = Math.min(from, to); k <= Math.max(from, to); k++) if (!list[k].missing) add(list[k].path); };
+    const sel = selectable ? {
+      has: (p) => picked.has(p),
+      size: () => picked.size,
+      paths: () => pickedList().map((t) => t.path),
+      indexes: () => list.flatMap((t, k) => (picked.has(t.path) ? [k] : [])),
+      only(i) { picked.clear(); picked.add(list[i].path); anchor = i; changed(); },
+      // A click on the row: this one alone, Ctrl adds or removes it, Shift takes everything from the last one clicked.
+      click(i, e) {
+        if (e.shiftKey && anchor >= 0) { if (!(e.ctrlKey || e.metaKey)) picked.clear(); range(anchor, i, (p) => picked.add(p)); }
+        else if (e.ctrlKey || e.metaKey) { const p = list[i].path; picked.has(p) ? picked.delete(p) : picked.add(p); anchor = i; }
+        else { picked.clear(); picked.add(list[i].path); anchor = i; }
+        changed();
+      },
+      // The tick box: adds or removes this one; with Shift it adds the whole stretch.
+      toggle(i, shift) {
+        const p = list[i].path;
+        if (shift && anchor >= 0) range(anchor, i, (q) => picked.add(q));
+        else { picked.has(p) ? picked.delete(p) : picked.add(p); anchor = i; }
+        changed();
+      },
+    } : null;
+
+    const o = { ...opts, sel };
+    const header = h('div', { class: `t-row t-head${opts.extra ? ` has-extra${opts.extra.wide ? ' wide' : ''}` : ''}${sel ? ' sel' : ''}` }, sel && h('span', { class: 't-check' }, headCheck), h('span', { class: 't-no' }, '#'), h('span', { class: 't-title' }, 'Title'), h('span', { class: 't-artist' }, 'Artist'), h('span', { class: 't-album' }, 'Album'),
       opts.extra && h('span', { class: 't-extra' }, opts.extra.head), h('span', { class: 't-fav' }), h('span', { class: 't-dur' }, 'Time'));
-    const vl = virtualList({ rowHeight: 40, cls: 't-list', render: (i) => trackRow(list[i], i, list, opts) });
-    const wrap = h('div', { class: 't-table' }, header, vl);
-    requestAnimationFrame(() => vl.setCount(list.length));
+    vl = virtualList({ rowHeight: 40, cls: 't-list', render: (i) => trackRow(list[i], i, list, o) });
+    wrap = h('div', { class: 't-table', tabindex: '-1', onkeydown: (e) => {
+      if (!sel || e.target.closest('input[type="text"], input[type="search"], textarea')) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); list.forEach((t) => { if (!t.missing) picked.add(t.path); }); changed(); }
+      else if (e.key === 'Escape' && picked.size) { e.preventDefault(); e.stopPropagation(); picked.clear(); changed(); }
+    } }, bar, header, vl);
+    requestAnimationFrame(() => { vl.setCount(list.length); paintBar(); });
     return wrap;
   }
 
@@ -316,10 +416,10 @@ export function mountLibrary(root) {
       gone.size ? h('p', { class: 'hint warn' }, `${plural(gone.size, 'track')} in this playlist ${gone.size === 1 ? 'points' : 'point'} to files that aren't on this PC (the playlist was probably made elsewhere). They're skipped when playing. If your music is in a folder that isn't in the library yet, add it under Folders and press Relink missing.`) : '',
       tracks.length ? trackTable(tracks, {
         missing: gone,
-        menuExtra: (t, i) => [
-          { label: 'Remove from playlist', onClick: async () => { await act(api.removeFromPlaylist(id, [i])); detail = { type: 'playlist', id }; reloadPlaylists().then(render); } },
-          ...(i > 0 ? [{ label: 'Move up', onClick: () => reorder(i, i - 1) }] : []),
-          ...(i < tracks.length - 1 ? [{ label: 'Move down', onClick: () => reorder(i, i + 1) }] : []), { sep: true }],
+        menuExtra: (t, i, idxs = [i]) => [
+          { label: 'Remove from playlist', onClick: async () => { await act(api.removeFromPlaylist(id, idxs)); detail = { type: 'playlist', id }; reloadPlaylists().then(render); } },
+          ...(idxs.length === 1 && i > 0 ? [{ label: 'Move up', onClick: () => reorder(i, i - 1) }] : []),
+          ...(idxs.length === 1 && i < tracks.length - 1 ? [{ label: 'Move down', onClick: () => reorder(i, i + 1) }] : []), { sep: true }],
       }) : emptyNote('This playlist is empty. Right-click tracks anywhere and choose Add to playlist.'));
   }
 
@@ -361,12 +461,45 @@ export function mountLibrary(root) {
       files.length ? trackTable(files) : (dirs.length ? null : emptyNote('No tracks in this folder.')));
   }
 
+  // ---- search results ----
+
+  /** What the filters look at besides the tags: favourites, play history and the songs of the playlists. */
+  async function filterContext() {
+    const ids = playlistsNeeded(filter);
+    const want = ids.has('*') ? data.playlists.map((p) => p.id) : [...ids];
+    await Promise.all(want.filter((id) => !plSets.has(id)).map(async (id) => { const p = await api.playlist(id).catch(() => null); plSets.set(id, new Set(p?.tracks ?? [])); }));
+    return { favs: state.favs, stats: state.stats, playlists: plSets, now: Date.now() / 1000 };
+  }
+
+  async function saveResultsAsPlaylist(paths) {
+    const name = await promptText('Save these songs as a playlist', { ok: 'Create', placeholder: 'Playlist name', value: query || '' });
+    if (!name) return;
+    await act(api.createPlaylist(name, paths));
+    await reloadPlaylists();
+    toast(`Created "${name}" with ${plural(paths.length, 'song')}`);
+  }
+
+  function resultsPage(list) {
+    const paths = list.map((t) => t.path);
+    const n = activeRules(filter).length;
+    const what = [query && `\u201c${query}\u201d`, n && plural(n, 'filter')].filter(Boolean).join(' + ');
+    const sorter = select({ label: 'Sort the results', value: getPrefs().library.resultSort ?? 'library', options: RESULT_SORTS.map(([value, label]) => ({ value, label })), onChange: (v) => { setPref('library.resultSort', v); render(); } });
+    const clearAll = () => { filter.text = ''; query = ''; search.value = ''; filterUI.clear(); updateBadge(); };
+    return h('div', { class: 'detail' },
+      h('div', { class: 'list-head' },
+        h('div', null, h('h2', { class: 'detail-title small' }, 'Search results'),
+          h('div', { class: 'detail-meta' }, `${plural(list.length, 'song')} · ${fmtTime(sum(list))}${what ? ` · ${what}` : ''}${n > 1 ? ` · ${filter.match === 'any' ? 'any rule' : 'every rule'}` : ''}`)),
+        h('div', { class: 'list-head-tools' }, list.length ? sorter : null, paths.length ? [actionsFor(paths), button('Save as playlist', () => saveResultsAsPlaylist(paths), { iconName: 'playlist' })] : null, button('Clear search', clearAll, { iconName: 'close' }))),
+      list.length ? trackTable(list, { extra: { head: 'Format', get: detailLine, wide: true } })
+        : emptyNote(`Nothing matches${what ? ` ${what}` : ''}.`, h('div', { class: 'detail-actions' }, button('Change the filters', () => toggleFilters(true), { iconName: 'sliders' }), button('Clear search', clearAll))));
+  }
+
   // ---- the page ----
 
   // Where you were in the list. Rebuilding the same page (a track started, a favourite changed, a scan
   // finished) keeps it; going to another tab, album, search or sort starts at the top.
   let lastKey = '';
-  const viewKey = () => JSON.stringify([tab, query, folderPath, mostMode, getPrefs().library.sort, detail?.type, detail?.id, detail?.album?.name, detail?.album?.artist, detail?.artist?.name]);
+  const viewKey = () => JSON.stringify([tab, query, activeRules(filter), filter.match, getPrefs().library.resultSort, folderPath, mostMode, getPrefs().library.sort, detail?.type, detail?.id, detail?.album?.name, detail?.album?.artist, detail?.artist?.name]);
   function restoreScroll(top, listTop) {
     body.scrollTop = top;
     const list = body.querySelector('.vlist');
@@ -380,6 +513,7 @@ export function mountLibrary(root) {
     tabs.querySelectorAll('.lib-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
     const key = viewKey(), keep = key === lastKey;
     lastKey = key;
+    if (!keep) picked.clear();
     const scroll = keep ? body.scrollTop : 0, listScroll = keep ? (body.querySelector('.vlist')?.scrollTop ?? 0) : 0;
     clear(body);
     if (!data.tracks.length && !state.scan?.running) {
@@ -388,10 +522,13 @@ export function mountLibrary(root) {
       return;
     }
     const searchable = ['albums', 'tracks', 'favourites', 'recent-played', 'most-played', 'recent-added', 'not-played'].includes(tab);
-    if (query && searchable) {
-      const results = await api.search(query);
+    // Filters look at the whole library whichever tab you are on; a typed search only does on the song tabs
+    // (on Artists it narrows the list of artists).
+    if (activeRules(filter).length || (query && searchable)) {
+      const ctx = await filterContext();
       if (token !== renderToken) return;
-      body.append(results.length ? h('div', { class: 'detail' }, h('div', { class: 'detail-meta' }, `${plural(results.length, 'result')} for "${query}"`), trackTable(results)) : emptyNote(`Nothing matches "${query}".`));
+      const results = sortResults(applyFilter(data.tracks, filter, ctx), getPrefs().library.resultSort ?? 'library', ctx);
+      body.append(resultsPage(results));
       return;
     }
     if (detail?.type === 'album') body.append(albumDetail(detail.album));
@@ -417,16 +554,17 @@ export function mountLibrary(root) {
     scanBox.replaceChildren(h('span', { class: 'scan-text' }, s.phase === 'reading' ? `Reading tags ${s.done} / ${s.total}` : 'Looking for music…'), h('span', { class: 'scan-bar' }, h('i', { style: { width: `${pct}%` } })));
   };
   const visible = () => state.view === 'library';
+  const usesField = (id) => activeRules(filter).some((r) => r.field === id);
   on('scan', renderScan);
   on('library', () => load().catch(console.error));
-  on('playlists', () => api.playlists().then((p) => { data.playlists = p; if (visible() && tab === 'playlists') render(); }));
+  on('playlists', () => api.playlists().then((p) => { data.playlists = p; plSets.clear(); filterUI.setLists({ playlists: p }); if (visible() && (tab === 'playlists' || usesField('playlist'))) render(); }));
   // A new song only changes which row is highlighted: redraw the rows on screen, never the page.
   on('track', () => body.querySelectorAll('.vlist').forEach((l) => l.refresh?.()));
   on('favs', () => {
     body.querySelectorAll('.fav-btn').forEach((b) => { const on = state.favs.has(b.dataset.path); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
-    if (visible() && tab === 'favourites') render();
+    if (visible() && (tab === 'favourites' || usesField('favourite'))) render();
   });
-  on('stats', () => { if (visible() && ['recent-played', 'most-played', 'not-played'].includes(tab)) render(); });
+  on('stats', () => { if (visible() && (['recent-played', 'most-played', 'not-played'].includes(tab) || usesField('plays') || usesField('lastPlayed'))) render(); });
   on('view', (v) => { if (v === 'library') refreshStats().catch(() => {}); });
   load().catch((e) => { console.error(e); body.append(emptyNote('The library could not be loaded.')); });
   return { reload: load };
