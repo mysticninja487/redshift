@@ -215,6 +215,8 @@ pub struct Net {
     server: parking_lot::RwLock<Option<ServerAccess>>,
     /// Where the Internet Archive is: `https://archive.org`, or a test server on this computer.
     archive_base: parking_lot::RwLock<String>,
+    /// Recent Archive answers, so going back to a list or an item costs nothing.
+    archive_cache: parking_lot::Mutex<archive::Recent>,
     salt_counter: AtomicU64,
     enabled: AtomicBool,
     /// Lets streams come from this computer (tests); never on in the app.
@@ -288,6 +290,7 @@ impl Net {
             hosts: hosts.iter().map(|h| h.to_ascii_lowercase()).collect(),
             server: parking_lot::RwLock::new(None),
             archive_base: parking_lot::RwLock::new(archive::OFFICIAL_BASE.to_string()),
+            archive_cache: parking_lot::Mutex::new(archive::Recent::default()),
             salt_counter: AtomicU64::new(0),
             enabled: AtomicBool::new(false),
             allow_local: AtomicBool::new(false),

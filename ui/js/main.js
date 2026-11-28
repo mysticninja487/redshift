@@ -21,11 +21,21 @@ import { debounce, h, toast } from './util.js';
 import { iconButton, select } from './ui/controls.js';
 import { icon } from './ui/icons.js';
 
-const NAV = [['now', 'Now playing', 'record'], ['library', 'Library', 'library'], ['radio', 'Radio', 'radio'], ['server', 'Server', 'server'], ['archive', 'Archive', 'archive'], ['stats', 'Stats', 'stats'], ['settings', 'Settings', 'settings']];
+// The top bar has five places; the online sources are sub-tabs of Online.
+const NAV = [['now', 'Now playing', 'record'], ['library', 'Local', 'library'], ['online', 'Online', 'globe'], ['stats', 'Stats', 'stats'], ['settings', 'Settings', 'settings']];
+const ONLINE = [['radio', 'Radio', 'radio'], ['server', 'Your server', 'server'], ['archive', 'Internet Archive', 'archive']];
+const isOnlineView = (v) => ONLINE.some(([id]) => id === v);
+const LAST_ONLINE_KEY = 'redshift.online.tab';
+/** Online opens on the source that was used last. */
+const lastOnline = () => { try { const v = localStorage.getItem(LAST_ONLINE_KEY); if (isOnlineView(v)) return v; } catch { /* storage may be blocked */ } return ONLINE[0][0]; };
+const rememberOnline = (v) => { try { localStorage.setItem(LAST_ONLINE_KEY, v); } catch { /* storage may be blocked */ } };
+/** The row of sources at the top of each online screen. */
+const onlineTabs = (active) => h('div', { class: 'lib-tabs subnav', role: 'tablist', 'aria-label': 'Online sources' },
+  ONLINE.map(([id, label]) => h('button', { class: 'lib-tab', type: 'button', role: 'tab', 'aria-selected': String(id === active), onclick: () => setView(id) }, label)));
 
 function buildChrome() {
   const nav = h('nav', { class: 'nav', 'aria-label': 'Sections' }, NAV.map(([id, label, ic]) =>
-    h('button', { class: 'nav-btn', type: 'button', title: label, 'aria-label': label, dataset: { view: id }, onclick: () => (id === 'settings' ? toggleSettings() : setView(id)) }, icon(ic, 16), h('span', null, label))));
+    h('button', { class: 'nav-btn', type: 'button', title: label, 'aria-label': label, dataset: { view: id }, onclick: () => (id === 'settings' ? toggleSettings() : setView(id === 'online' ? lastOnline() : id)) }, icon(ic, 16), h('span', null, label))));
   const skinSel = select({ label: 'Skin', value: getPrefs().skin, options: [], onChange: (v) => setSkin(v) });
   skinSel.classList.add('skin-select');
   // Shows the mode a click switches to: a sun while it's dark, a moon while it's light.
@@ -71,8 +81,9 @@ function buildChrome() {
   };
   fillSkins();
   on('ui', fillSkins);
-  on('view', (v) => nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === v))));
-  nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(b.dataset.view === state.view)));
+  const current = (b, v) => (b.dataset.view === 'online' ? isOnlineView(v) : b.dataset.view === v);
+  on('view', (v) => { if (isOnlineView(v)) rememberOnline(v); nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(current(b, v)))); });
+  nav.querySelectorAll('.nav-btn').forEach((b) => b.setAttribute('aria-current', String(current(b, state.view))));
   return h('header', { class: 'chrome' },
     h('div', { class: 'brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }), h('span', { class: 'brand-name' }, 'Redshift')),
     nav, h('div', { class: 'chrome-tools' }, nowTools, skinSel, scheme, speedButton(), sleepButton(), ambient, mini, full));
@@ -103,6 +114,7 @@ function buildViews(app) {
   const archive = h('div', { id: 'archive', class: 'view', hidden: true });
   const stats = h('div', { id: 'stats', class: 'view', hidden: true });
   const settings = h('div', { id: 'settings', class: 'view', hidden: true });
+  for (const [id, el] of [['radio', radio], ['server', server], ['archive', archive]]) el.append(onlineTabs(id));
   const main = h('main', { class: 'views' }, now, library, radio, server, archive, stats, settings);
   app.append(main);
   mountLayout(now);

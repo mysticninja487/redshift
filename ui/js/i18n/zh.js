@@ -1250,4 +1250,10 @@ export default {
   "More": "更多",
   "1 song selected · {x}": "已选 1 首歌曲 · {x}",
   "{n} songs selected · {x}": "已选 {n} 首歌曲 · {x}",
+  "Local": "本地",
+  "Local library": "本地音乐库",
+  "Online sources": "在线来源",
+  "Asking the Internet Archive…": "正在询问 Internet Archive…",
+  "The Internet Archive is slow to answer right now. Still waiting…": "Internet Archive 目前响应较慢，仍在等待…",
+  "From last time. Updating…": "上次的结果，正在更新…",
 };

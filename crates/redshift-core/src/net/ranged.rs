@@ -17,12 +17,13 @@ use symphonia::core::io::MediaSource;
 use super::Net;
 use crate::error::{Error, Result};
 
-/// Bytes per request. A lossless song is a few dozen blocks.
-pub const BLOCK: u64 = 1 << 20;
+/// Bytes per request. Small enough that the first sound starts after a quarter of a megabyte has
+/// arrived, which matters on a slow link; a lossless song is a few hundred blocks.
+pub const BLOCK: u64 = 256 << 10;
 /// Blocks kept in memory.
-const KEEP: usize = 24;
+const KEEP: usize = 96;
 /// Blocks fetched ahead of the one being read.
-const AHEAD: u64 = 2;
+const AHEAD: u64 = 4;
 /// How long a read waits for a block before it gives up.
 const WAIT: Duration = Duration::from_secs(25);
 /// Tries per block.

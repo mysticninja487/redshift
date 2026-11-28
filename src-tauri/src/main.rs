@@ -835,6 +835,10 @@ async fn archive_search(state: State<'_, AppState>, query: redshift_core::net::a
     tauri::async_runtime::spawn_blocking(move || core.archive_search(&query)).await.map_err(err)?.map_err(err)
 }
 #[tauri::command]
+fn archive_cached(state: State<AppState>, query: redshift_core::net::archive::ArchiveQuery) -> Option<redshift_core::net::archive::ArchiveSearch> {
+    state.0.archive_cached(&query)
+}
+#[tauri::command]
 async fn archive_item(state: State<'_, AppState>, identifier: String, lossless_only: bool) -> CmdResult<redshift_core::net::archive::ArchiveItem> {
     let core = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || core.archive_item(&identifier, lossless_only)).await.map_err(err)?.map_err(err)
@@ -1097,27 +1101,40 @@ fn serve_font(app: &tauri::AppHandle, uri_path: &str) -> tauri::http::Response<C
 
 /// Answers cover and font requests on a few worker threads. Opening the library asks for dozens of
 /// covers at once; a thread per request would flood the machine (and the disk) every time.
-fn run_off_thread(job: impl FnOnce() + Send + 'static) {
+///
+/// Pictures that come over the network (a server's, the Internet Archive's) have their own, larger
+/// pool: each one can take a second or more, and they must not make the library's own covers wait
+/// behind them (nor the other way round).
+fn run_off_thread(remote: bool, job: impl FnOnce() + Send + 'static) {
     type Job = Box<dyn FnOnce() + Send>;
-    static POOL: OnceLock<Sender<Job>> = OnceLock::new();
-    const WORKERS: usize = 4;
-    let tx = POOL.get_or_init(|| {
-        let (tx, rx) = channel::<Job>();
-        let rx: Arc<Mutex<Receiver<Job>>> = Arc::new(Mutex::new(rx));
-        for n in 0..WORKERS {
-            let rx = rx.clone();
-            let _ = std::thread::Builder::new().name(format!("redshift-protocol-{n}")).spawn(move || loop {
-                // Hold the lock only while waiting for the next job, never while running one.
-                let next = rx.lock().map(|r| r.recv());
-                match next {
-                    Ok(Ok(job)) => { let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)); }
-                    _ => break,
-                }
-            });
-        }
-        tx
-    });
+    static LOCAL: OnceLock<Sender<Job>> = OnceLock::new();
+    static REMOTE: OnceLock<Sender<Job>> = OnceLock::new();
+    fn pool(cell: &'static OnceLock<Sender<Job>>, name: &'static str, workers: usize) -> &'static Sender<Job> {
+        cell.get_or_init(|| {
+            let (tx, rx) = channel::<Job>();
+            let rx: Arc<Mutex<Receiver<Job>>> = Arc::new(Mutex::new(rx));
+            for n in 0..workers {
+                let rx = rx.clone();
+                let _ = std::thread::Builder::new().name(format!("{name}-{n}")).spawn(move || loop {
+                    // Hold the lock only while waiting for the next job, never while running one.
+                    let next = rx.lock().map(|r| r.recv());
+                    match next {
+                        Ok(Ok(job)) => { let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)); }
+                        _ => break,
+                    }
+                });
+            }
+            tx
+        })
+    }
+    let tx = if remote { pool(&REMOTE, "redshift-remote-cover", 8) } else { pool(&LOCAL, "redshift-protocol", 4) };
     let _ = tx.send(Box::new(job));
+}
+
+/// Whether a cover request is for a picture that has to come over the network.
+fn is_remote_cover(uri_path: &str) -> bool {
+    let p = percent_decode(uri_path.trim_start_matches('/')).to_ascii_lowercase();
+    ["archive://", "archive-cover://", "subsonic://", "subsonic-cover://", "ytmusic://", "ytmusic-cover://"].iter().any(|prefix| p.starts_with(prefix))
 }
 
 fn main() {
@@ -1129,11 +1146,12 @@ fn main() {
         // which would otherwise freeze the window while it happens.
         .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
             let (app, path, query) = (ctx.app_handle().clone(), request.uri().path().to_string(), request.uri().query().map(str::to_string));
-            run_off_thread(move || responder.respond(serve_cover(&app, &path, query.as_deref())));
+            let remote = is_remote_cover(&path);
+            run_off_thread(remote, move || responder.respond(serve_cover(&app, &path, query.as_deref())));
         })
         .register_asynchronous_uri_scheme_protocol("font", |ctx, request, responder| {
             let (app, path) = (ctx.app_handle().clone(), request.uri().path().to_string());
-            run_off_thread(move || responder.respond(serve_font(&app, &path)));
+            run_off_thread(false, move || responder.respond(serve_font(&app, &path)));
         })
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // A second launch ("Open with Redshift", a double-click) hands its files to this one.
@@ -1264,7 +1282,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            set_queue, set_queue_options, set_notify_on_track, set_online, radio_search, radio_favourites, radio_recent, radio_set_favourite, radio_station_from_url, radio_play, server_settings, set_server_settings, server_test, server_albums, server_artists, server_artist, server_album, server_playlists, server_playlist, server_search, archive_search, archive_item, archive_play, set_presence, presence_status, presence_preview, online_lyrics, check_updates, download_update, install_update, net_report, clear_net_data, open_project_page, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
+            set_queue, set_queue_options, set_notify_on_track, set_online, radio_search, radio_favourites, radio_recent, radio_set_favourite, radio_station_from_url, radio_play, server_settings, set_server_settings, server_test, server_albums, server_artists, server_artist, server_album, server_playlists, server_playlist, server_search, archive_search, archive_cached, archive_item, archive_play, set_presence, presence_status, presence_preview, online_lyrics, check_updates, download_update, install_update, net_report, clear_net_data, open_project_page, launch_on_startup, set_launch_on_startup, set_restore_session, set_watch_folders, set_sleep_timer, cancel_sleep_timer, sleep_status, play_entry, pause, resume, toggle_pause, stop, next, previous, seek,
             queue_append, queue_play_next, queue_remove, queue_move, queue_clear, player_state, queue_view,
             get_settings, set_volume, set_muted, set_shuffle, set_repeat, set_crossfade_secs, set_rate, set_replaygain, set_exclusive, set_bit_perfect,
             output_devices, set_output_device,

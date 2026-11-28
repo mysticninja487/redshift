@@ -11,6 +11,10 @@ use crate::net::archive::{ArchiveItem, ArchiveQuery, ArchiveSearch, ArchiveTrack
 use crate::util::{archive_cover_id, archive_song_parts};
 
 const SONGS_FILE: &str = "archive-songs.json";
+/// The first page of the last few searches, shown at once the next time (the Archive can be slow).
+const BROWSE_FILE: &str = "archive-browse.json";
+const BROWSE_MAX: usize = 8;
+const COVER_FILES_MAX: usize = 500;
 /// How many songs' details are remembered, so a queue restored at launch can be shown before the
 /// Archive is asked.
 const SONG_CACHE_MAX: usize = 3000;
@@ -24,12 +28,16 @@ pub(super) struct ArchiveState {
     dirty: bool,
     /// Covers by item identifier; `None` remembers "there is none".
     covers: VecDeque<(String, Option<Arc<Cover>>)>,
+    /// First pages of recent searches, oldest first.
+    browse: VecDeque<(String, ArchiveSearch)>,
 }
 
 impl ArchiveState {
     pub(super) fn load(data_dir: &Path) -> Self {
         let list: Vec<ArchiveTrack> = fs::read(data_dir.join(SONGS_FILE)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         let mut st = ArchiveState::default();
+        let browse: Vec<(String, ArchiveSearch)> = fs::read(data_dir.join(BROWSE_FILE)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        st.browse = browse.into_iter().collect();
         for t in list {
             st.insert(t);
         }
@@ -53,6 +61,11 @@ impl ArchiveState {
     }
 }
 
+/// What identifies a search for the purpose of showing its first page again.
+fn browse_key(q: &ArchiveQuery) -> String {
+    format!("{}|{}|{}|{}", q.text.trim().to_lowercase(), q.lossless_only, q.collection, q.sort)
+}
+
 fn sniff_mime(data: &[u8]) -> &'static str {
     if data.starts_with(b"\x89PNG") {
         "image/png"
@@ -60,6 +73,19 @@ fn sniff_mime(data: &[u8]) -> &'static str {
         "image/gif"
     } else {
         "image/jpeg"
+    }
+}
+
+/// Keeps the folder of remembered pictures from growing: the oldest go first.
+fn prune_cover_files(dir: &Path) {
+    let Ok(rd) = fs::read_dir(dir) else { return };
+    let mut files: Vec<(std::time::SystemTime, PathBuf)> = rd.flatten().filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path()))).collect();
+    if files.len() <= COVER_FILES_MAX {
+        return;
+    }
+    files.sort();
+    for (_, p) in files.iter().take(files.len() - (COVER_FILES_MAX - 100)) {
+        let _ = fs::remove_file(p);
     }
 }
 
@@ -82,7 +108,28 @@ impl App {
     /// Looks for audio items on the Internet Archive.
     pub fn archive_search(&self, q: &ArchiveQuery) -> Result<ArchiveSearch> {
         self.archive_gate()?;
-        self.net.archive_search(q)
+        let found = self.net.archive_search(q)?;
+        if q.page <= 1 && !found.hits.is_empty() {
+            let snapshot = {
+                let mut st = self.archive.lock();
+                let key = browse_key(q);
+                st.browse.retain(|(k, _)| *k != key);
+                st.browse.push_back((key, found.clone()));
+                while st.browse.len() > BROWSE_MAX {
+                    st.browse.pop_front();
+                }
+                st.browse.iter().cloned().collect::<Vec<_>>()
+            };
+            let _ = write_json_atomic(&self.data_dir.join(BROWSE_FILE), &snapshot);
+        }
+        Ok(found)
+    }
+
+    /// The first page this search had last time, if any, whatever its age. It is shown straight
+    /// away while the real answer is fetched.
+    pub fn archive_cached(&self, q: &ArchiveQuery) -> Option<ArchiveSearch> {
+        let key = browse_key(q);
+        self.archive.lock().browse.iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone())
     }
 
     /// An item and its songs. With `lossless_only`, songs that only exist as lossy files are left out.
@@ -151,9 +198,35 @@ impl App {
         if let Some((_, hit)) = self.archive.lock().covers.iter().find(|(c, _)| *c == identifier) {
             return hit.clone();
         }
-        self.archive_gate().ok()?;
-        // Fetched outside the lock: it is a network request.
-        let found = self.net.archive_cover(&identifier).ok().filter(|b| !b.is_empty()).map(|data| Arc::new(Cover { mime: sniff_mime(&data).to_string(), data }));
+        // A picture fetched before is on disk: no network, and it works offline.
+        let file = self.net.cache_dir().join("archive-covers").join(format!("{identifier}.img"));
+        let from_disk = fs::read(&file).ok().filter(|b| !b.is_empty());
+        let (data, remember_missing) = match from_disk {
+            Some(data) => (Some(data), false),
+            None => {
+                self.archive_gate().ok()?;
+                // Fetched outside the lock: it is a network request.
+                match self.net.archive_cover(&identifier) {
+                    Ok(b) if !b.is_empty() => {
+                        if let Some(dir) = file.parent() {
+                            let _ = fs::create_dir_all(dir);
+                            if fs::write(&file, &b).is_ok() {
+                                prune_cover_files(dir);
+                            }
+                        }
+                        (Some(b), false)
+                    }
+                    // Only "this item has no picture" is worth remembering; a slow or failed
+                    // request should be tried again the next time it is asked for.
+                    Err(e) => (None, e.to_string().contains("no picture")),
+                    Ok(_) => (None, true),
+                }
+            }
+        };
+        let found = data.map(|data| Arc::new(Cover { mime: sniff_mime(&data).to_string(), data }));
+        if found.is_none() && !remember_missing {
+            return None;
+        }
         let mut st = self.archive.lock();
         st.covers.push_back((identifier, found.clone()));
         let mut bytes: usize = st.covers.iter().map(|(_, c)| c.as_ref().map_or(0, |c| c.data.len())).sum();

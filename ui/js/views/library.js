@@ -60,7 +60,7 @@ export function mountLibrary(root) {
   const scanBox = h('div', { class: 'lib-scan', hidden: true });
   const head = h('header', { class: 'v-head' },
     iconButton('chevronLeft', 'Back to now playing', () => setView('now'), { cls: 'v-back' }),
-    h('h1', { class: 'v-title' }, 'Library'),
+    h('h1', { class: 'v-title' }, 'Local library'),
     h('div', { class: 'lib-tools' }, search, filterBtn, scanBox, iconButton('refresh', 'Rescan folders', () => rescanLibrary(), { cls: 'lib-rescan' })));
   const body = h('div', { class: 'v-body lib-body' });
   root.append(head, tabs, filterUI.el, body);

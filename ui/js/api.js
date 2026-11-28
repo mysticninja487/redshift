@@ -79,6 +79,7 @@ export const api = {
   serverSearch: (query) => invoke('server_search', { query }),
   // the Internet Archive
   archiveSearch: (query) => invoke('archive_search', { query }),
+  archiveCached: (query) => invoke('archive_cached', { query }),
   archiveItem: (identifier, losslessOnly = true) => invoke('archive_item', { identifier, losslessOnly }),
   archivePlay: (paths, start = 0) => invoke('archive_play', { paths, start }),
   setExclusive: (on) => invoke('set_exclusive', { on }),

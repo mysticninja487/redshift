@@ -10,7 +10,8 @@
 
 use std::collections::HashMap;
 use std::io::Read;
-use std::time::Duration;
+use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -24,6 +25,44 @@ pub const OFFICIAL_BASE: &str = "https://archive.org";
 pub const PAGE_SIZE: usize = 40;
 const MAX_JSON: u64 = 12 * 1024 * 1024;
 const REDIRECTS: u8 = 5;
+/// How long the Archive gets to start answering a search or an item's details. Its search can take
+/// many seconds when it is busy, and giving up early only means asking again from the start.
+const JSON_PATIENCE: Duration = Duration::from_secs(45);
+/// A file or picture should start arriving quickly, or another try may do better.
+const FILE_PATIENCE: Duration = Duration::from_secs(12);
+/// How long a remembered answer is used without asking again.
+const SEARCH_FRESH: Duration = Duration::from_secs(20 * 60);
+const ITEM_FRESH: Duration = Duration::from_secs(30 * 60);
+
+/// The last few search results and item details, newest last.
+#[derive(Default)]
+pub(super) struct Recent {
+    searches: VecDeque<(String, Instant, ArchiveSearch)>,
+    items: VecDeque<(String, Instant, Value)>,
+}
+
+impl Recent {
+    fn search(&self, key: &str) -> Option<ArchiveSearch> {
+        self.searches.iter().find(|(k, at, _)| k == key && at.elapsed() < SEARCH_FRESH).map(|(_, _, v)| v.clone())
+    }
+    fn put_search(&mut self, key: String, v: ArchiveSearch) {
+        self.searches.retain(|(k, _, _)| *k != key);
+        self.searches.push_back((key, Instant::now(), v));
+        while self.searches.len() > 24 {
+            self.searches.pop_front();
+        }
+    }
+    fn item(&self, id: &str) -> Option<Value> {
+        self.items.iter().find(|(k, at, _)| k == id && at.elapsed() < ITEM_FRESH).map(|(_, _, v)| v.clone())
+    }
+    fn put_item(&mut self, id: String, v: Value) {
+        self.items.retain(|(k, _, _)| *k != id);
+        self.items.push_back((id, Instant::now(), v));
+        while self.items.len() > 10 {
+            self.items.pop_front();
+        }
+    }
+}
 /// The collections the Archive screen offers as a quick filter.
 pub const COLLECTIONS: [&str; 3] = ["etree", "netlabels", "opensource_audio"];
 
@@ -43,7 +82,7 @@ pub struct ArchiveQuery {
 }
 
 /// An item in a list of results.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ArchiveHit {
     pub identifier: String,
     pub title: String,
@@ -56,7 +95,8 @@ pub struct ArchiveHit {
     pub lossless: bool,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ArchiveSearch {
     pub hits: Vec<ArchiveHit>,
     pub total: u64,
@@ -409,6 +449,11 @@ impl Net {
     /// redirects (each one is checked). `log` adds a line to the request log; the many small reads
     /// while a song plays pass false.
     pub fn archive_open(&self, url: &str, accept: &str, range: Option<(u64, u64)>, purpose: &str, log: bool) -> Result<ServerBody> {
+        self.archive_open_within(url, accept, range, purpose, log, FILE_PATIENCE)
+    }
+
+    /// [`archive_open`](Self::archive_open) with a chosen time for the Archive to start answering.
+    fn archive_open_within(&self, url: &str, accept: &str, range: Option<(u64, u64)>, purpose: &str, log: bool, patience: Duration) -> Result<ServerBody> {
         if !self.enabled() {
             return Err(Error::Offline);
         }
@@ -417,7 +462,7 @@ impl Net {
             let mut redirects = 0;
             loop {
                 self.check_archive_url(&current)?;
-                let mut req = self.stream_agent.get(&current).header("Accept", accept);
+                let mut req = self.stream_agent.get(&current).config().timeout_recv_response(Some(patience)).build().header("Accept", accept);
                 if let Some((a, b)) = range {
                     req = req.header("Range", &format!("bytes={a}-{b}"));
                 }
@@ -453,11 +498,17 @@ impl Net {
             if attempt > 0 {
                 std::thread::sleep(Duration::from_millis(1500));
             }
-            let mut body = match self.archive_open(url, "application/json", None, purpose, false) {
+            let mut body = match self.archive_open_within(url, "application/json", None, purpose, false, JSON_PATIENCE) {
                 Ok(b) => b,
                 Err(Error::Offline) => return Err(Error::Offline),
                 Err(e) => {
                     self.record_archive(purpose, url, None, 0, Some(e.to_string()));
+                    // A search that already took this long will not do better at once: say so
+                    // instead of making the person wait through the same time again.
+                    let slow = e.to_string().to_ascii_lowercase().contains("timeout") || e.to_string().to_ascii_lowercase().contains("timed out");
+                    if slow {
+                        return Err(Error::Network("the Internet Archive took too long to answer. It is sometimes slow; try again in a moment".into()));
+                    }
                     last = e;
                     continue;
                 }
@@ -509,6 +560,10 @@ impl Net {
         if !sort.is_empty() {
             url.push_str(&format!("&sort%5B%5D={}", encode_query(sort)));
         }
+        let cache_key = url.clone();
+        if let Some(hit) = self.archive_cache.lock().search(&cache_key) {
+            return Ok(hit);
+        }
         let v = self.archive_json(&url, "Internet Archive: search")?;
         let response = v.get("response").ok_or_else(|| Error::Network("the Internet Archive's answer had no results part".into()))?;
         let hits = response
@@ -539,7 +594,9 @@ impl Net {
                     .collect()
             })
             .unwrap_or_default();
-        Ok(ArchiveSearch { hits, total: number(response, "numFound").unwrap_or(0), page, page_size: PAGE_SIZE })
+        let result = ArchiveSearch { hits, total: number(response, "numFound").unwrap_or(0), page, page_size: PAGE_SIZE };
+        self.archive_cache.lock().put_search(cache_key, result.clone());
+        Ok(result)
     }
 
     /// An item and its songs.
@@ -547,7 +604,18 @@ impl Net {
         if !valid_identifier(identifier) {
             return Err(Error::Network("not an item on the Internet Archive".into()));
         }
-        let v = self.archive_json(&format!("{}/metadata/{identifier}", self.archive_base()), "Internet Archive: item")?;
+        let cached = self.archive_cache.lock().item(identifier);
+        let v = match cached {
+            Some(v) => v,
+            None => {
+                let v = self.archive_json(&format!("{}/metadata/{identifier}", self.archive_base()), "Internet Archive: item")?;
+                // Only a real item is worth remembering (not "not found").
+                if v.get("metadata").is_some_and(Value::is_object) {
+                    self.archive_cache.lock().put_item(identifier.to_string(), v.clone());
+                }
+                v
+            }
+        };
         let meta = v.get("metadata").filter(|m| m.is_object()).ok_or_else(|| Error::Network("the Internet Archive does not have that item any more".into()))?;
         if v.get("is_dark").and_then(Value::as_bool).unwrap_or(false) {
             return Err(Error::Network("that item has been taken down from the Internet Archive".into()));
@@ -731,6 +799,24 @@ mod tests {
         n.set_enabled(true);
         n.set_archive_base_for_tests(&f.base);
         (f, n)
+    }
+
+    #[test]
+    fn the_same_search_or_item_is_not_asked_for_twice() {
+        let (f, n) = live("recent");
+        let q = ArchiveQuery { text: "live hall".into(), page: 1, ..Default::default() };
+        let a = n.archive_search(&q).unwrap();
+        let b = n.archive_search(&q).unwrap();
+        assert_eq!(a, b);
+        let first = n.archive_item("demo-live", false).unwrap();
+        let again = n.archive_item("demo-live", true).unwrap();
+        assert_eq!(first.tracks.len(), again.tracks.len() + again.hidden_lossy, "the remembered answer still honours Lossless only");
+        let log = f.requests.lock().clone();
+        assert_eq!(log.iter().filter(|l| l.contains("advancedsearch")).count(), 1, "{log:?}");
+        assert_eq!(log.iter().filter(|l| l.contains("/metadata/demo-live")).count(), 1, "{log:?}");
+        // A different search is a different question.
+        n.archive_search(&ArchiveQuery { text: "old radio".into(), page: 1, ..Default::default() }).unwrap();
+        assert_eq!(f.requests.lock().iter().filter(|l| l.contains("advancedsearch")).count(), 2);
     }
 
     #[test]

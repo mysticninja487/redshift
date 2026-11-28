@@ -10,3 +10,12 @@
 .ar-desc { max-width: 72ch; margin: 18px 0 0; color: var(--fg2); font-size: .85rem; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
 .ar-credit { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 14px 0 6px; color: var(--fg3); font-size: .8rem; }
 .ar-intro { margin-top: 8vh; }
+.ar-wait { margin: 0 0 12px; }
+.ar-skel { pointer-events: none; }
+.ar-skel .lib-cover { background: var(--bg3, rgba(128,128,128,.14)); }
+.ar-skel-line { display: block; height: 10px; margin-top: 8px; border-radius: 5px; background: var(--bg3, rgba(128,128,128,.14)); }
+.ar-skel-line.short { width: 55%; }
+@media (prefers-reduced-motion: no-preference) {
+  .ar-skel .lib-cover, .ar-skel-line { animation: ar-pulse 1.4s ease-in-out infinite; }
+}
+@keyframes ar-pulse { 50% { opacity: .55; } }

@@ -1250,4 +1250,10 @@ export default {
   "More": "Plus",
   "1 song selected · {x}": "1 morceau sélectionné · {x}",
   "{n} songs selected · {x}": "{n} morceaux sélectionnés · {x}",
+  "Local": "Local",
+  "Local library": "Bibliothèque locale",
+  "Online sources": "Sources en ligne",
+  "Asking the Internet Archive…": "Interrogation de l’Internet Archive…",
+  "The Internet Archive is slow to answer right now. Still waiting…": "L’Internet Archive répond lentement en ce moment. Toujours en attente…",
+  "From last time. Updating…": "Datant de la dernière fois. Mise à jour…",
 };

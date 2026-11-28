@@ -30,7 +30,8 @@ export function mountArchive(root) {
   let hits = [], total = 0, more = false;
   let detail = null; // { identifier, data }
   let status = 'idle', error = ''; // idle | loading | done | error
-  let searched = false, token = 0;
+  let searched = false, token = 0, stale = false, slow = false, slowTimer = 0;
+  const warmed = new Set();
 
   const search = h('input', { class: 'text-input lib-search', type: 'search', placeholder: 'Search the Internet Archive', 'aria-label': 'Search the Internet Archive',
     oninput: debounce((e) => { q.text = e.target.value.trim(); detail = null; run(); }, 400) });
@@ -43,19 +44,32 @@ export function mountArchive(root) {
 
   // ---- loading ----
 
+  const waiting = (on) => {
+    clearTimeout(slowTimer); slow = false;
+    if (on) slowTimer = setTimeout(() => { slow = true; const n = body.querySelector('.ar-wait'); if (n) n.textContent = 'The Internet Archive is slow to answer right now. Still waiting…'; }, 6000);
+  };
+
   async function run() {
     if (!ready()) { render(); return; }
     const mine = ++token;
-    q.page = 1; status = 'loading'; error = ''; searched = true; render();
+    q.page = 1; error = ''; searched = true; stale = false;
+    // What this search showed last time appears at once, and the fresh answer replaces it.
+    let cached = null;
+    try { cached = await api.archiveCached({ ...q }); } catch { /* nothing remembered */ }
+    if (mine !== token) return;
+    if (cached?.hits?.length) { hits = cached.hits; total = cached.total; more = false; stale = true; status = 'done'; } else { hits = []; status = 'loading'; }
+    waiting(true); render();
     try {
       const r = await api.archiveSearch({ ...q });
       if (mine !== token) return;
-      hits = r.hits; total = r.total; more = r.hits.length >= r.page_size && r.page * r.page_size < r.total;
+      hits = r.hits; total = r.total; more = r.hits.length >= r.page_size && r.page * r.page_size < r.total; stale = false;
     } catch (e) {
       if (mine !== token) return;
+      waiting(false);
+      if (stale) { error = msg(e); status = 'done'; render(); return; }
       status = 'error'; error = msg(e); render(); return;
     }
-    status = 'done'; render();
+    waiting(false); status = 'done'; render();
   }
 
   async function loadMore() {
@@ -70,7 +84,7 @@ export function mountArchive(root) {
 
   async function open(identifier) {
     const mine = ++token;
-    status = 'loading'; error = ''; detail = { identifier, data: null }; render();
+    status = 'loading'; error = ''; detail = { identifier, data: null }; waiting(true); render();
     try {
       const data = await api.archiveItem(identifier, q.lossless_only);
       if (mine !== token) return;
@@ -79,8 +93,20 @@ export function mountArchive(root) {
       if (mine !== token) return;
       status = 'error'; error = msg(e);
     }
-    render();
+    waiting(false); render();
   }
+
+  /** Asks for an item's songs a moment after the pointer rests on it, so opening it is instant. */
+  let warmTimer = 0;
+  const warm = (identifier) => {
+    clearTimeout(warmTimer);
+    warmTimer = setTimeout(() => {
+      const key = `${identifier}|${q.lossless_only}`;
+      if (warmed.has(key) || warmed.size > 40) return;
+      warmed.add(key);
+      api.archiveItem(identifier, q.lossless_only).catch(() => warmed.delete(key));
+    }, 220);
+  };
 
   // ---- pieces ----
 
@@ -132,12 +158,17 @@ export function mountArchive(root) {
     return h('div', { class: 't-table' }, headRow, vl);
   }
 
+  /** Placeholder cards and a plain line, so the screen is never blank while the Archive thinks. */
+  const loading = () => h('div', { class: 'detail ar-loading', 'aria-busy': 'true' },
+    h('p', { class: 'hint ar-wait' }, slow ? 'The Internet Archive is slow to answer right now. Still waiting…' : 'Asking the Internet Archive…'),
+    detail ? null : h('div', { class: 'album-grid', style: { '--tile': `${getPrefs().library.albumSize ?? 190}px` } }, Array.from({ length: 10 }, () => h('div', { class: 'album-card ar-skel', 'aria-hidden': 'true' }, h('div', { class: 'lib-cover' }), h('span', { class: 'ar-skel-line' }), h('span', { class: 'ar-skel-line short' })))));
+
   const note = (text, cls = '') => h('p', { class: `rd-note ${cls}`.trim() }, text);
   const back = (label, fn) => button(label, fn, { iconName: 'chevronLeft', cls: 'crumb' });
 
   function hitCard(a) {
     const sub = [a.creator, a.year].filter(Boolean).join(' · ');
-    const card = h('div', { class: 'album-card ar-hit', role: 'button', tabindex: '0', onclick: () => open(a.identifier), onkeydown: (e) => { if (e.key === 'Enter') open(a.identifier); } },
+    const card = h('div', { class: 'album-card ar-hit', role: 'button', tabindex: '0', onpointerenter: () => warm(a.identifier), onfocus: () => warm(a.identifier), onclick: () => open(a.identifier), onkeydown: (e) => { if (e.key === 'Enter') open(a.identifier); } },
       cover(a.identifier), h('span', { class: 'ac-title', translate: 'no' }, a.title), h('span', { class: 'ac-artist', translate: 'no' }, sub || ' '),
       h('span', { class: 'ar-formats' }, h('span', { class: `rd-chip ${a.lossless ? 'is-lossless' : 'is-lossy'}` }, a.lossless ? 'Lossless' : 'Lossy'),
         h('span', { class: 'sv-fmt', translate: 'no', title: a.formats.map(formatName).join(', ') }, a.formats.slice(0, 2).map(formatName).join(', ')),
@@ -185,7 +216,8 @@ export function mountArchive(root) {
       h('p', null, 'Live concert recordings, netlabel releases and public-domain audio, mostly as FLAC, so they play as the original files. Search above, or browse the most downloaded.'),
       button('Browse popular', () => run(), { cls: 'primary' }));
     return h('div', { class: 'detail' },
-      h('p', { class: 'hint ar-count' }, total ? `${total.toLocaleString()} ${total === 1 ? 'item' : 'items'}${q.lossless_only ? ' with lossless files' : ''}` : ''),
+      h('p', { class: 'hint ar-count' }, stale ? 'From last time. Updating…' : total ? `${total.toLocaleString()} ${total === 1 ? 'item' : 'items'}${q.lossless_only ? ' with lossless files' : ''}` : ''),
+      error ? h('p', { class: 'rd-note is-error' }, `Could not reach the Internet Archive: ${error}. Showing what it listed last time.`) : null,
       hits.length ? h('div', { class: 'album-grid', style: { '--tile': `${getPrefs().library.albumSize ?? 190}px` } }, hits.map(hitCard)) : note(q.lossless_only ? 'Nothing with lossless files matches that. Turn off Lossless only to include lossy items.' : 'Nothing matches that.'),
       more ? button('Show more', loadMore, { cls: 'sv-more' }) : null);
   }
@@ -203,7 +235,7 @@ export function mountArchive(root) {
     const keep = body.scrollTop;
     if (!ready()) { body.replaceChildren(gate()); return; }
     const bar = detail ? null : tools();
-    const view = status === 'loading' ? note('Loading…')
+    const view = status === 'loading' ? loading()
       : status === 'error' ? h('div', { class: 'rd-note is-error' }, h('p', null, `Could not reach the Internet Archive: ${error}`), button('Try again', () => { if (detail && !detail.data) { const id = detail.identifier; detail = null; open(id); } else run(); }))
       : detail?.data ? itemDetail(detail.data) : results();
     body.replaceChildren(...[bar, view].filter(Boolean));
@@ -214,5 +246,7 @@ export function mountArchive(root) {
   on('player', debounce(() => { if (detail?.data) render(); }, 400));
   on('favs', () => { if (detail?.data) render(); });
   render();
-  return { reload: () => render() };
+  // Opening the screen shows the most downloaded straight away; nothing needs clicking.
+  if (ready()) run();
+  return { reload: () => { if (ready() && !searched) run(); else render(); } };
 }

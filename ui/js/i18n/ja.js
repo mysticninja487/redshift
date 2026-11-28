@@ -1250,4 +1250,10 @@ export default {
   "More": "その他",
   "1 song selected · {x}": "1 曲を選択 · {x}",
   "{n} songs selected · {x}": "{n} 曲を選択 · {x}",
+  "Local": "ローカル",
+  "Local library": "ローカルライブラリ",
+  "Online sources": "オンラインのソース",
+  "Asking the Internet Archive…": "インターネットアーカイブに問い合わせています…",
+  "The Internet Archive is slow to answer right now. Still waiting…": "インターネットアーカイブの応答が遅くなっています。待機中…",
+  "From last time. Updating…": "前回の内容です。更新中…",
 };

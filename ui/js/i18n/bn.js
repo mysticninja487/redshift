@@ -1250,4 +1250,10 @@ export default {
   "More": "আরও",
   "1 song selected · {x}": "১টি গান নির্বাচিত · {x}",
   "{n} songs selected · {x}": "{n}টি গান নির্বাচিত · {x}",
+  "Local": "লোকাল",
+  "Local library": "লোকাল লাইব্রেরি",
+  "Online sources": "অনলাইন উৎস",
+  "Asking the Internet Archive…": "ইন্টারনেট আর্কাইভকে জিজ্ঞেস করা হচ্ছে…",
+  "The Internet Archive is slow to answer right now. Still waiting…": "ইন্টারনেট আর্কাইভ এখন উত্তর দিতে ধীর। এখনো অপেক্ষা করছি…",
+  "From last time. Updating…": "গতবারের তালিকা। হালনাগাদ হচ্ছে…",
 };
